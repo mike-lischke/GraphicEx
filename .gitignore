@@ -12,6 +12,7 @@ bin/*
 *.dof
 *.dsk
 *.res
+*.otares
 
 # Other tools
 *.bak
