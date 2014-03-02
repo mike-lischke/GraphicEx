@@ -30,6 +30,8 @@ var
 var
   formatStr: string;
   stream: TmemoryStream;
+  pi: single;
+  c: char;
 begin
   formatStr := '%s %s %d  %d';
   dtmIn := 'ABC March 123 2014';
@@ -40,6 +42,9 @@ begin
   sscanf(PChar(dtmIn), PChar(formatStr), [@weekday, @month, @day, @year]);
   check;
   print;
+
+  sscanf('3.1415926', '%f', [@pi]);
+  sscanf('a', '%c', [@c]);
 
   stream:=TMemoryStream.Create;
   stream.Write(AnsiString(dtmIn)[1], Length(dtmIn)); //stream if rather Ansi than Unicode

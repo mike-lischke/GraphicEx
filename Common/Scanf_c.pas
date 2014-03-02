@@ -1252,10 +1252,7 @@ begin
     end;
     Case Typ of
       scPChar, scFloat, scInteger, scCurrency : // Skip blank space for these formats
-      begin
-        writeln(typ);
-            while (Buf^ <> #0) and (Buf^ <= ' ') do Inc(Buf);
-      end;
+                  while (Buf^ <> #0) and (Buf^ <= ' ') do Inc(Buf);
       scCharSet : begin
                     if not ParseSet(Fmt, FmtEnd, theSet) then FType:=scIllegal
                     else BSet:=BSet and $fe;  // Mask out #0
