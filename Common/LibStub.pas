@@ -160,7 +160,7 @@ function vfprintf(Stream: TStream; Format: PChar; Arguments: va_list): Integer; 
 function vprintf(Format: PChar; Arguments: va_list): Integer; cdecl;
 procedure vsprintf(Buffer, Format: PChar; Arguments: va_list); cdecl;
 function wcscpy(Destination, Source: PWideChar): PWideChar; cdecl;
-function wcstombs(mbstr: PChar; wcstr: PWideChar; count: Cardinal): Cardinal; cdecl;
+function wcstombs(mbstr: PAnsiChar; wcstr: PWideChar; count: Cardinal): Cardinal; cdecl;
 
 // Note: these functions cannot be emulated by Delphi nor forwarded to external APIs.
 // Using them will raise an exception.
@@ -853,7 +853,7 @@ end;
 function memcmp(s1, s2: Pointer; n: Integer): Integer;
 
 begin
-  Result := StrLComp(s1, s2, n);
+  Result := StrLComp(PAnsiChar(s1), PAnsiChar(s2), n);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1326,7 +1326,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function wcstombs(mbstr: PChar; wcstr: PWideChar; count: Cardinal): Cardinal;
+function wcstombs(mbstr: PAnsiChar; wcstr: PWideChar; count: Cardinal): Cardinal;
 
 begin
   Result := WideCharToMultibyte(CP_ACP, 0, wcstr, -1, mbstr, -1, nil, nil);

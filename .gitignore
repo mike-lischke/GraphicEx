@@ -11,6 +11,7 @@ bin/*
 *.cfg
 *.dof
 *.dsk
+*.res
 
 # Other tools
 *.bak

@@ -36,7 +36,8 @@ implementation
 function StrDeFmt(Buffer, Format : PChar; Args : array of const) : integer;
 begin
   StrDeFmt:=DeFormat_core(Buffer, Length(Buffer), Format, Length(Format), Args,
-                          DecimalSeparator, ThousandSeparator);
+                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}DecimalSeparator),
+                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}ThousandSeparator));
 end;
 
 function DeFormat(const Str : string; const Format: string; Args : array of const) : integer;
@@ -45,7 +46,8 @@ begin
   Buf:=PChar(Str);
   Fmt:=PChar(Format);
   DeFormat:=DeFormat_core(Buf, Length(Str), Fmt, Length(Format), Args,
-                          DecimalSeparator, ThousandSeparator);
+                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}DecimalSeparator),
+                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}ThousandSeparator));
 end;
 
 function DeFormatBuf(const Buffer; BufLen: Cardinal; const Format; FmtLen: Cardinal; const Args: array of const): integer;
@@ -53,7 +55,9 @@ var Buf, Fmt : PChar;
 begin
   Buf:=PChar(Buffer);
   Fmt:=PChar(Format);
-  DeFormatBuf:=DeFormat_core(Buf, BufLen, Fmt, FmtLen, Args, DecimalSeparator, ThousandSeparator);
+  DeFormatBuf:=DeFormat_core(Buf, BufLen, Fmt, FmtLen, Args,
+                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}DecimalSeparator),
+                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}ThousandSeparator));
 end;
 
 function sscanf;
@@ -67,7 +71,7 @@ begin
   fscanf := Scanf_stream(F, Format, Pointers);
 end;
 
-function TextToFloatS;
+function TextToFloatS(Buffer: PChar; var Value; ValueType: TFloatValue): Boolean;
 var EsRes : integer;
     Buf : PChar;
     {$IFOPT Q+} SaveCW, NewCW : word; {$ENDIF}
@@ -76,7 +80,9 @@ begin
   Buf:=Buffer;
   while (Buf^ <= ' ') and (Buf^ > #0) do Inc(Buf);
   Neg:= (Buf^='-'); If Neg then Inc(Buf);
-  EsRes:=Ext_scanner(Buf, Maxlongint, Ord(ValueType)*4, DecimalSeparator, ThousandSeparator);
+  EsRes:=Ext_scanner(Buf, Maxlongint, Ord(ValueType)*4,
+                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}DecimalSeparator),
+                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}ThousandSeparator));
   if (EsRes and scOK) <> 0 then begin
     If Neg then asm fchs; end;
     Case ValueType of
@@ -123,8 +129,12 @@ function StrToCurrF;
 var Buf : PChar;
 begin
   Buf:=PChar(S);
-  If StrToCurrF_core(Buf, Length(S), Result, PChar(CurrencyString),
-     CurrencyFormat, NegCurrFormat, DecimalSeparator, ThousandSeparator) <=0
+  If StrToCurrF_core(Buf, Length(S), Result, PChar(
+     {$IF RTLVersion>=24.00}FormatSettings.{$ifend}CurrencyString),
+     {$IF RTLVersion>=24.00}FormatSettings.{$ifend}CurrencyFormat,
+     {$IF RTLVersion>=24.00}FormatSettings.{$ifend}NegCurrFormat,
+     AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}DecimalSeparator),
+     AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}ThousandSeparator)) <=0
   then raise EConvertError.CreateFmt(SInvalidFloat, [S]);
 end;
 
@@ -143,7 +153,7 @@ begin
   b:=20;
   repeat
     cc:=Int(c/10);
-    Temp[b]:=Char( Round(c-cc*10) + Ord('0') );
+    Temp[b]:=AnsiChar( Round(c-cc*10) + Ord('0') );
     If cc=0 then Break else c:=cc;
     Dec(b);
   until False;
@@ -162,7 +172,7 @@ begin
   repeat
     Ch:=(i64.Lo and $0f) + Ord('0');
     if Ch > Ord('9') then Inc(Ch, Ord('A')-Ord('9')-1 );
-    Temp[b]:=Char(Ch);
+    Temp[b]:=AnsiChar(Ch);
     Dec(b);
     asm
       MOV     EAX,DWORD PTR [C+4];
@@ -183,7 +193,7 @@ begin
   SetLength(Temp,23);
   b:=23;
   while (i64.Lo <> 0) or (i64.Hi <> 0) do begin
-    Temp[b]:=Char( (i64.Lo and $07) + Ord('0') );
+    Temp[b]:=AnsiChar( (i64.Lo and $07) + Ord('0') );
     asm
       MOV     EAX,DWORD PTR [C+4];
       SHRD    DWORD PTR [C],EAX,3
