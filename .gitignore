@@ -1,5 +1,5 @@
 *.dcu
-*.~*~
+*.~*
 *.local
 *.identcache
 __history
@@ -8,3 +8,11 @@ __history
 *.exe
 *.dll
 bin/*
+*.cfg
+*.dof
+*.dsk
+*.res
+*.otares
+
+# Other tools
+*.bak
