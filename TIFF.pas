@@ -606,6 +606,14 @@ procedure TIFFError(const S: PChar); varargs; external;
 {$L tif_zip.obj}
 {$L tif_next.obj}
 {$L tif_extension.obj}
+{$L adler32.obj}
+{$L inflate.obj}
+{$L inffast.obj}
+{$L inftrees.obj}
+{$L zutil.obj}
+{$L deflate.obj}
+{$L crc32.obj}
+{$L trees.obj}
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -638,6 +646,4 @@ initialization
   TIFFSetErrorHandler(@GraphicExTIFFError);
 finalization
 end.
-
-
 
