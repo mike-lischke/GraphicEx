@@ -1,5 +1,16 @@
 unit LibStub;
 
+{$IFDEF fpc}
+  {$DEFINE USEINLINE}
+  {$MODE Delphi}
+{$ELSE}
+  // since Delphi 2007
+  {$IF Declared(CompilerVersion) and (CompilerVersion>=18.50)}
+    {$DEFINE USEINLINE}
+  {$IFEND}
+{$ENDIF}
+
+
 //----------------------------------------------------------------------------------------------------------------------
 //
 // This unit is released under the MIT license:
@@ -50,7 +61,15 @@ interface
 {$define Underlined}
 
 uses
-  Windows, Classes;
+{$IFNDEF FPC}
+  Windows,
+{$ELSE}
+{$ENDIF}
+  Classes;
+
+type
+   TIntegerArray = array [0 .. MaxInt div sizeof(Integer) - 1] of Integer;
+   PIntegerArray = ^TIntegerArray;
 
 var
   __turboFloat: LongBool = False;
@@ -138,7 +157,7 @@ function rand: Integer; cdecl;
 procedure qsort(base: Pointer; nelem, width: Cardinal; fcmp: cmp_callback); cdecl;
 function setjmp(const __jmpb): Integer; cdecl;
 function sin(Value: Double): Double; cdecl;
-procedure sprintf(Buffer, Format: PChar; Arguments: va_list); cdecl;
+procedure sprintf(Buffer, Format: PChar; Arguments: array of const); cdecl;
 function sqrt(Value: Double): Double; cdecl;
 function sscanf(Buffer, Format: PChar; Argument: array of Pointer): Integer; cdecl;
 function strcat(dest, src: PChar): PChar; cdecl;
@@ -156,9 +175,9 @@ procedure swab(__from, __to: PChar; __nbytes: Integer); cdecl;
 function tan(Value: Double): Double; cdecl;
 function time(__timer: Ptime_t): time_t; cdecl;
 function unlink(FileName: PChar): Integer; cdecl;
-function vfprintf(Stream: TStream; Format: PChar; Arguments: va_list): Integer; cdecl;
-function vprintf(Format: PChar; Arguments: va_list): Integer; cdecl;
-procedure vsprintf(Buffer, Format: PChar; Arguments: va_list); cdecl;
+function vfprintf(Stream: TStream; Format: PChar; Arguments: array of const): Integer; cdecl;
+function vprintf(Format: PChar; Arguments: array of const): Integer; cdecl;
+procedure vsprintf(Buffer, Format: PChar; Arguments: array of const);
 function wcscpy(Destination, Source: PWideChar): PWideChar; cdecl;
 function wcstombs(mbstr: PAnsiChar; wcstr: PWideChar; count: Cardinal): Cardinal; cdecl;
 
@@ -572,11 +591,11 @@ function isDST (hour, yday, month, year: Cardinal): Boolean;
 var
   temp,
   sunday: Cardinal;
-  
+
 begin
   Result := False;
 
-  if month = 0 then // if only day of year given 
+  if month = 0 then // if only day of year given
   begin
     temp := yday;
     if (yday >= 31 + 28) and (((year + 70) and 3) = 0) then
@@ -585,7 +604,7 @@ begin
     while temp >= Cardinal(_YDays[month]) do
       Inc(month);
   end
-  else  // if month+day of month given 
+  else  // if month+day of month given
   begin
     Inc(yday, _YDays[month - 1]);
     if (month > 2) and (((year + 70) and 3) = 0) then  // leap year, Mar-Dec
@@ -995,7 +1014,7 @@ begin
         Inc(leftP, qWidth)
       else
         goto qBreak;
-    end;  
+    end;
 
     while leftP < rightP do
     begin
@@ -1030,7 +1049,7 @@ begin
     Inc(pivotTemp, qWidth);
     Dec(leftTemp, qWidth);
   end;
-        
+
   lNum := Cardinal(leftP - pivotEnd) div qWidth;
   nElem := Cardinal((nElem * qWidth + pivotP) - leftP) div qWidth;
 
@@ -1045,7 +1064,7 @@ begin
     qSortHelp(pivotP, lNum);
     pivotP := leftP;
   end;
-                
+
   goto tailRecursion;
 end;
 
@@ -1082,12 +1101,21 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure sprintf(Buffer, Format: PChar; Arguments: va_list);
-
-// Optional parameters are passed in a va_list as the last parameter. 
-
+// Optional parameters are passed in Arguments array as the last parameter.
+procedure sprintf(Buffer, Format: PChar; Arguments: array of const);
+var
+  arg: PIntegerArray;
+  i: integer;
 begin
-  wvsprintf(Buffer, Format, @Arguments);
+  GetMem(arg, Length(Arguments) * sizeof(Integer));
+  try
+    Assert(Low(Arguments) = 0);
+    for i := Low(Arguments) to high(Arguments) do
+        arg[i] := Arguments[i].VInteger;
+    wvsprintf(Buffer, Format, PChar(arg));
+  finally
+    FreeMem(arg);
+  end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1279,21 +1307,20 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function vfprintf(Stream: TStream; Format: PChar; Arguments: va_list): Integer;
+function vfprintf(Stream: TStream; Format: PChar; Arguments: array of const): Integer;
 
 var
   Buffer: array[0..10000] of Char;
 
 begin
-  wvsprintf(Buffer, Format, Arguments);
+  sprintf(Buffer, Format, Arguments);
   Result := StrLen(Buffer);
   Stream.Write(Buffer, Result);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function vprintf(Format: PChar; Arguments: va_list): Integer;
-
+function vprintf(Format: PChar; Arguments: array of const): Integer;
 // In the C RTL this method writes to stdout, which should not be used for Win GUI applications.
 // Hence we write a record to the debug output.
 
@@ -1301,7 +1328,7 @@ var
   Buffer: array[0..10000] of Char;
 
 begin
-  wvsprintf(Buffer, Format, Arguments);
+  sprintf(Buffer, Format, Arguments);
   OutputDebugString(Buffer);
   OutputDebugString(#13#10);
   Result := StrLen(Buffer);
@@ -1309,10 +1336,9 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure vsprintf(Buffer, Format: PChar; Arguments: va_list);
-
+procedure vsprintf(Buffer, Format: PChar; Arguments: array of const);
 begin
-  wvsprintf(Buffer, Format, Arguments);
+  sprintf(Buffer, Format, Arguments);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1358,4 +1384,3 @@ begin
   daylight := Info.DaylightBias <> 0;
   timezone := (Info.Bias + Info.StandardBias) * 60;
 end.
-

@@ -9,6 +9,10 @@
 // {$DEFINE DEFORMAT_EXCEPTIONS}   // uncomment to generate exceptions in DeFormat_core
 unit Scanf_c;
 
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
+
 interface
 
 uses Classes;
@@ -895,7 +899,7 @@ end;
 
 function DeFormat_core(var Buffer : PChar; BufLen: Cardinal;
                        var Format : PChar; FmtLen: Cardinal;
-                       Args: array of TVarRec;
+                       Args: array of const;
                        DecSep, ThSep : AnsiChar): Cardinal;
 var  // Many of these will be optimized out
   Count : cardinal;
@@ -1089,9 +1093,9 @@ try
                   end;
       scCurrency : if (Flags and scFormatted) <> 0 then begin
                      Temp:=StrToCurrF_core(Buf, Width, Currency(Ptr^),
-                     PChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}CurrencyString),
-                           {$IF RTLVersion>=24.00}FormatSettings.{$ifend}CurrencyFormat,
-                           {$IF RTLVersion>=24.00}FormatSettings.{$ifend}NegCurrFormat,
+                     PChar({$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}CurrencyString),
+                           {$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}CurrencyFormat,
+                           {$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}NegCurrFormat,
                            DecSep, ThSep);
                      if Temp <= 0 then begin
                      {$IFDEF DEFORMAT_EXCEPTIONS}

@@ -1,9 +1,14 @@
-{$C+} //Assertions On 
+{$C+} //Assertions On
 program Test;
+
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
 
 {$APPTYPE CONSOLE}
 
 uses
+  Windows,
   Classes, SysUtils,
   Scanf in 'Scanf.pas',
   Scanf_c in 'Scanf_c.pas',
@@ -109,9 +114,19 @@ begin
   Assert(valCurrency=123456);
 end;
 
+procedure test_printf;
+var
+  buf: array[0..100] of char;
+  n: integer;
+begin
+  sprintf(@buf,'%d %s %d',[123,'abcd',456]);
+  writeln(buf);
+end;
+
 begin
   test_conv;
   test_thousand_sep;
   test_scanf;
+  test_printf;
 end.
 
