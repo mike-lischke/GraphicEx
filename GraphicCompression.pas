@@ -51,7 +51,7 @@ interface
 uses                                                
   Windows, Classes, SysUtils, Graphics,  
   JPG,   // JPEG compression support
-  zLibEx;  // general inflate/deflate and LZ77 compression support
+  zLibEx, ZLibExApi;  // general inflate/deflate and LZ77 compression support
      
 type
   // abstract decoder class to define the base functionality of an encoder/decoder
