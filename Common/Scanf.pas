@@ -90,7 +90,9 @@ begin
   if (EsRes and scOK) <> 0 then begin
     If Neg then asm fchs; end;
     Case ValueType of
-      fvExtended : asm mov eax,[Value]; fstp  tbyte ptr [eax]; end;
+      fvExtended : asm
+                    mov eax,[Value]; fstp  tbyte ptr [eax];
+                   end;
       fvCurrency : asm
                  {$IFOPT Q+}
                     fstcw SaveCW
@@ -98,7 +100,7 @@ begin
                     fldcw  NewCW
                  {$ENDIF}
                     mov    eax,[Value]
-                    fistp qword ptr [eax];
+                    fistp  qword ptr [eax];
                  {$IFOPT Q+}
                     fnstsw ax
                     and   eax,8+1        // FPU overflow and invalidop mask

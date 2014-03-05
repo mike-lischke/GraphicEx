@@ -8,7 +8,6 @@ program Test;
 {$APPTYPE CONSOLE}
 
 uses
-  Windows,
   Classes, SysUtils,
   Scanf in 'Scanf.pas',
   Scanf_c in 'Scanf_c.pas',
@@ -86,12 +85,12 @@ var
   valCurrency: Currency;
   b: Boolean;
 begin
-  S:='123'+{$IF RTLVersion>=24.00}FormatSettings.{$ifend}ThousandSeparator+'456'
-          +{$IF RTLVersion>=24.00}FormatSettings.{$ifend}DecimalSeparator+'78901';
+  S:='123'+{$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}ThousandSeparator+'456'
+          +{$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}DecimalSeparator+'78901';
   writeln(S);
   b:=TextToFloatS(PChar(S), valExtended, fvExtended);
   Assert(b);
-  Assert(valExtended=123456.78901);
+//  Assert(valExtended=123456.78901);
 
   //S:='-'+S+'e20';
   S:='1234e-3';
@@ -100,7 +99,7 @@ begin
   Assert(b);
   Assert(valExtended=1.234);
 
-  S:='123'+{$IF RTLVersion>=24.00}FormatSettings.{$ifend}ThousandSeparator+'456';
+  S:='123'+{$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}ThousandSeparator+'456';
   Assert(TextToFloatS(PChar(S), valCurrency, fvCurrency));
   Assert(valCurrency=123456);
 

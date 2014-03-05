@@ -526,6 +526,9 @@ asm
   add   eax,ecx      // add to exponent
   jz    @@NoPower
   call  FPower10     // multiply st(0) by eax^10
+{$ifdef FPC}
+  sub sp,12
+{$endif}
 @@NoPower:
   mov   edx,1        // return Result=1
 {$IFOPT Q+}
