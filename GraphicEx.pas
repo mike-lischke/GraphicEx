@@ -1,5 +1,9 @@
 unit GraphicEx;
 
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
+
 // The original code is GraphicEx.pas, released November 1, 1999.
 //
 // The initial developer of the original code is Mike Lischke (www.soft-gems.net),
@@ -57,7 +61,12 @@ interface
 {$endif COMPILER_7_UP}
 
 uses
-  Windows, Classes, ExtCtrls, Graphics, SysUtils, Contnrs, JPG, TIFF,
+{$IFnDEF FPC}
+  Windows,
+{$ELSE}
+  LCLIntf, LCLType, LMessages,
+{$ENDIF}
+  Classes, ExtCtrls, Graphics, SysUtils, Contnrs, JPG, TIFF,
   GraphicCompression, GraphicStrings, GraphicColor;
 
 const
@@ -749,7 +758,12 @@ var
 implementation
 
 uses
-  Consts, Math, MZLib;
+{$IFnDEF FPC}
+  Consts,
+{$ELSE}
+  IntfGraphics,
+{$ENDIF}
+  Math, MZLib;
 
 type
   {$ifndef COMPILER_6_UP}

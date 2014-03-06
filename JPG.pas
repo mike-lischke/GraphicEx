@@ -725,19 +725,19 @@ type
   end;
 
 // Forward declarations of default error routines.
-procedure JpegError(cinfo: j_common_ptr); forward;
-procedure EmitMessage(cinfo: j_common_ptr; msg_level: Integer); forward;
-procedure OutputMessage(cinfo: j_common_ptr); forward;
-procedure FormatMessage(cinfo: j_common_ptr; buffer: PChar); forward;
-procedure ResetErrorMgr(cinfo: j_common_ptr); forward;
+procedure JpegError(cinfo: j_common_ptr);
+procedure EmitMessage(cinfo: j_common_ptr; msg_level: Integer);
+procedure OutputMessage(cinfo: j_common_ptr);
+procedure FormatMessage(cinfo: j_common_ptr; buffer: PChar);
+procedure ResetErrorMgr(cinfo: j_common_ptr);
 
 const
   DefaultErrorManager: jpeg_error_mgr = (
-    error_exit: JpegError;
-    emit_message: EmitMessage;
-    output_message: OutputMessage;
-    format_message: FormatMessage;
-    reset_error_mgr: ResetErrorMgr;
+    error_exit: {$Ifdef FPC}@{$endif}JpegError;
+    emit_message: {$Ifdef FPC}@{$endif}EmitMessage;
+    output_message: {$Ifdef FPC}@{$endif}OutputMessage;
+    format_message: {$Ifdef FPC}@{$endif}FormatMessage;
+    reset_error_mgr: {$Ifdef FPC}@{$endif}ResetErrorMgr;
   );
 
 procedure GetJPEGInfo(FileName: string; var Width, Height: Cardinal); overload;
@@ -1151,13 +1151,13 @@ var
   Template: string;
 
 begin                                                  
-  Template := JPGMessages[cinfo.err.msg_code];
+  Template := JPGMessages[cinfo^.err^.msg_code];
   // The error can either be a string or up to 8 integers.
   // Search the message template for %s (the string formatter) to decide, which one we have to use.
   if Pos('%s', Template) > 0 then
-    raise EJPGError.CreateFmt(Template, [cinfo.err.msg_parm.s])
+    raise EJPGError.CreateFmt(Template, [cinfo^.err^.msg_parm.s])
   else
-    with cinfo.err.msg_parm do
+    with cinfo^.err^.msg_parm do
       raise EJPGError.CreateFmt(Template, [i[0], i[1], i[2], i[3], i[4], i[5], i[6], i[7]]);
 end;
                                                          
@@ -1175,13 +1175,13 @@ procedure EmitMessage(cinfo: j_common_ptr; msg_level: Integer);
 
                                                     
   begin
-    Template := JPGMessages[cinfo.err.msg_code];
+    Template := JPGMessages[cinfo^.err^.msg_code];
     // The message can either be a string or up to 8 integers.
     // Search the message template for %s (the string formatter) to decide, which one we have to use.
     if Pos('%s', Template) > 0 then
-      Message := Format(Template, [cinfo.err.msg_parm.s])
+      Message := Format(Template, [cinfo^.err^.msg_parm.s])
     else
-      with cinfo.err.msg_parm do
+      with cinfo^.err^.msg_parm do
         Message := Format(Template, [i[0], i[1], i[2], i[3], i[4], i[5], i[6], i[7]]);
     OutputDebugString(PChar(Message));
   end;
@@ -1209,8 +1209,8 @@ end;
 procedure ResetErrorMgr(cinfo: j_common_ptr);
 
 begin
-  cinfo.err.num_warnings := 0;
-  cinfo.err.msg_code := 0;
+  cinfo^.err^.num_warnings := 0;
+  cinfo^.err^.msg_code := 0;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------

@@ -914,11 +914,11 @@ threadvar
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure Exchange(Left, Right: PChar);
+procedure Exchange(Left, Right: PAnsiChar);
 
 var
   I: Cardinal;
-  C: Char;
+  C: AnsiChar;
 
 begin
   for I := 1 to qWidth do
