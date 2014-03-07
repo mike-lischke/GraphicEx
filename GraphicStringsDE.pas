@@ -1,16 +1,26 @@
 unit GraphicStrings;
 
-// The original code is GraphicStrings.pas, released November 1, 1999.
+// The contents of this file are subject to the Mozilla Public License
+// Version 1.1 (the "License"); you may not use this file except in compliance
+// with the License. You may obtain a copy of the License at http://www.mozilla.org/MPL/
 //
-// The initial developer of the original code is Mike Lischke (www.soft-gems.net),
+// Software distributed under the License is distributed on an "AS IS" basis,
+// WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for the
+// specific language governing rights and limitations under the License.
 //
-// Copyright (C) 1999-2003 Mike Lischke. All Rights Reserved.
+// The original code is GraphicColor.pas, released November 1, 1999.
+//
+// The initial developer of the original code is Dipl. Ing. Mike Lischke (Pleißa, Germany, www.delphi-gems.com),
+//
+// Portions created by Dipl. Ing. Mike Lischke are Copyright
+// (C) 1999-2003 Dipl. Ing. Mike Lischke. All Rights Reserved.
 //----------------------------------------------------------------------------------------------------------------------
+// This file is part of the image library GraphicEx.
 //
-// GraphicStrings contains the german version of the strings used in GraphicEx, which can be localized.
-// Translation done by Mike Lischke (public@delphi-gems.com).
-//
+// GraphicStrings contains the strings used in GraphicEx which could be localized.
 // Rename the file to GraphicStrings.pas to use it as your favourite language file.
+//
+// This is the german version of GraphicStrings.
 //
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -26,15 +36,19 @@ resourcestring
   gesBitmaps = 'Windows bitmaps';
   gesRLEBitmaps = 'Run length encoded Windows bitmaps';
   gesDIBs = 'Geräteunabhängige Windows bitmaps';
+  gesEPS = 'Encapsulated Postscript Bilder';
   gesIcons = 'Windows icons';
   gesMetaFiles = 'Windows metafiles';
   gesEnhancedMetaFiles = 'Windows erweiterte metafiles';
   gesJPGImages = 'JPG Bilder';
   gesJPEGImages = 'JPEG Bilder';
+  gesJPEImages = 'JPE Bilder';
+  gesJFIFImages = 'JFIF Bilder';
   gesTruevision = 'Truevision Bilder';
   gesTIFF = 'Tagged image file format';
   gesMacTIFF =  'Macintosh TIFF Bilder';
   gesPCTIF = 'PC TIF Bilder';
+  gesGFIFax = 'GFI FAX Dateien';
   gesSGI = 'SGI Bilder';
   gesSGITrueColor = 'SGI True Color Bilder';
   gesZSoft = 'ZSoft Paintbrush Bilder';
@@ -52,8 +66,6 @@ resourcestring
   gesCompuserve = 'CompuServe Bilder';
   gesHalo = 'Dr. Halo Bilder';
   gesPaintShopPro = 'Paintshop Pro Bilder';
-  gesPaintshopProFrames = 'Paintshop Pro Frames';
-  gesPaintshopProTubes = 'Paintshop Pro Tubes';
   gesPortableNetworkGraphic = 'Portable network graphic Bilder';
 
   // image specific error messages
@@ -66,21 +78,39 @@ resourcestring
   gesCompression = 'Bild konnte nicht geladen werden. Kompressionsfehler in %s Datei gefunden.';
   gesExtraCompressedData = 'Bild konnte nicht geladen werden. Zuviele komprimierte Daten in %s Datei gefunden.';
   gesInvalidPalette = 'Bild konnte nicht geladen werden. Palette in %s Datei ist ungültig.';
+  gesUnknownCriticalChunk = 'PNG Bild konnte nicht geladen werden. Unerwarteter, aber als kritisch markierter Chunk gefunden.';
 
   // features (usually used together with unsupported feature string)
-  gesCompressionScheme = 'Das Kompressionsschema wird';
-  gesPCDImageSize = 'Bildgrößen außer Base16, Base4 oder Base werden';
-  gesRLAPixelFormat = 'Bildformate außer RGB und RGBA werden';
-  gesPSPFileType = 'Dateiversionen außer 3 oder 4 werden';
-
-  // errors which apply only to specific image types
-  gesUnknownCriticalChunk = 'PNG Bild konnte nicht geladen werden. Unerwarteten, aber notwendigen Chunk gefunden.';
+  gesCompressionScheme = 'Das Kompressionsformat ist';
+  gesRLAPixelFormat = 'Andere Bildformat, als RGB und RGBA werden';
+  gesPSPFileType = 'Andere Dateiversionen als 3 or 4 werden';
 
   // color manager error messages
-  gesIndexedNotSupported = 'Konversion zwischen indizierten and nicht-indizierten Farbformaten wird nicht unterstützt.';
-  gesConversionUnsupported = 'Farbkonversion schlug fehl. Konnte keine Methode zur Konversion finden.';
-  gesInvalidSampleDepth = 'Farbtiefe ist ungültig. Bits pro Sample muß entweder 1, 2, 4, 8 or 16 sein.';
-  gesInvalidPixelDepth = 'Sample Anzahl pro Pixel korrespondiert nicht mit dem eingestellten Farbschema.';
+  gesIndexedNotSupported = 'Konvertierung zwischen indizierten und nicht-indizierten Formaten wird nicht unterstützt.';
+  gesConversionUnsupported = 'Farbkonvertierung schlug fehl. Es konnte keine passende Konvertierungsmethode gefunden werden.';
+  gesInvalidSampleDepth = 'Farbtiefe ist nicht gültig. Bits pro Sample muss 1, 2, 4, 8 oder 16 sein.';
+  gesInvalidPixelDepth = 'Sampleanzahl pro Pixel korrespondiert nicht zum angegebenen Farbschema.';
+  gesInvalidSubSampling = 'Subsampling Wert ist ungültig. Erlaubt sind 1, 2 und 4.';
+  gesVerticalSubSamplingError = 'Der vertikale Subsampling Wert muss kleiner oder gleich dem horizontalen Wert sein.';
+
+  // progress strings
+  gesPreparing = 'Vorbereitung...';
+  gesLoadingData = 'Daten werden geladen...';
+  gesUpsampling = 'Upsampling...';
+  gesTransfering = 'Übertragung...';
+
+  // compression errors
+  gesLZ77Error = 'LZ77 Dekompressionsfehler.';
+  gesJPEGEOI = 'JPEG Dekompressionsfehler. Unerwartetes Ende der Eingabedaten.';
+  gesJPEGStripSize = 'Unpassende JPEG Strip oder Tile Größe.';
+  gesJPEGComponentCount = 'Unpassende JPEG Komponentenanzahl';
+  gesJPEGDataPrecision = 'Unpassende JPEG Datengenauigkeit.';
+  gesJPEGSamplingFactors = 'Unpassende JPEG Samplingfaktoren.';
+  gesJPEGBogusTableField = 'Falsches JPEG Tabellenfeld gefunden.';
+  gesJPEGFractionalLine = 'Unvollständige JPEG Bildzeilen werden nicht understützt.';
+
+  // miscellaneous
+  gesWarning = 'Warnung';
 
 //----------------------------------------------------------------------------------------------------------------------
 
