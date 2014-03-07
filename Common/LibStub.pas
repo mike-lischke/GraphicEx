@@ -1,5 +1,16 @@
 unit LibStub;
 
+{$IFDEF fpc}
+  {$DEFINE USEINLINE}
+  {$MODE Delphi}
+{$ELSE}
+  // since Delphi 2007
+  {$IF Declared(CompilerVersion) and (CompilerVersion>=18.50)}
+    {$DEFINE USEINLINE}
+  {$IFEND}
+{$ENDIF}
+
+
 //----------------------------------------------------------------------------------------------------------------------
 //
 // This unit is released under the MIT license:
@@ -24,7 +35,7 @@ unit LibStub;
 //----------------------------------------------------------------------------------------------------------------------
 // The original code is LibStub.pas, released February 1, 2003.
 //
-// The initial developer of the original code is Mike Lischke (Pleißa, Germany, www.soft-gems.net),
+// The initial developer of the original code is Mike Lischke (PleiÃŸa, Germany, www.soft-gems.net),
 //
 // Portions created by Mike Lischke are
 // Copyright (C) 1999-2006 Mike Lischke. All Rights Reserved.
@@ -50,7 +61,11 @@ interface
 {$define Underlined}
 
 uses
-  Windows, Classes;
+  Windows, Classes, Math;
+
+type
+   TIntegerArray = array [0 .. MaxInt div sizeof(Integer) - 1] of Integer;
+   PIntegerArray = ^TIntegerArray;
 
 var
   __turboFloat: LongBool = False;
@@ -111,7 +126,6 @@ function fread(var buf; recsize, reccount: Integer; Stream: TStream): Integer; c
 procedure free(P: Pointer); cdecl;
 function fputc(c: Integer; Stream: TStream): Integer; cdecl;
 function frexp(x: Double; var Exponent: Integer): Double; cdecl;
-function fscanf(Stream: TStream; Format: PChar; Argument: array of Pointer): Integer; cdecl;
 function fseek(Stream: TStream; offset, origin: Integer): Integer; cdecl;
 function ftell(Stream: TStream): Integer; cdecl;
 function _ftol: Integer; cdecl;
@@ -138,9 +152,8 @@ function rand: Integer; cdecl;
 procedure qsort(base: Pointer; nelem, width: Cardinal; fcmp: cmp_callback); cdecl;
 function setjmp(const __jmpb): Integer; cdecl;
 function sin(Value: Double): Double; cdecl;
-procedure sprintf(Buffer, Format: PChar; Arguments: va_list); cdecl;
+procedure sprintf(Buffer, Format: PChar; Arguments: array of TVarRec);
 function sqrt(Value: Double): Double; cdecl;
-function sscanf(Buffer, Format: PChar; Argument: array of Pointer): Integer; cdecl;
 function strcat(dest, src: PChar): PChar; cdecl;
 function strchr(s: PChar; c: Integer): PChar; cdecl;
 function strcmp(s1, s2: PChar): Integer; cdecl;
@@ -156,9 +169,9 @@ procedure swab(__from, __to: PChar; __nbytes: Integer); cdecl;
 function tan(Value: Double): Double; cdecl;
 function time(__timer: Ptime_t): time_t; cdecl;
 function unlink(FileName: PChar): Integer; cdecl;
-function vfprintf(Stream: TStream; Format: PChar; Arguments: va_list): Integer; cdecl;
-function vprintf(Format: PChar; Arguments: va_list): Integer; cdecl;
-procedure vsprintf(Buffer, Format: PChar; Arguments: va_list); cdecl;
+function vfprintf(Stream: TStream; Format: PChar; Arguments: array of TVarRec): Integer;
+function vprintf(Format: PChar; Arguments: array of TVarRec): Integer;
+procedure vsprintf(Buffer, Format: PChar; Arguments: array of TVarRec);
 function wcscpy(Destination, Source: PWideChar): PWideChar; cdecl;
 function wcstombs(mbstr: PAnsiChar; wcstr: PWideChar; count: Cardinal): Cardinal; cdecl;
 
@@ -173,7 +186,7 @@ implementation
 
 uses
   Scanf,
-  Math, SysUtils, DateUtils;
+  SysUtils, DateUtils;
 
 {$ifndef COMPILER_6_UP}
 const
@@ -500,16 +513,6 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function fscanf(Stream: TStream; Format: PChar; Argument: array of Pointer): Integer;
-
-// Note: the actual implementation was provided by Evgeni Sorokin.
-
-begin
-  Result := Scanf.fscanf(Stream, Format, Argument);
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
 function fseek(Stream: TStream; offset, origin: Integer): Integer;
 
 begin
@@ -572,11 +575,11 @@ function isDST (hour, yday, month, year: Cardinal): Boolean;
 var
   temp,
   sunday: Cardinal;
-  
+
 begin
   Result := False;
 
-  if month = 0 then // if only day of year given 
+  if month = 0 then // if only day of year given
   begin
     temp := yday;
     if (yday >= 31 + 28) and (((year + 70) and 3) = 0) then
@@ -585,7 +588,7 @@ begin
     while temp >= Cardinal(_YDays[month]) do
       Inc(month);
   end
-  else  // if month+day of month given 
+  else  // if month+day of month given
   begin
     Inc(yday, _YDays[month - 1]);
     if (month > 2) and (((year + 70) and 3) = 0) then  // leap year, Mar-Dec
@@ -911,11 +914,11 @@ threadvar
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure Exchange(Left, Right: PChar);
+procedure Exchange(Left, Right: PAnsiChar);
 
 var
   I: Cardinal;
-  C: Char;
+  C: AnsiChar;
 
 begin
   for I := 1 to qWidth do
@@ -930,7 +933,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure qSortHelp(pivotP: PChar; nElem: Cardinal);
+procedure qSortHelp(pivotP: PAnsiChar; nElem: Cardinal);
 
 label
   tailRecursion, qBreak;
@@ -940,7 +943,7 @@ var
   rightP,
   pivotEnd,
   pivotTemp,
-  leftTemp: PChar;
+  leftTemp: PAnsiChar;
   lNum: Cardinal;
   retval: Integer;
 
@@ -951,15 +954,15 @@ begin
   begin
     if nElem = 2 then
     begin
-      rightP := qWidth + pivotP;
+      rightP := pivotP + qWidth;
       if Compare(pivotP, rightP) > 0 then
         Exchange(pivotP, rightP);
     end;
     System.Exit;
   end;
 
-  rightP := (nElem - 1) * qWidth + pivotP;
-  leftP  := (nElem shr 1) * qWidth + pivotP;
+  rightP := pivotP + (nElem - 1) * qWidth;
+  leftP  := pivotP + (nElem shr 1) * qWidth;
 
   // Sort the pivot, left, and right elements for "median of 3".
   if Compare(leftP, rightP) > 0 then
@@ -995,7 +998,7 @@ begin
         Inc(leftP, qWidth)
       else
         goto qBreak;
-    end;  
+    end;
 
     while leftP < rightP do
     begin
@@ -1030,9 +1033,9 @@ begin
     Inc(pivotTemp, qWidth);
     Dec(leftTemp, qWidth);
   end;
-        
+
   lNum := Cardinal(leftP - pivotEnd) div qWidth;
-  nElem := Cardinal((nElem * qWidth + pivotP) - leftP) div qWidth;
+  nElem := Cardinal((pivotP + nElem * qWidth) - leftP) div qWidth;
 
   // Sort smaller partition first to reduce stack usage.
   if nElem < lNum then
@@ -1045,7 +1048,7 @@ begin
     qSortHelp(pivotP, lNum);
     pivotP := leftP;
   end;
-                
+
   goto tailRecursion;
 end;
 
@@ -1082,12 +1085,21 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure sprintf(Buffer, Format: PChar; Arguments: va_list);
-
-// Optional parameters are passed in a va_list as the last parameter. 
-
+// Optional parameters are passed in Arguments array as the last parameter.
+procedure sprintf(Buffer, Format: PChar; Arguments: array of TVarRec);
+var
+  arg: PIntegerArray;
+  i: integer;
 begin
-  wvsprintf(Buffer, Format, @Arguments);
+  GetMem(arg, Length(Arguments) * sizeof(Integer));
+  try
+    Assert(Low(Arguments) = 0);
+    for i := Low(Arguments) to High(Arguments) do
+        arg[i] := Arguments[i].VInteger;
+    wvsprintf(Buffer, Format, PChar(arg));
+  finally
+    FreeMem(arg);
+  end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1096,16 +1108,6 @@ function sqrt(Value: Double): Double;
 
 begin
   Result := System.Sqrt(Value); // Different types but same name. Keep this stub!
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-function sscanf(Buffer, Format: PChar; Argument: array of Pointer): Integer;
-
-// Note: the actual implementation was provided by Evgeni Sorokin.
-
-begin
-  Result := Scanf.sscanf(Buffer, Format, Argument);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1279,21 +1281,20 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function vfprintf(Stream: TStream; Format: PChar; Arguments: va_list): Integer;
+function vfprintf(Stream: TStream; Format: PChar; Arguments: array of TVarRec): Integer;
 
 var
   Buffer: array[0..10000] of Char;
 
 begin
-  wvsprintf(Buffer, Format, Arguments);
+  sprintf(Buffer, Format, Arguments);
   Result := StrLen(Buffer);
   Stream.Write(Buffer, Result);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function vprintf(Format: PChar; Arguments: va_list): Integer;
-
+function vprintf(Format: PChar; Arguments: array of TVarRec): Integer;
 // In the C RTL this method writes to stdout, which should not be used for Win GUI applications.
 // Hence we write a record to the debug output.
 
@@ -1301,7 +1302,7 @@ var
   Buffer: array[0..10000] of Char;
 
 begin
-  wvsprintf(Buffer, Format, Arguments);
+  sprintf(Buffer, Format, Arguments);
   OutputDebugString(Buffer);
   OutputDebugString(#13#10);
   Result := StrLen(Buffer);
@@ -1309,10 +1310,9 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure vsprintf(Buffer, Format: PChar; Arguments: va_list);
-
+procedure vsprintf(Buffer, Format: PChar; Arguments: array of TVarRec);
 begin
-  wvsprintf(Buffer, Format, Arguments);
+  sprintf(Buffer, Format, Arguments);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1358,4 +1358,3 @@ begin
   daylight := Info.DaylightBias <> 0;
   timezone := (Info.Bias + Info.StandardBias) * 60;
 end.
-

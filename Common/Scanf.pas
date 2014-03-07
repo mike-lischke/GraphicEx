@@ -5,6 +5,10 @@
 
 unit Scanf;
 
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
+
 interface
 
 uses Scanf_c, sysutils, classes;
@@ -13,7 +17,7 @@ uses Scanf_c, sysutils, classes;
 function sscanf(Str : PChar; Format : PChar; Pointers : array of Pointer): Integer;
 function fscanf(F : TStream; Format : PChar; Pointers : array of Pointer) : Integer;
 
-{ Formatted scan  แ la scanf, but using FormatBuf syntax.}
+{ Formatted scan  รก la scanf, but using FormatBuf syntax.}
 function StrDeFmt(Buffer, Format : PChar; Args : array of const) : integer;
 function DeFormat(const Str : string; const Format: string; Args : array of const) : integer;
 function DeFormatBuf(const Buffer; BufLen: Cardinal; const Format; FmtLen: Cardinal; const Args: array of const): integer;
@@ -36,8 +40,8 @@ implementation
 function StrDeFmt(Buffer, Format : PChar; Args : array of const) : integer;
 begin
   StrDeFmt:=DeFormat_core(Buffer, Length(Buffer), Format, Length(Format), Args,
-                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}DecimalSeparator),
-                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}ThousandSeparator));
+                          AnsiChar({$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}DecimalSeparator),
+                          AnsiChar({$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}ThousandSeparator));
 end;
 
 function DeFormat(const Str : string; const Format: string; Args : array of const) : integer;
@@ -46,8 +50,8 @@ begin
   Buf:=PChar(Str);
   Fmt:=PChar(Format);
   DeFormat:=DeFormat_core(Buf, Length(Str), Fmt, Length(Format), Args,
-                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}DecimalSeparator),
-                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}ThousandSeparator));
+                          AnsiChar({$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}DecimalSeparator),
+                          AnsiChar({$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}ThousandSeparator));
 end;
 
 function DeFormatBuf(const Buffer; BufLen: Cardinal; const Format; FmtLen: Cardinal; const Args: array of const): integer;
@@ -56,8 +60,8 @@ begin
   Buf:=PChar(Buffer);
   Fmt:=PChar(Format);
   DeFormatBuf:=DeFormat_core(Buf, BufLen, Fmt, FmtLen, Args,
-                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}DecimalSeparator),
-                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}ThousandSeparator));
+                          AnsiChar({$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}DecimalSeparator),
+                          AnsiChar({$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}ThousandSeparator));
 end;
 
 function sscanf;
@@ -81,12 +85,14 @@ begin
   while (Buf^ <= ' ') and (Buf^ > #0) do Inc(Buf);
   Neg:= (Buf^='-'); If Neg then Inc(Buf);
   EsRes:=Ext_scanner(Buf, Maxlongint, Ord(ValueType)*4,
-                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}DecimalSeparator),
-                          AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}ThousandSeparator));
+                          AnsiChar({$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}DecimalSeparator),
+                          AnsiChar({$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}ThousandSeparator));
   if (EsRes and scOK) <> 0 then begin
     If Neg then asm fchs; end;
     Case ValueType of
-      fvExtended : asm mov eax,[Value]; fstp  tbyte ptr [eax]; end;
+      fvExtended : asm
+                    mov eax,[Value]; fstp  tbyte ptr [eax];
+                   end;
       fvCurrency : asm
                  {$IFOPT Q+}
                     fstcw SaveCW
@@ -94,7 +100,7 @@ begin
                     fldcw  NewCW
                  {$ENDIF}
                     mov    eax,[Value]
-                    fistp qword ptr [eax];
+                    fistp  qword ptr [eax];
                  {$IFOPT Q+}
                     fnstsw ax
                     and   eax,8+1        // FPU overflow and invalidop mask
@@ -130,11 +136,11 @@ var Buf : PChar;
 begin
   Buf:=PChar(S);
   If StrToCurrF_core(Buf, Length(S), Result, PChar(
-     {$IF RTLVersion>=24.00}FormatSettings.{$ifend}CurrencyString),
-     {$IF RTLVersion>=24.00}FormatSettings.{$ifend}CurrencyFormat,
-     {$IF RTLVersion>=24.00}FormatSettings.{$ifend}NegCurrFormat,
-     AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}DecimalSeparator),
-     AnsiChar({$IF RTLVersion>=24.00}FormatSettings.{$ifend}ThousandSeparator)) <=0
+     {$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}CurrencyString),
+     {$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}CurrencyFormat,
+     {$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}NegCurrFormat,
+     AnsiChar({$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}DecimalSeparator),
+     AnsiChar({$ifndef FPC}{$IF RTLVersion>=24.00}FormatSettings.{$ifend}{$endif}ThousandSeparator)) <=0
   then raise EConvertError.CreateFmt(SInvalidFloat, [S]);
 end;
 

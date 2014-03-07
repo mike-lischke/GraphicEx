@@ -14,5 +14,11 @@ bin/*
 *.res
 *.otares
 
+#Lazarus
+*.rst
+*.ppu
+*.compiled
+*.log
+
 # Other tools
 *.bak
