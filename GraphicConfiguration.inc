@@ -1,4 +1,4 @@
-﻿// The contents of this file are subject to the Mozilla Public License
+// The contents of this file are subject to the Mozilla Public License
 // Version 1.1 (the "License"); you may not use this file except in compliance
 // with the License. You may obtain a copy of the License at http://www.mozilla.org/MPL/
 //
@@ -8,7 +8,7 @@
 //
 // The original code is GraphicColor.pas, released November 1, 1999.
 //
-// The initial developer of the original code is Dipl. Ing. Mike Lischke (Pleißa, Germany, www.delphi-gems.com),
+// The initial developer of the original code is Dipl. Ing. Mike Lischke (Plei�a, Germany, www.delphi-gems.com),
 //
 // Portions created by Dipl. Ing. Mike Lischke are Copyright
 // (C) 1999-2003 Dipl. Ing. Mike Lischke. All Rights Reserved.
