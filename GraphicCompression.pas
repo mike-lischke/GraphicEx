@@ -1841,7 +1841,7 @@ begin
          MOV EDX, [EDX]
   @@1:
          MOV AL, [EDX]
-         XLAT                     // (Only) Delphi 6 needs XLATB here.
+         XLATB
          MOV [EDX], AL
          INC EDX
          DEC ECX
@@ -1928,7 +1928,7 @@ begin
          MOV EDX, [EDX]
   @@1:
          MOV AL, [EDX]
-         XLAT                     // (Only) Delphi 6 needs XLATB here.
+         XLATB
          MOV [EDX], AL
          INC EDX
          DEC ECX
