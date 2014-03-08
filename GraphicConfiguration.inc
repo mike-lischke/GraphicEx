@@ -24,7 +24,7 @@
 //
 //----------------------------------------------------------------------------------------------------------------------
 
-{.$define UseLZW} // if this is not defined (default) then neither the GIF format nor the
+{$define UseLZW} // if this is not defined (default) then neither the GIF format nor the
                   // LZW compression decoder (e.g. for TIFF LZW compression) is available
 
 // Pick your preferred image formats here or leave them all enabled. By disabling
