@@ -10,21 +10,29 @@ type
   TMainForm = class(TForm)
     TreeView: TTreeView;
     ListView: TListView;
-    Image1: TImage;
+    Image: TImage;
     edDir: TEdit;
     btnChooseDir: TBitBtn;
     edImagePath: TEdit;
     ImageList1: TImageList;
+    cbOnlyHandledExtensions: TCheckBox;
     procedure btnChooseDirClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure TreeViewExpanding(Sender: TObject; Node: TTreeNode;
       var AllowExpansion: Boolean);
+    procedure TreeViewChange(Sender: TObject; Node: TTreeNode);
+    procedure cbOnlyHandledExtensionsClick(Sender: TObject);
+    procedure ListViewChange(Sender: TObject; Item: TListItem;
+      Change: TItemChange);
   private
-    FDirectory: string;
+    FRootDir: string;
+    FFileDir: string;
     function nodePath(ANode: TTreeNode): string;
     procedure FillNode(Parent: TTreeNode; path: string);
     procedure FillDirectoryTree(rootDir: string);
+    procedure FillFileList(dir: string);
+    procedure LoadImage(path: string);
     procedure ReadIniSettings;
     procedure WriteIniSettings;
   public
@@ -37,15 +45,15 @@ var
 implementation
 
 uses
-  proj_common, IniFiles;
+  proj_common, IniFiles, GraphicEx;
 
 {$R *.dfm}
 
 procedure TMainForm.btnChooseDirClick(Sender: TObject);
 begin
-  if SelectDirectory('Select folder to browse', edDir.Text, '', False, FDirectory) then
+  if SelectDirectory('Select folder to browse', edDir.Text, '', False, FRootDir) then
   begin
-    edDir.Text := FDirectory;
+    edDir.Text := FRootDir;
     FillDirectoryTree(edDir.Text);
   end;
 end;
@@ -108,7 +116,7 @@ end;
 procedure TMainForm.FillDirectoryTree(rootDir: string);
 begin
   TreeView.Items.Clear;
-  FillNode(nil, FDirectory);
+  FillNode(nil, FRootDir);
 end;
 
 function TMainForm.nodePath(ANode: TTreeNode): string;
@@ -122,13 +130,84 @@ begin
     result:=node.Text+PathDelim+result;
     node:=node.Parent;
   end;
-  result:=IncludeTrailingPathDelimiter(FDirectory)+result;
+  result:=IncludeTrailingPathDelimiter(FRootDir)+result;
 end;
 
 procedure TMainForm.TreeViewExpanding(Sender: TObject; Node: TTreeNode;
   var AllowExpansion: Boolean);
 begin
   FillNode(Node, nodePath(Node));
+end;
+
+procedure TMainForm.FillFileList(dir: string);
+var
+  SR: TSearchRec;
+  Extensions: TStringList;
+  function filter: boolean;
+  var
+    n: integer;
+    Ext: string;
+  begin
+    if cbOnlyHandledExtensions.Checked then
+    begin
+      Ext := ExtractFileExt(SR.Name);
+      result:= Extensions.Find(Ext, n);
+    end else
+     result:=true;
+  end;
+var
+  item: TListItem;
+  i: integer;
+begin
+  FFileDir := dir;
+  ListView.Items.Clear;
+  Extensions := TStringList.Create;
+  FileFormatList.GetExtensionList(Extensions);
+  for i := 0 to Extensions.Count - 1 do
+    Extensions[i] := '.' + UpperCase(Extensions[i]);
+  Extensions.Sort;
+  if FindFirst(IncludeTrailingPathDelimiter(dir) + '*.*', faAnyFile, SR) = 0 then
+  begin
+    repeat
+      if (SR.Attr and faDirectory = 0)and filter() then
+      begin
+        item:=ListView.Items.Add;
+        item.Caption:=SR.Name;
+        item.SubItems.Add(IntToStr(SR.Size));
+       end;
+    until FindNext(SR) <> 0;
+    FindCLose(SR);
+  end;
+  Extensions.Free;
+end;
+
+procedure TMainForm.TreeViewChange(Sender: TObject; Node: TTreeNode);
+begin
+  FillFileList(nodePath(Node));
+end;
+
+procedure TMainForm.cbOnlyHandledExtensionsClick(Sender: TObject);
+begin
+  FillFileList(FFileDir);
+end;
+
+procedure TMainForm.ListViewChange(Sender: TObject; Item: TListItem;
+  Change: TItemChange);
+begin
+  LoadImage(FFileDir+Item.Caption);
+end;
+
+procedure TMainForm.LoadImage(path: string);
+var
+  Picture: TPicture;
+begin
+  Picture := TPicture.Create;
+  try
+    Picture.LoadFromFile(path);
+    Image.Canvas.Draw(0, 0, Picture.Graphic);
+  finally
+    Picture.Free;
+  end;
 end;
 
 end.

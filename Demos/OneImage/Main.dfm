@@ -15,7 +15,7 @@ object MainForm: TMainForm
   OnDestroy = FormDestroy
   PixelsPerInch = 96
   TextHeight = 13
-  object Image1: TImage
+  object Image: TImage
     Left = 240
     Top = 248
     Width = 401
@@ -28,16 +28,31 @@ object MainForm: TMainForm
     Height = 169
     Images = ImageList1
     Indent = 19
+    ReadOnly = True
     TabOrder = 0
+    OnChange = TreeViewChange
     OnExpanding = TreeViewExpanding
   end
   object ListView: TListView
     Left = 320
     Top = 16
-    Width = 250
+    Width = 265
     Height = 150
-    Columns = <>
+    Columns = <
+      item
+        Caption = 'Name'
+        Width = 170
+      end
+      item
+        Alignment = taRightJustify
+        Caption = 'Size'
+        Width = 80
+      end>
+    ReadOnly = True
+    RowSelect = True
     TabOrder = 1
+    ViewStyle = vsReport
+    OnChange = ListViewChange
   end
   object edDir: TEdit
     Left = 48
@@ -61,6 +76,17 @@ object MainForm: TMainForm
     Width = 193
     Height = 21
     TabOrder = 4
+  end
+  object cbOnlyHandledExtensions: TCheckBox
+    Left = 320
+    Top = 176
+    Width = 177
+    Height = 17
+    Caption = 'Show only handled extensions'
+    Checked = True
+    State = cbChecked
+    TabOrder = 5
+    OnClick = cbOnlyHandledExtensionsClick
   end
   object ImageList1: TImageList
     Left = 472
