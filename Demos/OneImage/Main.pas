@@ -16,6 +16,8 @@ type
     edImagePath: TEdit;
     ImageList1: TImageList;
     cbOnlyHandledExtensions: TCheckBox;
+    memoErr: TMemo;
+    cbEnableExtension: TCheckBox;
     procedure btnChooseDirClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
@@ -25,9 +27,11 @@ type
     procedure cbOnlyHandledExtensionsClick(Sender: TObject);
     procedure ListViewChange(Sender: TObject; Item: TListItem;
       Change: TItemChange);
+    procedure cbEnableExtensionClick(Sender: TObject);
   private
     FRootDir: string;
     FFileDir: string;
+    FImagePath: string;
     function nodePath(ANode: TTreeNode): string;
     procedure FillNode(Parent: TTreeNode; path: string);
     procedure FillDirectoryTree(rootDir: string);
@@ -45,7 +49,7 @@ var
 implementation
 
 uses
-  proj_common, IniFiles, GraphicEx;
+  proj_common, IniFiles, GraphicEx, Math;
 
 {$R *.dfm}
 
@@ -159,6 +163,7 @@ var
   item: TListItem;
   i: integer;
 begin
+  ListView.OnChange:=nil;
   FFileDir := dir;
   ListView.Items.Clear;
   Extensions := TStringList.Create;
@@ -179,6 +184,7 @@ begin
     FindCLose(SR);
   end;
   Extensions.Free;
+  ListView.OnChange:=ListViewChange;
 end;
 
 procedure TMainForm.TreeViewChange(Sender: TObject; Node: TTreeNode);
@@ -194,20 +200,50 @@ end;
 procedure TMainForm.ListViewChange(Sender: TObject; Item: TListItem;
   Change: TItemChange);
 begin
-  LoadImage(FFileDir+Item.Caption);
+  if FFileDir+Item.Caption=FImagePath then exit;
+  FImagePath:=FFileDir+Item.Caption;
+  LoadImage(FImagePath);
 end;
 
 procedure TMainForm.LoadImage(path: string);
 var
   Picture: TPicture;
+  scale, scaleX, scaleY: real;
+  R: TRect;
+  W,H: integer;
 begin
+  Image.Canvas.Brush.Color:=clWhite;
+  Image.Canvas.Pen.Color:=clBlack;
+  Image.Canvas.FillRect(Image.ClientRect);
   Picture := TPicture.Create;
   try
-    Picture.LoadFromFile(path);
-    Image.Canvas.Draw(0, 0, Picture.Graphic);
+   try
+     Picture.LoadFromFile(path);
+     scaleX:=Image.Width/Picture.Width;
+     scaleY:=Image.Height/Picture.Height;
+     scale:=Min(scaleX, scaleY);
+     if not cbEnableExtension.Checked then
+       scale:=min(scale,1);
+     W := round(Picture.Width*Scale);
+     H := round(Picture.Height*Scale);
+     R.Left:=(Image.Width-W) div 2;
+     R.Top:= (Image.Height-H) div 2;
+     R.Right:= R.Left+W;
+     R.Bottom:=R.Top+H;
+     except
+       on E: EInvalidGraphic do memoErr.Lines.Add(E.Message);
+       on E: EReadError do memoErr.Lines.Add(E.Message);
+       on E: EFOpenError do memoErr.Lines.Add(E.Message);
+     end;
+     Image.Canvas.StretchDraw(R, Picture.Graphic);
   finally
     Picture.Free;
   end;
+end;
+
+procedure TMainForm.cbEnableExtensionClick(Sender: TObject);
+begin
+  LoadImage(FImagePath);
 end;
 
 end.

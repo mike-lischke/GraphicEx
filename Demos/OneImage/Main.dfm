@@ -19,7 +19,7 @@ object MainForm: TMainForm
     Left = 240
     Top = 248
     Width = 401
-    Height = 193
+    Height = 249
   end
   object TreeView: TTreeView
     Left = 48
@@ -87,6 +87,24 @@ object MainForm: TMainForm
     State = cbChecked
     TabOrder = 5
     OnClick = cbOnlyHandledExtensionsClick
+  end
+  object memoErr: TMemo
+    Left = 40
+    Top = 248
+    Width = 185
+    Height = 89
+    Lines.Strings = (
+      'memoErr')
+    TabOrder = 6
+  end
+  object cbEnableExtension: TCheckBox
+    Left = 240
+    Top = 504
+    Width = 97
+    Height = 17
+    Caption = 'Enable extension'
+    TabOrder = 7
+    OnClick = cbEnableExtensionClick
   end
   object ImageList1: TImageList
     Left = 472
