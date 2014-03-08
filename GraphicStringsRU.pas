@@ -1,16 +1,26 @@
 unit GraphicStrings;
 
-// The original code is GraphicStrings.pas, released November 1, 1999.
+// The contents of this file are subject to the Mozilla Public License
+// Version 1.1 (the "License"); you may not use this file except in compliance
+// with the License. You may obtain a copy of the License at http://www.mozilla.org/MPL/
 //
-// The initial developer of the original code is Mike Lischke (www.soft-gems.net),
+// Software distributed under the License is distributed on an "AS IS" basis,
+// WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for the
+// specific language governing rights and limitations under the License.
 //
-// Copyright (C) 1999-2003 Mike Lischke. All Rights Reserved.
+// The original code is GraphicColor.pas, released November 1, 1999.
+//
+// The initial developer of the original code is Dipl. Ing. Mike Lischke (PleiЯa, Germany, www.delphi-gems.com),
+//
+// Portions created by Dipl. Ing. Mike Lischke are Copyright
+// (C) 1999-2003 Dipl. Ing. Mike Lischke. All Rights Reserved.
 //----------------------------------------------------------------------------------------------------------------------
+// This file is part of the image library GraphicEx.
 //
-// GraphicStrings contains the russian version of the strings used in GraphicEx, which can be localized.
-// Translation done by Shashlov Kirill.
-//
+// GraphicStrings contains the strings used in GraphicEx which could be localized.
 // Rename the file to GraphicStrings.pas to use it as your favourite language file.
+//
+// This is the russian version of GraphicStrings.
 //
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -19,26 +29,23 @@ interface
 {$I GraphicConfiguration.inc}
 
 resourcestring
-  // Описания файлов изображений
+  // image file descriptions
   gesAllImages = 'Все изображения';
-  gesRegistration = 'Попытка зарегистрировать %s дважды.';
-
-  gesBitmaps = 'Точечные рисунки Windows';
-  gesRLEBitmaps = 'Точечные рисунки RLE';
-  gesDIBs = 'Аппаратно-независимые точечные рисунки Windows';
-  gesEPS = 'Внедрённые изображения Postscript';
-  gesIcons = 'Иконки Windows';
+  gesRegistration = 'Попытка харегистрировать %s файлы (дважды).';
+  
+  gesBitmaps = 'Windows битовые карты';
+  gesRLEBitmaps = 'Run length закодированные битовые карты Windows';
+  gesDIBs = 'Битовые карты Windows, независимые от устройства';
+  gesIcons = 'Пиктограммы Windows';
   gesMetaFiles = 'Метафайлы Windows';
   gesEnhancedMetaFiles = 'Расширенные метафайлы Windows';
   gesJPGImages = 'Изображения JPG';
   gesJPEGImages = 'Изображения JPEG';
-  gesJPEImages = 'Изображения JPE';
-  gesJFIFImages = 'Изображения JFIF';
   gesTruevision = 'Изображения Truevision';
-  gesTIFF = 'Изображения TIFF';
+  gesTIFF = 'Изображения формата TIFF';
   gesMacTIFF =  'Изображения TIFF для Macintosh';
-  gesPCTIF = 'Изображения TIF (PC)';
-  gesGFIFax = 'Факс-изображения GFI';
+  gesPCTIF = 'PC TIF изображения';
+  gesGFIFax = 'GFI fax images';
   gesSGI = 'Изображения SGI';
   gesSGITrueColor = 'Полноцветные изображения SGI';
   gesZSoft = 'Изображения ZSoft Paintbrush';
@@ -56,53 +63,33 @@ resourcestring
   gesCompuserve = 'Изображения CompuServe';
   gesHalo = 'Изображения Dr. Halo';
   gesPaintShopPro = 'Изображения Paintshop Pro';
-  gesPaintshopProFrames = 'Paintshop Pro frames';
-  gesPaintshopProTubes = 'Paintshop Pro tubes';
   gesPortableNetworkGraphic = 'Изображения Portable network graphic (PNG)';
 
-  // Специфичные ошибки при работе с изображениями
-  gesInvalidImage = 'Невозможно загрузить изображение. Неверный или неподдерживаемый формат файла %s.';
-  gesInvalidColorFormat = 'Неверный формат цвета в файле %s.';
-  gesStreamReadError = 'Ошибка чтения потока при чтении файла %s.';
-  gesUnsupportedImage = 'Невозможно загрузить изображение. Неподдерживаемый формат изображения %s.';
-  gesUnsupportedFeature = 'Невозможно загрузить изображение. %s не поддерживается для файлов %s.';
-  gesInvalidCRC = 'Невозможно загрузить изображение. Неверная контрольная сумма файла %s.';
-  gesCompression = 'Невозможно загрузить изображение. Ошибка сжатия в файле %s.';
-  gesExtraCompressedData = 'Невозможно загрузить изображение. Файл %s содержит лишние данные.';
-  gesInvalidPalette = 'Невозможно загрузить изображение. Неверная палитра в файле %s.';
-  gesUnknownCriticalChunk = 'Невозможно загрузить PNG изображение. Формат необходимой секции данных не поддерживается.';
+  // image specific error messages
+  gesInvalidImage = 'Невозможно загружить изображение. Неправильный или неподдерживаемый формат изображения %s.';
+  gesInvalidColorFormat = 'Неправильный формат цвета в файле %s.';
+  gesStreamReadError = 'Ошибка чтения из потока в файле %s.';
+  gesUnsupportedImage = 'Невозможно загружить изображение. Неподдерживаемый формат изображения %s.';
+  gesUnsupportedFeature = 'Невозможно загружить изображение. %s не поддерживается для файлов %s.';
+  gesInvalidCRC = 'Невозможно загружить изображение. Ошибка CRC найдена в файлы %s.';
+  gesCompression = 'Невозможно загружить изображение. Ошибка сжатия в файле %s.';
+  gesExtraCompressedData = 'Невозможно загружить изображение. Дополнительные данные найдены в файле %s.';
+  gesInvalidPalette = 'Невозможно загружить изображение. Неправильная палитра в файле %s.';
 
-  // Параметры (обычно используются вместе с сообщениями об отсутствии поддержки)
-  gesCompressionScheme = 'Схема сжатия:';
-  gesRLAPixelFormat = 'Форматы изображений, отличные от RGB and RGBA:';
-  gesPSPFileType = 'Версии формата файла, отличные от 3й или 4й:';
+  // features (usually used together with unsupported feature string)
+  gesCompressionScheme = 'Схема сжатия ';
+  gesPCDImageSize = 'Размеры изображения, отличные от Base16, Base4 or Base ';
+  gesRLAPixelFormat = 'Форматы изображений, отличные от RGB and RGBA ';
+  gesPSPFileType = 'Версии формата файла, отличные от 3й или 4й ';
 
-  // Ошибки при работе с цветом
-  gesIndexedNotSupported = 'Преобразование между индексированными и неиндексированными форматами пикселов не поддерживается.';
-  gesConversionUnsupported = 'Невозможно преобразовать цвет. Нет подходящего метода.';
-  gesInvalidSampleDepth = 'Неверная глубина цвета. Должно быть 1, 2, 4, 8 или 16 бит на сэмпл.';
-  gesInvalidPixelDepth = 'Количество сэмплов на пиксел не соответствует данной цветовой схеме.';
-  gesInvalidSubSampling = 'Неверное значение сэмплирования. Допустимы 1, 2 и 4.';
-  gesVerticalSubSamplingError = 'Значение вертикального сэмплирования должно быть меньше или равно значению горизонтального сэмплирования.';
+  // errors which apply only to specific image types
+  gesUnknownCriticalChunk = 'Невозможно загрузить изображение PNG. Обнаружена неожиданная, но критическая ошибка.';
 
-  // Состояния
-  gesPreparing = 'Подготовка...';
-  gesLoadingData = 'Загрузка данных...';
-  gesUpsampling = 'Пресэмплирование...';
-  gesTransfering = 'Передача...';
-
-  // Ошибки сжатия
-  gesLZ77Error = 'Ошибка LZ77-декомпрессии.';
-  gesJPEGEOI = 'Ошибка декомпрессии JPEG. Неожиданное окончание данных.';
-  gesJPEGStripSize = 'Несоответствующий strip/tile размер JPEG.';
-  gesJPEGComponentCount = 'Несоответствующее количество компонент JPEG.';
-  gesJPEGDataPrecision = 'Несоответствующая точность данных JPEG.';
-  gesJPEGSamplingFactors = 'Несоответствующий фактор сэмплирования JPEG.';
-  gesJPEGBogusTableField = 'Ошибочное поле JPEG.';
-  gesJPEGFractionalLine = 'Частичные скан-линии JPEG не поддерживаются.';
-
-  // Разное
-  gesWarning = 'Внимание!';
+  // color manager error messages
+  gesIndexedNotSupported = 'Конверсия между индексированными и не-индексированными форматами изображений не поддерживается.';
+  gesConversionUnsupported = 'Цветовая конверсия не поддерживается. Не возможно найти правильный метод.';
+  gesInvalidSampleDepth = 'Неправильная цветовая глубина. Поддерживается глубина в битах: 1, 2, 4, 8, or 16.';
+  gesInvalidPixelDepth = 'Глубина изображения в битах не подходит к текущей цветовой схеме.';
 
 //----------------------------------------------------------------------------------------------------------------------
 
