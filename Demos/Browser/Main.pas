@@ -39,6 +39,8 @@ type
     procedure ClearFileList;
     procedure RescaleImage(Source, Target: TBitmap; FastStretch: Boolean);
     procedure CalculateCounts(var XCount, YCount, HeightPerLine, ImageWidth: Integer);
+    procedure ReadIniSettings;
+    procedure WriteIniSettings;
   public
     { Public declarations }
   end;
@@ -54,7 +56,7 @@ implementation
 
 uses
   FileCtrl, GraphicEx,
-  ShlObj, ActiveX; // these both just for the SelectDirectory function
+  ShlObj, ActiveX, proj_common, IniFiles; // these both just for the SelectDirectory function
 
 type
   PFileEntry = ^TFileEntry;
@@ -182,6 +184,7 @@ begin
   FSelectedImage := -1;
   
   FFileList := TList.Create;
+  ReadIniSettings;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -324,6 +327,7 @@ end;
 procedure TMainForm.FormDestroy(Sender: TObject);
 
 begin
+  WriteIniSettings;
   ClearFileList;
   FFileList.Free;
 end;
@@ -530,6 +534,26 @@ begin
   if SelectDirectory('Select folder to browse', Ext, '', False, FDirectory) then
     edDir.Text := FDirectory
   else FDirectory := Ext;
+end;
+
+procedure TMainForm.ReadIniSettings;
+var
+  IniPath: string;
+  iniFile: TIniFile;
+begin
+  IniPath:=ChangeFileExt(AppPath,'.ini');
+  iniFile := TIniFile.Create(IniPath);
+  edDir.Text:=iniFile.ReadString('Paths','InitDir','');
+end;
+
+procedure TMainForm.WriteIniSettings;
+var
+  IniPath: string;
+  iniFile: TIniFile;
+begin
+  IniPath:=ChangeFileExt(AppPath,'.ini');
+  iniFile := TIniFile.Create(IniPath);
+  iniFile.WriteString('Paths','InitDir', edDir.Text);
 end;
 
 end.

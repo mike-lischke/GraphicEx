@@ -2,7 +2,8 @@ program Browser;
 
 uses
   Forms,
-  Main in 'Main.pas' {MainForm};
+  Main in 'Main.pas' {MainForm},
+  proj_common in '..\proj_common.pas';
 
 {$R *.RES}
 
