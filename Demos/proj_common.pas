@@ -12,6 +12,7 @@ uses
 {$IFNDEF UNICODE} type
   UnicodeString = WideString; {$ENDIF}
 
+function PosFrom(SubStr,Str: string; From: integer): integer;  
 function SelectDirectory(const Caption, InitialDir: String; const Root: WideString;
                          ShowStatus: Boolean; out Directory: String): Boolean;
 function valExt(str: string; var intVar: int64): boolean; overload;
@@ -46,6 +47,39 @@ uses
   LCLIntf, LCLType, LMessages,
 {$ENDIF}
   Math, SysUtils, ShlObj, ActiveX, Forms;
+
+function PosFrom(SubStr,Str: string; From: integer):integer;
+var
+  posStr,posSub: integer;
+  L: integer;
+begin
+  L := Length(Str);
+  if (From<0)or(From-1+Length(Substr)>Length(Str)) then
+  begin
+    result:=0;
+    exit;
+  end;
+  result:=From;
+  repeat
+    posStr:=result;
+    posSub:=1;
+    while (Str[posStr]<>SubStr[posSub])and(posStr<=L) do inc(posStr);
+    if posStr>L then
+    begin
+      result:=0;
+      exit;
+    end;
+    result := posStr;
+    posSub := 1;
+    while (Str[posStr]=SubStr[posSub])and(posSub<=Length(SubStr)) do
+    begin
+      inc(posStr);
+      inc(posSub);
+    end;
+    if posSub>Length(SubStr) then break;
+    inc(result);
+  until false;
+end;
 
 function valExt(str: string; var intVar: int64): boolean; overload;
 var

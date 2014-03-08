@@ -1,7 +1,7 @@
 object MainForm: TMainForm
   Left = 192
   Top = 117
-  Width = 979
+  Width = 889
   Height = 563
   Caption = 'MainForm'
   Color = clBtnFace
@@ -11,100 +11,140 @@ object MainForm: TMainForm
   Font.Name = 'MS Sans Serif'
   Font.Style = []
   OldCreateOrder = False
-  OnCreate = FormCreate
   OnDestroy = FormDestroy
+  OnShow = FormShow
   PixelsPerInch = 96
   TextHeight = 13
   object Image: TImage
     Left = 240
     Top = 248
-    Width = 401
+    Width = 417
     Height = 249
   end
-  object TreeView: TTreeView
-    Left = 48
-    Top = 8
-    Width = 241
-    Height = 169
-    Images = ImageList1
-    Indent = 19
-    ReadOnly = True
-    TabOrder = 0
-    OnChange = TreeViewChange
-    OnExpanding = TreeViewExpanding
-  end
-  object ListView: TListView
-    Left = 320
-    Top = 16
-    Width = 265
-    Height = 150
-    Columns = <
-      item
-        Caption = 'Name'
-        Width = 170
-      end
-      item
-        Alignment = taRightJustify
-        Caption = 'Size'
-        Width = 80
-      end>
-    ReadOnly = True
-    RowSelect = True
-    TabOrder = 1
-    ViewStyle = vsReport
-    OnChange = ListViewChange
-  end
-  object edDir: TEdit
-    Left = 48
-    Top = 192
-    Width = 193
-    Height = 21
-    TabOrder = 2
-  end
-  object btnChooseDir: TBitBtn
-    Left = 256
-    Top = 190
-    Width = 33
-    Height = 25
-    Caption = '...'
-    TabOrder = 3
-    OnClick = btnChooseDirClick
-  end
-  object edImagePath: TEdit
-    Left = 392
-    Top = 216
-    Width = 193
-    Height = 21
-    TabOrder = 4
-  end
-  object cbOnlyHandledExtensions: TCheckBox
-    Left = 320
-    Top = 176
-    Width = 177
-    Height = 17
-    Caption = 'Show only handled extensions'
-    Checked = True
-    State = cbChecked
-    TabOrder = 5
-    OnClick = cbOnlyHandledExtensionsClick
-  end
   object memoErr: TMemo
-    Left = 40
+    Left = 16
     Top = 248
-    Width = 185
-    Height = 89
+    Width = 217
+    Height = 249
     Lines.Strings = (
-      'memoErr')
-    TabOrder = 6
+      'Errorrs:')
+    TabOrder = 0
   end
   object cbEnableExtension: TCheckBox
     Left = 240
     Top = 504
-    Width = 97
+    Width = 113
     Height = 17
     Caption = 'Enable extension'
-    TabOrder = 7
+    TabOrder = 1
     OnClick = cbEnableExtensionClick
+  end
+  object PanelBig: TPanel
+    Left = 0
+    Top = 0
+    Width = 881
+    Height = 241
+    Align = alTop
+    TabOrder = 2
+    object Splitter1: TSplitter
+      Left = 322
+      Top = 1
+      Width = 7
+      Height = 239
+      Cursor = crHSplit
+      ResizeStyle = rsUpdate
+    end
+    object PanelTree: TPanel
+      Left = 1
+      Top = 1
+      Width = 321
+      Height = 239
+      Align = alLeft
+      TabOrder = 0
+      DesignSize = (
+        321
+        239)
+      object TreeView: TTreeView
+        Left = 0
+        Top = 0
+        Width = 313
+        Height = 185
+        Images = ImageList1
+        Indent = 19
+        ReadOnly = True
+        TabOrder = 0
+        OnChange = TreeViewChange
+        OnExpanding = TreeViewExpanding
+      end
+      object edDir: TEdit
+        Left = 8
+        Top = 192
+        Width = 257
+        Height = 21
+        Anchors = [akLeft, akTop, akRight]
+        TabOrder = 1
+      end
+      object btnChooseDir: TBitBtn
+        Left = 272
+        Top = 190
+        Width = 33
+        Height = 25
+        Caption = '...'
+        TabOrder = 2
+        OnClick = btnChooseDirClick
+      end
+    end
+    object Panel1: TPanel
+      Left = 329
+      Top = 1
+      Width = 551
+      Height = 239
+      Align = alClient
+      TabOrder = 1
+      DesignSize = (
+        551
+        239)
+      object ListView: TListView
+        Left = 8
+        Top = 0
+        Width = 265
+        Height = 161
+        Columns = <
+          item
+            Caption = 'Name'
+            Width = 170
+          end
+          item
+            Alignment = taRightJustify
+            Caption = 'Size'
+            Width = 80
+          end>
+        ReadOnly = True
+        RowSelect = True
+        TabOrder = 0
+        ViewStyle = vsReport
+        OnChange = ListViewChange
+      end
+      object cbOnlyHandledExtensions: TCheckBox
+        Left = 8
+        Top = 168
+        Width = 177
+        Height = 17
+        Caption = 'Show only handled extensions'
+        Checked = True
+        State = cbChecked
+        TabOrder = 1
+        OnClick = cbOnlyHandledExtensionsClick
+      end
+      object edImagePath: TEdit
+        Left = 8
+        Top = 192
+        Width = 537
+        Height = 21
+        Anchors = [akLeft, akTop, akRight]
+        TabOrder = 2
+      end
+    end
   end
   object ImageList1: TImageList
     Left = 472

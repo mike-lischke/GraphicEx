@@ -8,18 +8,21 @@ uses
 
 type
   TMainForm = class(TForm)
-    TreeView: TTreeView;
-    ListView: TListView;
     Image: TImage;
-    edDir: TEdit;
-    btnChooseDir: TBitBtn;
-    edImagePath: TEdit;
     ImageList1: TImageList;
-    cbOnlyHandledExtensions: TCheckBox;
     memoErr: TMemo;
     cbEnableExtension: TCheckBox;
+    PanelBig: TPanel;
+    PanelTree: TPanel;
+    TreeView: TTreeView;
+    edDir: TEdit;
+    btnChooseDir: TBitBtn;
+    Panel1: TPanel;
+    ListView: TListView;
+    cbOnlyHandledExtensions: TCheckBox;
+    edImagePath: TEdit;
+    Splitter1: TSplitter;
     procedure btnChooseDirClick(Sender: TObject);
-    procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure TreeViewExpanding(Sender: TObject; Node: TTreeNode;
       var AllowExpansion: Boolean);
@@ -28,6 +31,7 @@ type
     procedure ListViewChange(Sender: TObject; Item: TListItem;
       Change: TItemChange);
     procedure cbEnableExtensionClick(Sender: TObject);
+    procedure FormShow(Sender: TObject);
   private
     FRootDir: string;
     FFileDir: string;
@@ -37,6 +41,8 @@ type
     procedure FillDirectoryTree(rootDir: string);
     procedure FillFileList(dir: string);
     procedure LoadImage(path: string);
+    function FindFileItem(path: string): TListItem;
+    function FindTreeNode(path: string): TTreeNode;
     procedure ReadIniSettings;
     procedure WriteIniSettings;
   public
@@ -58,7 +64,7 @@ begin
   if SelectDirectory('Select folder to browse', edDir.Text, '', False, FRootDir) then
   begin
     edDir.Text := FRootDir;
-    FillDirectoryTree(edDir.Text);
+    FillDirectoryTree(FRootDir);
   end;
 end;
 
@@ -70,7 +76,14 @@ var
 begin
   IniPath:=ChangeFileExt(AppPath,'.ini');
   iniFile := TIniFile.Create(IniPath);
-  edDir.Text:=iniFile.ReadString('Paths','RootDir','');
+  FRootDir:=iniFile.ReadString('Paths','RootDir','');
+  edDir.Text:=FRootDir;
+  FImagePath:=iniFile.ReadString('Paths','ImagePath','');
+  edImagePath.Text:=FImagePath;
+  cbOnlyHandledExtensions.Checked:=
+    iniFile.ReadBool('Options','OnlyHandledExtensions', cbOnlyHandledExtensions.Checked);
+  cbEnableExtension.Checked:=
+    iniFile.ReadBool('Options','EnableImageExtension', cbEnableExtension.Checked);
 end;
 
 procedure TMainForm.WriteIniSettings;
@@ -81,11 +94,69 @@ begin
   IniPath:=ChangeFileExt(AppPath,'.ini');
   iniFile := TIniFile.Create(IniPath);
   iniFile.WriteString('Paths','RootDir', edDir.Text);
+  iniFile.WriteString('Paths','ImagePath', edImagePath.Text);
+  iniFile.WriteBool('Options','OnlyHandledExtensions', cbOnlyHandledExtensions.Checked);
+  iniFile.WriteBool('Options','EnableImageExtension', cbEnableExtension.Checked);
 end;
 
-procedure TMainForm.FormCreate(Sender: TObject);
+function TMainForm.FindFileItem(path: string): TListItem;
+var
+  name: string;
+  i: integer;
 begin
-  ReadIniSettings;
+  name:=ExtractFileName(path);
+  result:=nil;
+  for i:=0 to ListView.Items.Count-1 do
+    if ListView.Items[i].Caption=name then
+    begin
+      result:=ListView.Items[i];
+      exit;
+    end;
+end;
+
+function TMainForm.FindTreeNode(path: string): TTreeNode;
+  function FindItem(Parent:TTreeNode; Name: string): TTreeNode;
+  var
+    i: integer;
+  begin
+    result:=nil;
+    if Parent=nil then
+    begin
+      for i:=0 to TreeView.Items.Count-1 do
+      if SameFileName(TreeView.Items[i].Text, Name) then
+      begin
+        result:=TreeView.Items[i];
+        exit;
+      end;
+    end else
+    begin
+      for i:=0 to Parent.Count-1 do
+      if SameFileName(Parent.Item[i].Text, Name) then
+      begin
+        result:=Parent.Item[i];
+        exit;
+      end;
+    end;
+  end;
+var
+  n,n1: integer;
+  subdir: string;
+begin
+  TreeView.OnChange:=nil;
+  if not SameFileName(FRootDir, Copy(path, 1, Length(FRootDir))) then
+    FRootDir := ExtractFileDir(path);
+  result:=nil;
+  n1:=Length(FRootDir)+1;
+  repeat
+    n:=n1;
+    Assert(path[n]=PathDelim);
+    n1:=PosFrom(PathDelim,path, n+1);
+    if n1<=0 then break;
+    subdir:=Copy(path, n+1, n1-n-1);
+    result:=FindItem(result, subdir);
+    result.Expand(false);
+  until false;
+  TreeView.OnChange:=TreeViewChange;
 end;
 
 procedure TMainForm.FormDestroy(Sender: TObject);
@@ -163,6 +234,7 @@ var
   item: TListItem;
   i: integer;
 begin
+  if dir='' then exit;
   ListView.OnChange:=nil;
   FFileDir := dir;
   ListView.Items.Clear;
@@ -195,6 +267,8 @@ end;
 procedure TMainForm.cbOnlyHandledExtensionsClick(Sender: TObject);
 begin
   FillFileList(FFileDir);
+  ListView.Selected:=FindFileItem(FImagePath);
+  ListView.SetFocus;
 end;
 
 procedure TMainForm.ListViewChange(Sender: TObject; Item: TListItem;
@@ -202,6 +276,7 @@ procedure TMainForm.ListViewChange(Sender: TObject; Item: TListItem;
 begin
   if FFileDir+Item.Caption=FImagePath then exit;
   FImagePath:=FFileDir+Item.Caption;
+  edImagePath.Text:=FImagePath;
   LoadImage(FImagePath);
 end;
 
@@ -212,6 +287,7 @@ var
   R: TRect;
   W,H: integer;
 begin
+  if path='' then exit;
   Image.Canvas.Brush.Color:=clWhite;
   Image.Canvas.Pen.Color:=clBlack;
   Image.Canvas.FillRect(Image.ClientRect);
@@ -244,6 +320,23 @@ end;
 procedure TMainForm.cbEnableExtensionClick(Sender: TObject);
 begin
   LoadImage(FImagePath);
+end;
+
+procedure TMainForm.FormShow(Sender: TObject);
+begin
+  Image.Canvas.Brush.Color:=clWhite;
+  Image.Canvas.Pen.Color:=clBlack;
+  Image.Canvas.FillRect(Image.ClientRect);
+  ReadIniSettings;
+  if FRootDir<>'' then
+    FillDirectoryTree(FRootDir);
+  if FImagePath<>'' then
+  begin
+    TreeView.Selected:=FindTreeNode(FImagePath);
+    ListView.Selected:=FindFileItem(FImagePath);
+    LoadImage(FImagePath);
+  end;
+  ListView.SetFocus;
 end;
 
 end.
