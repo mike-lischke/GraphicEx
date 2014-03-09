@@ -60,10 +60,18 @@ uses
 {$R *.dfm}
 
 procedure TMainForm.btnChooseDirClick(Sender: TObject);
+var
+  RootDirDelim: string;
 begin
   if SelectDirectory('Select folder to browse', edDir.Text, '', False, FRootDir) then
   begin
     edDir.Text := FRootDir;
+    RootDirDelim := IncludeTrailingPathDelimiter(FRootDir);
+    if not SameFileName(RootDirDelim, Copy(FImagePath, 1, Length(RootDirDelim))) then
+    begin
+      FImagePath := '';
+      edImagePath.Text := '';
+    end;
     FillDirectoryTree(FRootDir);
   end;
 end;
@@ -143,7 +151,7 @@ var
   subdir: string;
 begin
   TreeView.OnChange:=nil;
-  if not SameFileName(FRootDir, Copy(path, 1, Length(FRootDir))) then
+  if not SameFileName(IncludeTrailingPathDelimiter(FRootDir), Copy(path, 1, Length(IncludeTrailingPathDelimiter(FRootDir)))) then
     FRootDir := ExtractFileDir(path);
   result:=nil;
   n1:=Length(FRootDir)+1;
@@ -184,6 +192,7 @@ begin
     until FindNext(SR) <> 0;
     FindCLose(SR);
   end;
+  if Parent<>nil then
   if countDir=0 then
     Parent.HasChildren:=false;
 end;
@@ -192,6 +201,7 @@ procedure TMainForm.FillDirectoryTree(rootDir: string);
 begin
   TreeView.Items.Clear;
   FillNode(nil, FRootDir);
+  TreeViewChange(self, nil);
 end;
 
 function TMainForm.nodePath(ANode: TTreeNode): string;

@@ -1,23 +1,17 @@
 unit GraphicStrings;
 
-// The contents of this file are subject to the Mozilla Public License
-// Version 1.1 (the "License"); you may not use this file except in compliance
-// with the License. You may obtain a copy of the License at http://www.mozilla.org/MPL/
+// The original code is GraphicStrings.pas, released November 1, 1999.
 //
-// Software distributed under the License is distributed on an "AS IS" basis,
-// WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for the
-// specific language governing rights and limitations under the License.
 //
-// The original code is GraphicColor.pas, released November 1, 1999.
+// The initial developer of the original code is Mike Lischke (www.soft-gems.net),
 //
-// The initial developer of the original code is Dipl. Ing. Mike Lischke (Pleiﬂa, Germany, www.delphi-gems.com),
-//
-// Portions created by Dipl. Ing. Mike Lischke are Copyright
-// (C) 1999-2003 Dipl. Ing. Mike Lischke. All Rights Reserved.
+// Copyright (C) 1999-2003 Mike Lischke. All Rights Reserved.
 //----------------------------------------------------------------------------------------------------------------------
-// This file is part of the image library GraphicEx.
 //
-// GraphicStrings contains the strings used in GraphicEx, which could be localized.
+// GraphicStrings contains the english version of the strings used in GraphicEx, which can be localized.
+// Translation done by Mike Lischke (mike@lischke-online.de).
+//
+// Rename the file to GraphicStrings.pas to use it as your favourite language file.
 //
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -62,9 +56,12 @@ resourcestring
   gesKodakPhotoCD = 'Kodak Photo-CD images';
   gesCompuserve = 'CompuServe images';
   gesHalo = 'Dr. Halo images';
-  gesPaintShopPro = 'Paintshop Pro images';
+  gesPaintshopPro = 'Paintshop Pro images';
+  gesPaintshopProFrames = 'Paintshop Pro frames';
+  gesPaintshopProTubes = 'Paintshop Pro tubes';
   gesPortableNetworkGraphic = 'Portable network graphic images';
-
+  gesArtsAndLettersGraphic = 'Arts & Letters thumbnail images';
+                                                                             
   // image specific error messages
   gesInvalidImage = 'Cannot load image. Invalid or unexpected %s image format.';
   gesInvalidColorFormat = 'Invalid color format in %s file.';
@@ -76,6 +73,8 @@ resourcestring
   gesExtraCompressedData = 'Cannot load image. Extra compressed data found in %s file.';
   gesInvalidPalette = 'Cannot load image. Palette in %s file is invalid.';
   gesUnknownCriticalChunk = 'Cannot load PNG image. Unexpected but critical chunk detected.';
+  gesInvalidPSDLayerData = 'Image is invalid. Layer data is corrupt.';
+  gesInvalidPSDResourceData = 'Image is invalid. Resource data is corrupt.';
 
   // features (usually used together with unsupported feature string)
   gesCompressionScheme = 'The compression scheme is';

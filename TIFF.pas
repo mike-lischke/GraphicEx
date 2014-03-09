@@ -570,18 +570,6 @@ function TIFFGetTagListCount(tif: PTIFF): Integer; cdecl; external;
 function _TIFFgetMode(const mode, module: PChar): Integer; cdecl; external;
 procedure TIFFError(const S: PChar); varargs; cdecl; external;
 
-procedure adler32;
-begin
-
-end;
-procedure _llmod;
-begin
-
-end;
-procedure z_errmsg;
-begin
-
-end;
 {$L fax3sm_winnt.obj}
 {$L tif_aux.obj}
 {$L tif_close.obj}

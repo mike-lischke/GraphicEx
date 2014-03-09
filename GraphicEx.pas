@@ -1,61 +1,76 @@
 unit GraphicEx;
 
-// The contents of this file are subject to the Mozilla Public License
-// Version 1.1 (the "License"); you may not use this file except in compliance
-// with the License. You may obtain a copy of the License at http://www.mozilla.org/MPL/
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
+
+// The original code is GraphicEx.pas, released November 1, 1999.
 //
-// Software distributed under the License is distributed on an "AS IS" basis,
-// WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for the
-// specific language governing rights and limitations under the License.
+// The initial developer of the original code is Mike Lischke (www.soft-gems.net),
 //
-// The original code is GraphicColor.pas, released November 1, 1999.
+// Copyright (C) 1999, 2008 Mike Lischke. All Rights Reserved.
 //
-// The initial developer of the original code is Dipl. Ing. Mike Lischke (Pleiﬂa, Germany, www.delphi-gems.com),
-//
-// Portions created by Dipl. Ing. Mike Lischke are Copyright
-// (C) 1999-2003 Dipl. Ing. Mike Lischke. All Rights Reserved.
+// Credits:
+//   Haukur K. Bragason, Ingo Neumann, Craig Peterson
 //----------------------------------------------------------------------------------------------------------------------
 //
-// GraphicEx -
-//   This unit is an addendum to Graphics.pas, in order to enable your application
-//   to import many common graphic files.
+// See help file for a description of supported image formats.
 //
-// See help file for a description of supported image types. Additionally, there is a resample routine
-// (Stretch) based on code from Anders Melander (http://www.melander.dk/delphi/resampler/index.html)
-// which has been optimized quite a lot to work faster and bug fixed.
+// Version II.1.17
 //
-// version - 9.9
+// Note: This library can be compiled with Delphi 5 or newer versions.
 //
-// 03-SEP-2000 ml:
-//   EPS with alpha channel, workaround for TIFs with wrong alpha channel indication,
-//   workaround for bad packbits compressed (TIF) images
-// 28-AUG-2000 ml:
-//   small bugfixes
-// 27-AUG-2000 ml:
-//   changed all FreeMemory(P) calls back to ... if Assigned(P) then FreeMem(P); ...
-// 24-AUG-2000 ml:
-//   small bug in LZ77 decoder removed
-// 18-AUG-2000 ml:
-//   TIF deflate decoding scheme
-// 15-AUG-2000 ml:
-//   workaround for TIF images without compression, but prediction scheme set (which is not really used in this case)
-// 12-AUG-2000 ml:
-//   small changes 
+//----------------------------------------------------------------------------------------------------------------------
 //
-// For older history please look into the help file.
+// September 2008
+//   - Bug fix: size computations in component retrieval for SGI images.
+// October 2006
+//   - Bug fix: 16 bpp SGI images loading failed
+// August 2005
+//   - Bug fix: added exceptions for PCX and PCD images in case they cannot be read.
+// December 2005
+//   - Bug fix: The filter string returned for open dialogs was incorrect, which caused missing files in the dialog.
+// November 2005
+//   - Bug fix: correct handling of 256 colors in PPM files.
+// October 2005
+//   - Bug fix: Passing dynamic arrays of zero size to functions using the @ operator fails.
+// February 2005
+//   - Bug fix: Line offset in TIFF did not consider partly used source bytes (BPP 4 and lower).
 //
-// Note: The library provides usually only load support for the listed image formats but will perhaps be enhanced
-//       in the future to save those types too. It can be compiled with Delphi 4 or newer versions.
+// January 2005:
+//   - Bug fix: color manager must be used for new TIFF reader.
+//   - Bug fix: CompBuffer in PSD loader must be set to nil initially.
+//   - Bug fix: DoStretch working bitmap is not thread safe, needs Canvas.Lock/Unlock.
+//   - Improvement: New standalone function ReadImageProperties.
+//
+// See help file for a full development history.
 //
 //----------------------------------------------------------------------------------------------------------------------
 
 interface
 
 {$I GraphicConfiguration.inc}
+{$I Compilers.inc}
+
+{$ifdef COMPILER_7_UP}
+  // For some things to work we need code, which is classified as being unsafe for .NET.
+  // We switch off warnings about that fact. We know it and we accept it.
+  {$warn UNSAFE_TYPE off}
+  {$warn UNSAFE_CAST off}
+  {$warn UNSAFE_CODE off}
+{$endif COMPILER_7_UP}
 
 uses
-  Windows, Classes, ExtCtrls, Graphics, SysUtils, JPEG,
+{$IFnDEF FPC}
+  Windows,
+{$ELSE}
+  LCLIntf, LCLType, LMessages,
+{$ENDIF}
+  Classes, ExtCtrls, Graphics, SysUtils, Contnrs, JPG, TIFF,
   GraphicCompression, GraphicStrings, GraphicColor;
+
+const
+  GraphicExVersion = 'II.1.17';
 
 type
   TCardinalArray = array of Cardinal;
@@ -72,19 +87,20 @@ type
 
   // describes the compression used in the image file
   TCompressionType = (
-    ctUnknown,     // compression type is unknown
-    ctNone,        // no compression at all
-    ctRLE,         // run length encoding
-    ctPackedBits,  // Macintosh packed bits
-    ctLZW,         // Lempel-Zif-Welch
-    ctFax3,        // CCITT T.4 (1d), also known as fax group 3
-    ctFaxRLE,      // modified Huffman (CCITT T.4 derivative)
-    ctFax4,        // CCITT T.6, also known as fax group 4
-    ctFaxRLEW,     // CCITT T.4 with word alignment
-    ctLZ77,        // Hufman inflate/deflate
-    ctJPEG,        // TIF JPEG compression (new version)
-    ctOJPEG,       // TIF JPEG compression (old version)
-    ctThunderscan, // TIF thunderscan compression
+    ctUnknown,          // Compression type is unknown.
+    ctNone,             // No compression.
+    ctRLE,              // Run length encoding.
+    ctPackedBits,       // Macintosh packed bits.
+    ctLZW,              // Lempel-Zif-Welch.
+    ctFax3,             // CCITT T.4 (1D), also known as fax group 3.
+    ct2DFax3,           // CCITT T.4 (2D).
+    ctFaxRLE,           // Modified Huffman (CCITT T.4 derivative).
+    ctFax4,             // CCITT T.6, also known as fax group 4.
+    ctFaxRLEW,          // CCITT T.4 with word alignment.
+    ctLZ77,             // Hufman inflate/deflate.
+    ctJPEG,             // TIF JPEG compression (new version)
+    ctOJPEG,            // TIF JPEG compression (old version)
+    ctThunderscan,      // TIF thunderscan compression
     ctNext,
     ctIT8CTPAD,
     ctIT8LW,
@@ -94,7 +110,11 @@ type
     ctPixarLog,
     ctDCS,
     ctJBIG,
-    ctPCDHuffmann  // PhotoCD Hufman compression
+    ctPCDHuffmann,      // PhotoCD Hufman compression
+    ctPlainZip,         // ZIP compression without prediction
+    ctPredictedZip,     // ZIP comression with prediction
+    ctSGILog,           // SGI Log Luminance RLE
+    ctSGILog24          // SGI Log 24-bit packed
   );
 
   // properties of a particular image which are set while loading an image or when
@@ -104,7 +124,7 @@ type
     Version: Cardinal;                 // TIF, PSP, GIF
     Options: TImageOptions;            // all images
     Width,                             // all images
-    Height: Cardinal;                  // all images
+    Height: Integer;                   // all images
     ColorScheme: TColorScheme;         // all images
     BitsPerSample,                     // all Images
     SamplesPerPixel,                   // all images
@@ -115,28 +135,13 @@ type
     YResolution: Single;               // given in dpi (TIF, PCX, PSP)
     Interlaced,                        // GIF, PNG
     HasAlpha: Boolean;                 // TIF, PNG
+    ImageCount: Cardinal;              // Number of subimages (PCD, TIF, GIF, MNG).
+    Comment: string;                   // Implemented for PNG and GIF.
 
-    // informational data, used internally and/or by decoders
-    // TIF
-    FirstIFD,
-    PlanarConfig,                      // most of this data is needed in the JPG decoder
-    CurrentRow,
-    TileWidth,
-    TileLength,
-    BytesPerLine: Cardinal;
-    RowsPerStrip: TCardinalArray;
-    YCbCrSubSampling,
-    JPEGTables: TByteArray;
-    JPEGColorMode,
-    JPEGTablesMode: Cardinal;
-    CurrentStrip,
-    StripCount,
-    Predictor: Integer;
-
+    // Informational data, used internally and/or by decoders
     // PCD
     Overview: Boolean;                 // true if image is an overview image
     Rotate: Byte;                      // describes how the image is rotated (aka landscape vs. portrait image)
-    ImageCount: Word;                  // number of subimages if this is an overview image
 
     // GIF
     LocalColorTable: Boolean;          // image uses an own color palette instead of the global one
@@ -144,119 +149,147 @@ type
     // RLA
     BottomUp: Boolean;                 // images is bottom to top
 
-    // PSD
-    Channels: Byte;                    // up to 24 channels per image
-
     // PNG
-    FilterMode: Byte;                 
+    FilterMode: Byte;
+
+    // TIFF
+    Orientation: Word;                 
   end;
 
-  // This is the general base class for all image types implemented in GraphicEx.
-  // It contains some generally used class/data.
+  // This mode is used when creating a file mapping. See TFileMapping.
+  TFileMappingMode = (
+    fmmCreateNew,       // Always create a new file (overwrite any existing). Implicitely gives read/write access.
+    fmmOpenOrCreate,    // Open if file exists (implicitely gives read/write access) or create if it does not.
+    fmmReadOnly,        // Open existing file read only.
+    fmmReadWrite        // Open existing file with read and write access.
+  );
+
+  // This class is used to provide direct (mapped) memory access to a file.
+  // It is optimized for use in GraphicEx (sequential access).
+  TFileMapping = class
+  private
+    FFileName: string;
+    FFileHandle,
+    FFileMapping: THandle;
+    FFileSize: Int64;
+    FMemory: Pointer;
+  public
+    constructor Create(const FileName: string; Mode: TFileMappingMode); overload;
+    constructor Create(Stream: THandleStream); overload;
+    destructor Destroy; override;
+
+    property FileName: string read FFileName;
+    property Memory: Pointer read FMemory;
+    property Size: Int64 read FFileSize;
+  end;
+
+  // This is the base class for all image types implemented in GraphicEx.
+  // It contains some generally used stuff.
   TGraphicExGraphic = class(TBitmap)
   private
     FColorManager: TColorManager;
     FImageProperties: TImageProperties;
-    FBasePosition: Cardinal;  // stream start position
-    FStream: TStream;         // used for local references of the stream the class is currently loading from
+
+    // Advanced progress display support.
+    FProgressStack: TStack;       // Used to manage nested progress sections.
     FProgressRect: TRect;
+    FPercentDone: Single;         // Progress over all parts of the load process.
+  protected
+    Decoder: TDecoder;            // The decoder used to decompress the image data.
+
+    procedure AdvanceProgress(Amount: Single; OffsetX, OffsetY: Integer; DoRedraw: Boolean);
+    procedure ClearProgressStack;
+    procedure FinishProgressSection(DoRedraw: Boolean);
+    procedure InitProgress(Width, Height: Integer);
+    procedure StartProgressSection(Size: Single; const S: string);
   public
     constructor Create; override;
     destructor Destroy; override;
 
     procedure Assign(Source: TPersistent); override;
-    class function CanLoad(const FileName: String): Boolean; overload; virtual;
-    class function CanLoad(Stream: TStream): Boolean; overload; virtual; 
-    procedure LoadFromResourceName(Instance: THandle; const ResName: String);
-    procedure LoadFromResourceID(Instance: THandle; ResID: Integer);
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; virtual;
+    class function CanLoad(const FileName: string): Boolean; overload; 
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; overload; virtual;
+    class function CanLoad(Stream: TStream): Boolean; overload;
+    procedure LoadFromFile(const FileName: string); override;
+    procedure LoadFromFileByIndex(const FileName: string; ImageIndex: Cardinal = 0);
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); virtual;
+    procedure LoadFromResourceID(Instance: THandle; ResID: Integer; ImageIndex: Cardinal = 0);
+    procedure LoadFromResourceName(Instance: THandle; const ResName: string; ImageIndex: Cardinal = 0);
+    procedure LoadFromStream(Stream: TStream); override;
+    procedure LoadFromStreamByIndex(Stream: TStream; ImageIndex: Cardinal = 0);
+    function ReadImageProperties(const Name: string; ImageIndex: Cardinal): Boolean; overload; virtual;
+    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; overload; virtual;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; overload; virtual;
 
     property ColorManager: TColorManager read FColorManager;
-    property ImageProperties: TImageProperties read FImageProperties write FImageProperties;
+    property ImageProperties: TImageProperties read FImageProperties;
   end;
 
   TGraphicExGraphicClass = class of TGraphicExGraphic;
    
+  {$ifdef AutodeskGraphic}
+  // *.cel, *.pic images
+  TAutodeskGraphic = class(TGraphicExGraphic)
+  public
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
+  end;
+  {$endif AutodeskGraphic}
+
   {$ifdef SGIGraphic}
   // *.bw, *.rgb, *.rgba, *.sgi images
   TSGIGraphic = class(TGraphicExGraphic)
   private
     FRowStart,
-    FRowSize: TCardinalArray;    // start and length of a line (if compressed)
-    FDecoder: TDecoder;          // ...same applies here
-    procedure ReadAndDecode(Red, Green, Blue, Alpha: Pointer; Row, BPC: Cardinal);
+    FRowSize: TCardinalArray;    // Start and compressed length of the lines if the image is compressed.
+    procedure GetComponents(const Memory: Pointer; var Red, Green, Blue, Alpha: Pointer; Row: Integer);
+    procedure ReadAndDecode(const Memory: Pointer; Red, Green, Blue, Alpha: Pointer; Row: Integer; BPC: Cardinal);
   public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
   end;
-  {$endif}
-
-  {$ifdef AutodeskGraphic}
-  // *.cel, *.pic images
-  TAutodeskGraphic = class(TGraphicExGraphic)
-  public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
-  end;
-  {$endif}
+  {$endif SGIGraphic}
 
   {$ifdef TIFFGraphic}
   // *.tif, *.tiff images
-  // one entry in a an IFD (image file directory)
-  TIFDEntry = packed record
-    Tag: Word;
-    DataType: Word;
-    DataLength: Cardinal;
-    Offset: Cardinal;
-  end;
-
-  TTIFFPalette = array[0..787] of Word;
-
   TTIFFGraphic = class(TGraphicExGraphic)
   private
-    FIFD: array of TIFDEntry; // the tags of one image file directory
-    FPalette: TTIFFPalette;
-    FYCbCrPositioning: Cardinal;
-    FYCbCrCoefficients: TFloatArray;
-    function FindTag(Tag: Cardinal; var Index: Cardinal): Boolean;
-    procedure GetValueList(Stream: TStream; Tag: Cardinal; var Values: TByteArray); overload;
-    procedure GetValueList(Stream: TStream; Tag: Cardinal; var Values: TCardinalArray); overload;
-    procedure GetValueList(Stream: TStream; Tag: Cardinal; var Values: TFloatArray); overload;
-    function GetValue(Stream: TStream; Tag: Cardinal; Default: Single = 0): Single; overload;
-    function GetValue(Tag: Cardinal; Default: Cardinal = 0): Cardinal; overload;
-    function GetValue(Tag: Cardinal; var Size: Cardinal; Default: Cardinal = 0): Cardinal; overload;
-    procedure SortIFD;
-    procedure SwapIFD;
+    FMemory: PByte;
+    FCurrentPointer: PByte;
+    FSize: Int64;
+  protected
+    procedure ReadContiguous(tif: PTIFF);
+    procedure ReadTiled(tif: PTIFF);
+    function SetOrientation(tif: PTIFF; H: Cardinal): Cardinal;
   public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromStream(Stream: TStream); override;
-    procedure SaveToStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size:Int64; ImageIndex: Cardinal): Boolean; override;
   end;
 
     {$ifdef EPSGraphic}
     TEPSGraphic = class(TTIFFGraphic)
     public
-      class function CanLoad(Stream: TStream): Boolean; override;
-      procedure LoadFromStream(Stream: TStream); override;
+      class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+      procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
       function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
     end;
-    {$endif} // EPSGraphic
-  {$endif} // TIFFGraphic
+    {$endif EPSGraphic}
+  {$endif TIFFGraphic}
 
   {$ifdef TargaGraphic}
   // *.tga; *.vst; *.icb; *.vda; *.win images
   TTargaGraphic = class(TGraphicExGraphic)
    public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
     procedure SaveToStream(Stream: TStream); overload; override;
     procedure SaveToStream(Stream: TStream; Compressed: Boolean); reintroduce; overload;
   end;
-  {$endif}
+  {$endif TargaGraphic}
 
   {$ifdef PCXGraphic}
   // *.pcx; *.pcc; *.scr images
@@ -265,102 +298,326 @@ type
   //       Hence the image must be the only one in the stream or the last one.
   TPCXGraphic = class(TGraphicExGraphic)
   public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
   end;
-  {$endif}
+  {$endif PCXGraphic}
 
   {$ifdef PCDGraphic}
   // *.pcd images
   // Note: By default the BASE resolution of a PCD image is loaded with LoadFromStream. 
   TPCDGraphic = class(TGraphicExGraphic)
   public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 2); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
   end;
-  {$endif}
+  {$endif PCDGraphic}
 
   {$ifdef PortableMapGraphic}
   // *.ppm, *.pgm, *.pbm images
   TPPMGraphic = class(TGraphicExGraphic)
   private
-    FBuffer: array[0..4095] of Char;
-    FIndex: Integer;
-    function CurrentChar: Char;
+    FSource: PChar;
+    FRemainingSize: Int64;
     function GetChar: Char;
     function GetNumber: Cardinal;
-    function ReadLine: String;
+    function ReadLine: string;
   public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
   end;
-  {$endif}
+  {$endif PortableMapGraphic}
 
   {$ifdef CUTGraphic}
   // *.cut (+ *.pal) images
   // Note: Also this format should not be used in a stream unless it is the only image or the last one!
   TCUTGraphic = class(TGraphicExGraphic)
   private
-    FPaletteFile: String;
+    FPaletteFile: string;
   protected
     procedure LoadPalette;
   public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromFile(const FileName: String); override;
-    procedure LoadFromStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromFile(const FileName: string); override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
 
-    property PaletteFile: String read FPaletteFile write FPaletteFile;
+    property PaletteFile: string read FPaletteFile write FPaletteFile;
   end;
-  {$endif}
+  {$endif CUTGraphic}
 
   {$ifdef GIFGraphic}
   // *.gif images
   TGIFGraphic = class(TGraphicExGraphic)
   private
+    FSource: PByte;
+    FTransparentIndex: Byte;
     function SkipExtensions: Byte;
   public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
   end;
-  {$endif}
+  {$endif GIFGraphic}
 
   {$ifdef RLAGraphic}
   // *.rla, *.rpf images
-  // implementation based on code from Dipl. Ing. Ingo Neumann (ingo@upstart.de, ingo_n@dialup.nacamar.de)
+  // Implementation based on code from Dipl. Ing. Ingo Neumann (ingo@delphingo.com).
   TRLAGraphic = class(TGraphicExGraphic)
   private
     procedure SwapHeader(var Header); // start position of the image header in the stream
   public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
   end;
-  {$endif}
+  {$endif RLAGraphic}
 
   {$ifdef PhotoshopGraphic}
   // *.psd, *.pdd images
-  TPSDGraphic = class(TGraphicExGraphic)
-  public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+  TPSDLayerBlendMode = (
+    lbmNormal,
+    lbmDarken,
+    lbmLighten,
+    lbmHue,
+    lbmSaturation,
+    lbmColor,
+    lbmLuminosity,
+    lbmMultiply,
+    lbmScreen,
+    lbmDissolve,
+    lbmOverlay,
+    lbmHardLight,
+    lbmSoftLight,
+    lbmDifference,
+    lbmExclusion,
+    lbmColorDodge,
+    lbmColorBurn
+  );
+
+  TPSDLayerClipping = (
+    lcBase,
+    lcNonBase
+  );
+
+  TPSDLayerOptions = set of (
+    loTransparencyProtected,
+    loHidden,
+    loIrrelevantData
+  );
+
+  TPSDLayerType = (
+    ltBitmap,
+    ltText,
+    ltMask
+  );
+
+  // Flags used for mask data in a Photoshop layer.
+  TPSDLayerMaskFlags = set of (
+    lmfRelativePosition,     // Position of mask is relative to layer.
+    lmfMaskDisabled,         // The layer mask is disabled.
+    lmfInvertMask            // Invert layer mask when blending.
+  );
+
+  TPSDLayerMaskData = record
+    Bounds: TRect;
+    DefaultColor: Byte;
+    Flags: TPSDLayerMaskFlags;
+    UserMaskBackground: Byte;
   end;
-  {$endif}
+
+  // Currently no info is available for data in this block.
+  TPSDCompositeGrayBlend = record
+    Black1,
+    Black2,
+    White1,
+    White2: Byte;
+  end;
+
+  // Data specific to one channel in a layer.
+  // Pixel data is not stored separately for each channel but the layer as a whole.
+  TPSDChannel = record
+    ChannelID: SmallInt;
+    Size: Cardinal;               // Size of channel data when loading or storing.
+    BlendSourceRange,
+    BlendTargetRange: TPSDCompositeGrayBlend;
+    Data: Pointer;                // Temporary storage for the channel's pixel data.
+  end;
+
+  // Each layer has a collection of channel data.
+  TPSDChannels = array of TPSDChannel;
+
+  // Indirect type declaration here to allow recursive item data structure.
+  PPSDItemList = ^TPSDItemList;
+  PPSDDescriptor = ^TPSDDescriptor;
+
+  TPSDItemData = record
+    ItemType: Cardinal;           // Type of the item. See ReadDescriptor for a list of possible values.
+    ClassID: WideString;          // Only valid if property or class item.
+    KeyID: WideString;            // Only valid if property or string item.
+    Name: WideString;             // Only valid if name or identifier item.
+    Units: Integer;               // Only valid if Unit float item.
+    Value: Double;                // Only valid if Unit float or double item.
+    TypeID: WideString;           // Only valid if enumeration item.
+    EnumValue: WideString;        // Only valid if enumeration item.
+    Offset: Cardinal;             // Only valid if offset item.
+    IntValue: Integer;            // Only valid if integer item.
+    BoolValue: Boolean;           // Only valid if boolean item.
+    List: PPSDItemList;           // Only valid if (reference) list or item.
+    DataSize: Cardinal;           // Only valid if raw data.
+    Data: Pointer;                // Only valid if raw data.
+    Descriptor: PPSDDescriptor;   // Only valid if the item is again a PSD descriptor.
+  end;
+  TPSDItemList = array of TPSDItemData;
+
+  // One entry in a PSD descriptor stored as part of e.g. the type tool adjustment layer.
+  TPSDDescriptorItem = record
+    Key: string;                  // Item name.
+    Data: TPSDItemData;           // The value of the item.
+  end;
+
+  TPSDDescriptor = record
+    ClassID,
+    ClassID2: WideString;
+    Items: array of TPSDDescriptorItem;
+  end;
+
+  TDoubleRect = record
+    Left, Top, Right, Bottom: Double;
+  end;
+
+  TTypeTransform = record
+    XX, XY, YX, YY, TX, TY: Double;
+  end;
+
+  TPSDTypeToolInfo = record
+    Transform: TTypeTransform;
+    TextDescriptor,
+    WarpDescriptor: TPSDDescriptor;
+    WarpRectangle: TDoubleRect;
+  end;
+  
+  TPSDGraphic = class;
+  
+  TPhotoshopLayer = class
+  private
+    FGraphic: TPSDGraphic;
+    FBounds: TRect;
+    FBlendMode: TPSDLayerBlendMode;
+    FOpacity: Byte;                    // 0 = transparent ... 255 = opaque
+    FClipping: TPSDLayerClipping;
+    FOptions: TPSDLayerOptions;
+    FMaskData: TPSDLayerMaskData;
+    FCompositeGrayBlendSource,
+    FCompositeGrayBlendDestination: TPSDCompositeGrayBlend;
+    FChannels: TPSDChannels;
+    FName: WideString;
+    FImage: TBitmap;
+    FType: TPSDLayerType;
+    FTypeToolInfo: TPSDTypeToolInfo;   // Only valid if layer is a text layer.
+    procedure SetImage(const Value: TBitmap);
+  public
+    constructor Create(Graphic: TPSDGraphic);
+    destructor Destroy; override;
+
+    property BlendMode: TPSDLayerBlendMode read FBlendMode write FBlendMode;
+    property Bounds: TRect read FBounds write FBounds;
+    property Channels: TPSDChannels read FChannels write FChannels;
+    property Clipping: TPSDLayerClipping read FClipping write FClipping;
+    property CompositeGrayBlendDestination: TPSDCompositeGrayBlend read FCompositeGrayBlendDestination
+      write FCompositeGrayBlendDestination;
+    property CompositeGrayBlendSource: TPSDCompositeGrayBlend read FCompositeGrayBlendSource
+      write FCompositeGrayBlendSource;
+    property Image: TBitmap read FImage write SetImage;
+    property LayerType: TPSDLayerType read FType;
+    property MaskData: TPSDLayerMaskData read FMaskData write FMaskData;
+    property Name: WideString read FName write FName;
+    property Opacity: Byte read FOpacity write FOpacity;
+    property Options: TPSDLayerOptions read FOptions write FOptions;
+  end;
+
+  TPhotoshopLayers = class(TList)
+  private
+    FGraphic: TPSDGraphic;
+    // The following fields are read from the global layer mask info data but
+    // their meaning is not well documented or at least obvious from their names.
+    FOverlayColorSpace: Word;               // undocumented
+    FColorComponents: array[0..3] of Word;  // undocumented
+    FLayerMaskOpacity: Word;                // 0 = transparent, 100 = opaque
+    FKind: Byte;                            // 0 = Color selected, 1 = Color protected, 128 = use value stored per layer.
+                                            // The last one is preferred. The others are for backward compatibility.
+  protected
+    function Get(Index: Integer): TPhotoshopLayer;
+    procedure Notify(Ptr: Pointer; Action: TListNotification); override;
+    procedure Put(Index: Integer; Layer: TPhotoshopLayer);
+  public
+    constructor Create(Graphic: TPSDGraphic);
+
+    function Add(Layer: TPhotoshopLayer): Integer;
+    function AddNewLayer: TPhotoshopLayer;
+    function Extract(Layer: TPhotoshopLayer): TPhotoshopLayer;
+    function First: TPhotoshopLayer;
+    function IndexOf(Layer: TPhotoshopLayer): Integer;
+    procedure Insert(Index: Integer; Layer: TPhotoshopLayer);
+    function Last: TPhotoshopLayer;
+    function Remove(Layer: TPhotoshopLayer): Integer;
+
+    property Items[Index: Integer]: TPhotoshopLayer read Get write Put; default;
+  end;
+
+  TPSDGuide = record
+    Location: Single;        // Either X or Y coordinate of the guide depending on IsHorizontal.
+    IsHorizontal: Boolean;   // True if it is a horizontal guide, otherwise False.
+  end;
+  
+  TPSDGridSettings = record
+    HorizontalCycle,         // Number of dots per cycle relative to 72 dpi.
+    VerticalCycle: Single;
+    Guides: array of TPSDGuide;
+  end;
+
+  TPSDGraphic = class(TGraphicExGraphic)
+  private
+    FChannels,     // Original channel count of the image (1..24).
+    FMode: Word;   // Original color mode of the image (PSD_*).
+    FLayers: TPhotoshopLayers;
+    FGridSettings: TPSDGridSettings;
+  protected
+    procedure CombineChannels(Layer: TPhotoshopLayer);
+    function ConvertCompression(Value: Word): TCompressionType;
+    function DetermineColorScheme(ChannelCount: Integer): TColorScheme;
+    procedure LoadAdjustmentLayer(var Run: PAnsiChar; Layer: TPhotoshopLayer);
+    procedure ReadChannelData(var Run: PAnsiChar; var Channel: TPSDChannel; Width, Height: Integer; IsIrrelevant: Boolean);
+    procedure ReadDescriptor(var Run: PAnsiChar; var Descriptor: TPSDDescriptor);
+    procedure ReadMergedImage(var Source: PAnsiChar; Layer: TPhotoshopLayer; Compression: TCompressionType; Channels: Byte);
+    procedure ReadLayers(Run: PAnsiChar);
+    procedure ReadResources(Run: PAnsiChar);
+    function SetupColorManager(Channels: Integer): TPixelFormat;
+  public
+    constructor Create; override;
+    destructor Destroy; override;
+
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
+
+    property GridSettings: TPSDGridSettings read FGridSettings;
+    property Layers: TPhotoshopLayers read FLayers;
+  end;
+  {$endif PhotoshopGraphic}
 
   {$ifdef PaintshopProGraphic}
   // *.psp images (file version 3 and 4)
   TPSPGraphic = class(TGraphicExGraphic)
   public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
   end;
-  {$endif}
+  {$endif PaintshopProGraphic}
 
   {$ifdef PortableNetworkGraphic}
   // *.png images
@@ -376,7 +633,6 @@ type
 
   TPNGGraphic = class(TGraphicExGraphic)
   private
-    FDecoder: TLZ77Decoder;
     FIDATSize: Integer;        // remaining bytes in the current IDAT chunk
     FRawBuffer,                // buffer to load raw chunk data and to check CRC
     FCurrentSource: Pointer;   // points into FRawBuffer for current position of decoding
@@ -393,22 +649,33 @@ type
     FBackgroundColor: TColor;  // index or color ref
     procedure ApplyFilter(Filter: Byte; Line, PrevLine, Target: PByte; BPP, BytesPerRow: Integer);
     function IsChunk(ChunkType: TChunkType): Boolean;
-    function LoadAndSwapHeader: Cardinal;
-    procedure LoadBackgroundColor(const Description);
-    procedure LoadIDAT(const Description);
-    procedure LoadTransparency(const Description);
-    procedure ReadDataAndCheckCRC;
-    procedure ReadRow(RowBuffer: Pointer; BytesPerRow: Integer);
+    function LoadAndSwapHeader(var Source: PByte): Cardinal;
+    procedure LoadBackgroundColor(var Source: PByte; const Description);
+    procedure LoadIDAT(var Source: PByte; const Description);
+    procedure LoadText(var Source: PByte);
+    procedure LoadTransparency(var Source: PByte; const Description);
+    procedure ReadDataAndCheckCRC(var Source: PByte);
+    procedure ReadRow(var Source: PByte; RowBuffer: Pointer; BytesPerRow: Integer);
     function SetupColorDepth(ColorType, BitDepth: Integer): Integer;
   public
-    class function CanLoad(Stream: TStream): Boolean; override;
-    procedure LoadFromStream(Stream: TStream); override;
-    function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
 
     property BackgroundColor: TColor read FBackgroundColor;
     property Transparency: TByteArray read FTransparency;
   end;
-  {$endif} // PortableNetworkGraphic
+  {$endif PortableNetworkGraphic}
+
+  {$ifdef ArtsAndLettersGraphic}
+  // *.ged images (Arts & Letters images)
+  TGEDGraphic = class(TGraphicExGraphic)
+  public
+    class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+    procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
+    function ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean; override;
+  end;
+  {$endif ArtsAndLettersGraphic}
 
   // ---------- file format management stuff
   TFormatType = (
@@ -419,6 +686,7 @@ type
     ftVector       // format contains vector data (like DXF or PSP file version 4)
   );
   TFormatTypes = set of TFormatType;
+
   TFilterSortType = (
     fstNone,        // do not sort entries, list them as they are registered
     fstBoth,        // sort entries first by description then by extension
@@ -435,38 +703,52 @@ type
 
   // The file format list is an alternative to Delphi's own poor implementation which does neither allow to filter
   // graphic formats nor to build common entries in filter strings nor does it care for duplicate entries or
-  // alphabetic ordering. Additionally, some properties are maintained for each format to do searches, filter partiuclar
+  // alphabetic ordering. Additionally, some properties are maintained for each format to do searches, filter particular
   // formats for a certain case etc.
   TFileFormatList = class
   private
     FClassList,
     FExtensionList: TList;
   protected
-    function FindExtension(const Extension: String): Integer;
+    function FindExtension(const Extension: string): Integer;
     function FindGraphicClass(GraphicClass: TGraphicClass): Integer;
   public
     constructor Create;
     destructor Destroy; override;
 
     procedure Clear;
-    function GetDescription(Graphic: TGraphicClass): String;
+    function GetDescription(Graphic: TGraphicClass): string;
     procedure GetExtensionList(List: TStrings);
     function GetGraphicFilter(Formats: TFormatTypes; SortType: TFilterSortType; Options: TFilterOptions;
-      GraphicClass: TGraphicClass): String;
-    function GraphicFromExtension(S: String): TGraphicClass;
-    function GraphicFromContent(const FileName: String): TGraphicExGraphicClass; overload;
+      GraphicClass: TGraphicClass): string;
+    function GraphicFromExtension(S: string): TGraphicClass;
+    function GraphicFromContent(const FileName: string): TGraphicExGraphicClass; overload;
+    function GraphicFromContent(const Memory: Pointer; Size: Int64): TGraphicExGraphicClass; overload;
     function GraphicFromContent(Stream: TStream): TGraphicExGraphicClass; overload;
-    procedure RegisterFileFormat(const Extension, Common, Individual: String; FormatTypes: TFormatTypes;
-      Replace, RegisterDefault: Boolean; GraphicClass: TGraphicClass);
-    procedure UnregisterFileFormat(const Extension: String; GraphicClass: TGraphicClass);
+    procedure RegisterFileFormat(const Extension, Common, Individual: string; FormatTypes: TFormatTypes;
+      Replace: Boolean; GraphicClass: TGraphicClass);
+    procedure UnregisterFileFormat(const Extension: string; GraphicClass: TGraphicClass);
   end;
 
-  // resampling support types
-  TResamplingFilter = (sfBox, sfTriangle, sfHermite, sfBell, sfSpline, sfLanczos3, sfMitchell);
+  // Resampling support types.
+  TResamplingFilter = (
+    sfBox,
+    sfTriangle,
+    sfHermite,
+    sfBell,
+    sfSpline,
+    sfLanczos3,
+    sfMitchell
+  );
 
-// Resampling support routines
+procedure GraphicExError(ErrorString: string); overload;
+procedure GraphicExError(ErrorString: string; Args: array of const); overload;
+
+// Resampling support routines.
 procedure Stretch(NewWidth, NewHeight: Cardinal; Filter: TResamplingFilter; Radius: Single; Source, Target: TBitmap); overload;
 procedure Stretch(NewWidth, NewHeight: Cardinal; Filter: TResamplingFilter; Radius: Single; Source: TBitmap); overload;
+
+function ReadImageProperties(const FileName: string; var Properties: TImageProperties): Boolean;
 
 var
   FileFormatList: TFileFormatList;
@@ -476,42 +758,54 @@ var
 implementation
 
 uses
-  Consts, Math, MZLib;
+{$IFnDEF FPC}
+  Consts,
+{$ELSE}
+  IntfGraphics,
+{$ENDIF}
+  Math, MZLib;
 
 type
+  {$ifndef COMPILER_6_UP}
+    PCardinal = ^Cardinal;
+  {$endif COMPILER_6_UP}
   // resampling support types
   TRGBInt = record
-   R, G, B: Integer;
+    R, G, B: Integer;
+  end;
+
+  TRGBAInt = record
+    R, G, B, A: Integer;
   end;
 
   PRGBWord = ^TRGBWord;
   TRGBWord = record
-   R, G, B: Word;
+    R, G, B: Word;
   end;
 
   PRGBAWord = ^TRGBAWord;
   TRGBAWord = record
-   R, G, B, A: Word;
+    R, G, B, A: Word;
   end;
 
   PBGR = ^TBGR;
   TBGR = packed record
-   B, G, R: Byte;
+    B, G, R: Byte;
   end;
 
   PBGRA = ^TBGRA;
   TBGRA = packed record
-   B, G, R, A: Byte;
+    B, G, R, A: Byte;
   end;
 
   PRGB = ^TRGB;
   TRGB = packed record
-   R, G, B: Byte;
+    R, G, B: Byte;
   end;
 
   PRGBA = ^TRGBA;
   TRGBA = packed record
-   R, G, B, A: Byte;
+    R, G, B, A: Byte;
   end;
 
   PPixelArray = ^TPixelArray;
@@ -522,20 +816,29 @@ type
   // contributor for a Pixel
   PContributor = ^TContributor;
   TContributor = record
-   Weight: Integer; // Pixel Weight
-   Pixel: Integer; // Source Pixel
+    Weight: Integer; // Pixel Weight
+    Pixel: Integer; // Source Pixel
   end;
 
   TContributors = array of TContributor;
 
   // list of source pixels contributing to a destination pixel
   TContributorEntry = record
-   N: Integer;
-   Contributors: TContributors;
+    N: Integer;
+    Contributors: TContributors;
   end;
 
   TContributorList = array of TContributorEntry;
 
+  // An entry of the progress stack for nested progress sections.
+  PProgressSection = ^TProgressSection;
+  TProgressSection = record
+    Position,                     // Current position in percent.
+    ParentSize,                   // Size of this section in the context of the parent section (in %).
+    TransformFactor: Single;      // Accumulated factor to transform a step in this section to an overall value.
+    Message: string;              // Message to display for this section.
+  end;
+  
 const
   DefaultFilterRadius: array[TResamplingFilter] of Single = (0.5, 1, 1, 1.5, 2, 3, 2);
 
@@ -543,18 +846,31 @@ threadvar // globally used cache for current image (speeds up resampling about 1
   CurrentLineR: array of Integer;
   CurrentLineG: array of Integer;
   CurrentLineB: array of Integer;
+  CurrentLineA: array of Integer;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure GraphicExError(ErrorString: String); overload;
+{$ifndef COMPILER_6_UP}
+
+  procedure RaiseLastOSError;
+
+  begin
+    RaiseLastWin32Error;
+  end;
+
+{$endif}
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure GraphicExError(ErrorString: string); overload;
 
 begin
   raise EInvalidGraphic.Create(ErrorString);
-end;
+end;                                                  
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure GraphicExError(ErrorString: String; Args: array of const); overload;
+procedure GraphicExError(ErrorString: string; Args: array of const); overload;
 
 begin
   raise EInvalidGraphic.CreateFmt(ErrorString, Args);
@@ -562,13 +878,13 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure Upsample(Width, Height, ScaledWidth: Cardinal; Pixels: PAnsiChar);
+procedure Upsample(Width, Height, ScaledWidth: Cardinal; Pixels: PChar);
 
 // Creates a new image that is a integral size greater than an existing one.
 
 var
   X, Y: Cardinal;
-  P, Q, R: PAnsiChar;
+  P, Q, R: PChar;
 
 begin
   for Y := 0 to Height - 1 do
@@ -582,7 +898,7 @@ begin
       Dec(P);
       Dec(Q, 2);
       Q^ := P^;
-      (Q + 1)^ := AnsiChar((Word(P^) + Word((P + 1)^) + 1) shr 1);
+      (Q + 1)^ := Char((Word(P^) + Word((P + 1)^) + 1) shr 1);
     end;
   end;            
 
@@ -593,16 +909,16 @@ begin
     R := Q + ScaledWidth;
     for X := 0 to Width - 2 do
     begin
-      Q^ := AnsiChar((Word(P^) + Word(R^) + 1) shr 1);
-      (Q + 1)^ := AnsiChar((Word(P^) + Word((P + 2)^) + Word(R^) + Word((R + 2)^) + 2) shr 2);
+      Q^ := Char((Word(P^) + Word(R^) + 1) shr 1);
+      (Q + 1)^ := Char((Word(P^) + Word((P + 2)^) + Word(R^) + Word((R + 2)^) + 2) shr 2);
       Inc(Q, 2);
       Inc(P, 2);
       Inc(R, 2);
     end;
-    Q^ := AnsiChar((Word(P^) + Word(R^) + 1) shr 1);
+    Q^ := Char((Word(P^) + Word(R^) + 1) shr 1);
     Inc(P);
     Inc(Q);
-    Q^ := AnsiChar((Word(P^) + Word(R^) + 1) shr 1);
+    Q^ := Char((Word(P^) + Word(R^) + 1) shr 1);
   end;
   P := Pixels + (2 * Height - 2) * ScaledWidth;
   Q := Pixels + (2 * Height - 1) * ScaledWidth;
@@ -616,9 +932,12 @@ function HermiteFilter(Value: Single): Single;
 // f(t) = 2|t|^3 - 3|t|^2 + 1, -1 <= t <= 1
 
 begin
-  if Value < 0 then Value := -Value;
-  if Value < 1 then Result := (2 * Value - 3) * Sqr(Value) + 1
-               else Result := 0;
+  if Value < 0 then
+    Value := -Value;
+  if Value < 1 then
+    Result := (2 * Value - 3) * Sqr(Value) + 1
+  else
+    Result := 0;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -628,8 +947,10 @@ function BoxFilter(Value: Single): Single;
 // This filter is also known as 'nearest neighbour' Filter.
 
 begin
-  if (Value > -0.5) and (Value <= 0.5) then Result := 1
-                                       else Result := 0;
+  if (Value > -0.5) and (Value <= 0.5) then
+    Result := 1
+  else
+    Result := 0;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -639,9 +960,12 @@ function TriangleFilter(Value: Single): Single;
 // aka 'linear' or 'bilinear' filter
 
 begin
-  if Value < 0 then Value := -Value;
-  if Value < 1 then Result := 1 - Value
-               else Result := 0;
+  if Value < 0 then
+    Value := -Value;
+  if Value < 1 then
+    Result := 1 - Value
+  else
+    Result := 0;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -649,15 +973,18 @@ end;
 function BellFilter(Value: Single): Single;
 
 begin
-  if Value < 0 then Value := -Value;
-  if Value < 0.5 then Result := 0.75 - Sqr(Value)
-                 else
+  if Value < 0 then
+    Value := -Value;
+  if Value < 0.5 then
+    Result := 0.75 - Sqr(Value)
+  else
     if Value < 1.5 then
     begin
       Value := Value - 1.5;
       Result := 0.5 * Sqr(Value);
     end
-    else Result := 0;
+    else
+      Result := 0;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -670,7 +997,8 @@ var
   Temp: Single;
 
 begin
-  if Value < 0 then Value := -Value;
+  if Value < 0 then
+    Value := -Value;
   if Value < 1 then
   begin
     Temp := Sqr(Value);
@@ -682,7 +1010,8 @@ begin
       Value := 2 - Value;
       Result := Sqr(Value) * Value / 6;
     end
-    else Result := 0;
+    else
+      Result := 0;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -699,15 +1028,19 @@ function Lanczos3Filter(Value: Single): Single;
       Value := Value * Pi;
       Result := Sin(Value) / Value;
     end
-    else Result := 1;
+    else
+      Result := 1;
   end;
 
   //---------------------------------------------------------------------------
 
 begin
-  if Value < 0 then Value := -Value;
-  if Value < 3 then Result := SinC(Value) * SinC(Value / 3)
-               else Result := 0;
+  if Value < 0 then
+    Value := -Value;
+  if Value < 3 then
+    Result := SinC(Value) * SinC(Value / 3)
+  else
+    Result := 0;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -721,7 +1054,8 @@ const
 var Temp: Single;
 
 begin
-  if Value < 0 then Value := -Value;
+  if Value < 0 then
+    Value := -Value;
   Temp := Sqr(Value);
   if Value < 1 then
   begin
@@ -739,7 +1073,8 @@ begin
                + (8 * B + 24 * C));
       Result := Value / 6;
     end
-    else Result := 0;
+    else
+      Result := 0;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -757,51 +1092,85 @@ const
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure FillLineChache(N, Delta: Integer; Line: Pointer);
+procedure FillLineCache(N, Delta: Integer; Line: Pointer; UseAlphaChannel: Boolean);
 
 var
   I: Integer;
-  Run: PBGR;
+  Run: PBGRA;
 
 begin
   Run := Line;
-  for I := 0 to N - 1 do
+  if UseAlphaChannel then
   begin
-    CurrentLineR[I] := Run.R;
-    CurrentLineG[I] := Run.G;
-    CurrentLineB[I] := Run.B;
-    Inc(PByte(Run), Delta);
+    for I := 0 to N - 1 do
+    begin
+      CurrentLineR[I] := Run.R;
+      CurrentLineG[I] := Run.G;
+      CurrentLineB[I] := Run.B;
+      CurrentLineA[I] := Run.A;
+      Inc(PByte(Run), Delta);
+    end;
+  end
+  else
+  begin
+    for I := 0 to N - 1 do
+    begin
+      CurrentLineR[I] := Run.R;
+      CurrentLineG[I] := Run.G;
+      CurrentLineB[I] := Run.B;
+      Inc(PByte(Run), Delta);
+    end;
   end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function ApplyContributors(N: Integer; Contributors: TContributors): TBGR;
+function ApplyContributors(N: Integer; Contributors: TContributors; UseAlphaChannel: Boolean): TBGRA;
 
 var
   J: Integer;
-  RGB: TRGBInt;
+  RGB: TRGBAInt;
   Total,
   Weight: Integer;
   Pixel: Cardinal;
   Contr: ^TContributor;
-    
+
 begin
   RGB.R := 0;
   RGB.G := 0;
   RGB.B := 0;
+  RGB.A := 0;
   Total := 0;
   Contr := @Contributors[0];
-  for J := 0 to N - 1 do
-  begin
-    Weight := Contr.Weight;
-    Inc(Total, Weight);
-    Pixel := Contr.Pixel;
-    Inc(RGB.r, CurrentLineR[Pixel] * Weight);
-    Inc(RGB.g, CurrentLineG[Pixel] * Weight);
-    Inc(RGB.b, CurrentLineB[Pixel] * Weight);
 
-    Inc(Contr);
+  if UseAlphaChannel then
+  begin
+    for J := 0 to N - 1 do
+    begin
+      Weight := Contr.Weight;
+      Inc(Total, Weight);
+      Pixel := Contr.Pixel;
+      Inc(RGB.R, CurrentLineR[Pixel] * Weight);
+      Inc(RGB.G, CurrentLineG[Pixel] * Weight);
+      Inc(RGB.B, CurrentLineB[Pixel] * Weight);
+      Inc(RGB.A, CurrentLineA[Pixel] * Weight);
+
+      Inc(Contr);
+    end;
+  end
+  else
+  begin
+    for J := 0 to N - 1 do
+    begin
+      Weight := Contr.Weight;
+      Inc(Total, Weight);
+      Pixel := Contr.Pixel;
+      Inc(RGB.R, CurrentLineR[Pixel] * Weight);
+      Inc(RGB.G, CurrentLineG[Pixel] * Weight);
+      Inc(RGB.B, CurrentLineB[Pixel] * Weight);
+
+      Inc(Contr);
+    end;
   end;
 
   if Total = 0 then
@@ -809,12 +1178,16 @@ begin
     Result.R := ClampByte(RGB.R shr 8);
     Result.G := ClampByte(RGB.G shr 8);
     Result.B := ClampByte(RGB.B shr 8);
+    if UseAlphaChannel then
+      Result.A := ClampByte(RGB.A shr 8);
   end
   else
   begin
     Result.R := ClampByte(RGB.R div Total);
     Result.G := ClampByte(RGB.G div Total);
     Result.B := ClampByte(RGB.B div Total);
+    if UseAlphaChannel then
+      Result.A := ClampByte(RGB.A div Total);
   end;
 end;
 
@@ -827,21 +1200,24 @@ procedure DoStretch(Filter: TFilterFunction; Radius: Single; Source, Target: TBi
 
 var
   ScaleX,
-  ScaleY: Single;  // Zoom scale factors
+  ScaleY: Single;   // Zoom scale factors
   I, J,
-  K, N: Integer; // Loop variables
-  Center: Single; // Filter calculation variables
+  K, N: Integer;    // Loop variables
+  Center: Single;   // Filter calculation variables
   Width: Single;
   Weight: Integer;  // Filter calculation variables
   Left,
-  Right: Integer; // Filter calculation variables
+  Right: Integer;   // Filter calculation variables
   Work: TBitmap;
   ContributorList: TContributorList;
-  SourceLine,
-  DestLine: PPixelArray;
-  DestPixel: PBGR;
-  Delta,
-  DestDelta: Integer;
+
+  SourceLine, DestLine: Pointer; // either points to BGR or BGRA structure
+  DestPixel: Pointer;
+  UseAlphaChannel: Boolean;
+  PixelSize: Integer;
+  ContributorResult: TBGRA;
+
+  Delta, DestDelta: Integer;
   SourceHeight,
   SourceWidth,
   TargetHeight,
@@ -855,18 +1231,27 @@ begin
   TargetWidth := Target.Width;
 
   if (SourceHeight = 0) or (SourceWidth = 0) or
-     (TargetHeight = 0) or (TargetWidth = 0) then Exit;
-     
-  // create intermediate image to hold horizontal zoom
+     (TargetHeight = 0) or (TargetWidth = 0) then
+    Exit;
+
+  UseAlphaChannel := Source.PixelFormat = pf32Bit;
+
+  // Create intermediate image to hold horizontal zoom.
   Work := TBitmap.Create;
+  Work.Canvas.Lock;
   try
-    Work.PixelFormat := pf24Bit;
+    Work.PixelFormat := Source.PixelFormat;
+
     Work.Height := SourceHeight;
     Work.Width := TargetWidth;
-    if SourceWidth = 1 then ScaleX :=  TargetWidth / SourceWidth
-                       else ScaleX :=  (TargetWidth - 1) / (SourceWidth - 1);
-    if (SourceHeight = 1) or (TargetHeight = 1) then ScaleY :=  TargetHeight / SourceHeight
-                                                else ScaleY :=  (TargetHeight - 1) / (SourceHeight - 1);
+    if (SourceWidth = 1) or (TargetWidth = 1) then
+      ScaleX :=  TargetWidth / SourceWidth
+    else
+      ScaleX :=  (TargetWidth - 1) / (SourceWidth - 1);
+    if (SourceHeight = 1) or (TargetHeight = 1) then
+      ScaleY :=  TargetHeight / SourceHeight
+    else
+      ScaleY :=  (TargetHeight - 1) / (SourceHeight - 1);
 
     // pre-calculate filter contributions for a row
     SetLength(ContributorList, TargetWidth);
@@ -878,7 +1263,7 @@ begin
       for I := 0 to TargetWidth - 1 do
       begin
         ContributorList[I].N := 0;
-        SetLength(ContributorList[I].Contributors, Trunc(2 * Width + 1));
+        SetLength(ContributorList[I].Contributors, Ceil(2 * (Width + 1)));
         Center := I / ScaleX;
         Left := Floor(Center - Width);
         Right := Ceil(Center + Width);
@@ -887,10 +1272,13 @@ begin
           Weight := Round(Filter((Center - J) * ScaleX) * ScaleX * 256);
           if Weight <> 0 then
           begin
-            if J < 0 then N := -J
-                     else
-              if J >= SourceWidth then N := SourceWidth - J + SourceWidth - 1
-                                  else N := J;
+            if J < 0 then
+              N := -J
+            else
+              if J >= SourceWidth then
+                N := SourceWidth - J + SourceWidth - 1
+              else
+                N := J;
             K := ContributorList[I].N;
             Inc(ContributorList[I].N);
             ContributorList[I].Contributors[K].Pixel := N;
@@ -906,7 +1294,7 @@ begin
       for I := 0 to TargetWidth - 1 do
       begin
         ContributorList[I].N := 0;
-        SetLength(ContributorList[I].Contributors, Trunc(2 * Radius + 1));
+        SetLength(ContributorList[I].Contributors, Ceil(2 * (Radius + 1)));
         Center := I / ScaleX;
         Left := Floor(Center - Radius);
         Right := Ceil(Center + Radius);
@@ -915,10 +1303,13 @@ begin
           Weight := Round(Filter(Center - J) * 256);
           if Weight <> 0 then
           begin
-            if J < 0 then N := -J
-                     else
-             if J >= SourceWidth then N := SourceWidth - J + SourceWidth - 1
-                                 else N := J;
+            if J < 0 then
+              N := -J
+            else
+              if J >= SourceWidth then
+                N := SourceWidth - J + SourceWidth - 1
+              else
+                N := J;
             K := ContributorList[I].N;
             Inc(ContributorList[I].N);
             ContributorList[I].Contributors[K].Pixel := N;
@@ -932,22 +1323,31 @@ begin
     SetLength(CurrentLineR, SourceWidth);
     SetLength(CurrentLineG, SourceWidth);
     SetLength(CurrentLineB, SourceWidth);
+    if UseAlphaChannel then
+    begin
+      SetLength(CurrentLineA, SourceWidth);
+      PixelSize := 4;
+    end
+    else
+      PixelSize := 3;
     for K := 0 to SourceHeight - 1 do
     begin
       SourceLine := Source.ScanLine[K];
-      FillLineChache(SourceWidth, 3, SourceLine);
+      FillLineCache(SourceWidth, PixelSize, SourceLine, UseAlphaChannel);
       DestPixel := Work.ScanLine[K];
       for I := 0 to TargetWidth - 1 do
         with ContributorList[I] do
         begin
-          DestPixel^ := ApplyContributors(N, ContributorList[I].Contributors);
+          ContributorResult := ApplyContributors(N, ContributorList[I].Contributors, UseAlphaChannel);
+          Move(ContributorResult, DestPixel^, PixelSize);
           // move on to next column
-          Inc(DestPixel);
+          Inc(PByte(DestPixel), PixelSize);
         end;
     end;
 
     // free the memory allocated for horizontal filter weights, since we need the stucture again
-    for I := 0 to TargetWidth - 1 do ContributorList[I].Contributors := nil;
+    for I := 0 to TargetWidth - 1 do
+      ContributorList[I].Contributors := nil;
     ContributorList := nil;
 
     // pre-calculate filter contributions for a column
@@ -960,7 +1360,7 @@ begin
       for I := 0 to TargetHeight - 1 do
       begin
         ContributorList[I].N := 0;
-        SetLength(ContributorList[I].Contributors, Trunc(2 * Width + 1));
+        SetLength(ContributorList[I].Contributors, Ceil(2 * (Width + 1)));
         Center := I / ScaleY;
         Left := Floor(Center - Width);
         Right := Ceil(Center + Width);
@@ -969,10 +1369,13 @@ begin
           Weight := Round(Filter((Center - J) * ScaleY) * ScaleY * 256);
           if Weight <> 0 then
           begin
-            if J < 0 then N := -J
-                     else
-              if J >= SourceHeight then N := SourceHeight - J + SourceHeight - 1
-                                   else N := J;
+            if J < 0 then
+              N := -J
+            else
+              if J >= SourceHeight then
+                N := SourceHeight - J + SourceHeight - 1
+              else
+                N := J;
             K := ContributorList[I].N;
             Inc(ContributorList[I].N);
             ContributorList[I].Contributors[K].Pixel := N;
@@ -988,7 +1391,7 @@ begin
       for I := 0 to TargetHeight - 1 do
       begin
         ContributorList[I].N := 0;
-        SetLength(ContributorList[I].Contributors, Trunc(2 * Radius + 1));
+        SetLength(ContributorList[I].Contributors, Ceil(2 * (Radius + 1)));
         Center := I / ScaleY;
         Left := Floor(Center - Radius);
         Right := Ceil(Center + Radius);
@@ -997,10 +1400,13 @@ begin
           Weight := Round(Filter(Center - J) * 256);
           if Weight <> 0 then
           begin
-            if J < 0 then N := -J
-                     else
-              if J >= SourceHeight then N := SourceHeight - J + SourceHeight - 1
-                                   else N := J;
+            if J < 0 then
+              N := -J
+            else
+              if J >= SourceHeight then
+                N := SourceHeight - J + SourceHeight - 1
+              else
+                N := J;                       
             K := ContributorList[I].N;
             Inc(ContributorList[I].N);
             ContributorList[I].Contributors[K].Pixel := N;
@@ -1014,7 +1420,13 @@ begin
     SetLength(CurrentLineR, SourceHeight);
     SetLength(CurrentLineG, SourceHeight);
     SetLength(CurrentLineB, SourceHeight);
-
+    if UseAlphaChannel then
+    begin
+      SetLength(CurrentLineA, SourceHeight);
+      PixelSize := 4;
+    end
+    else
+      PixelSize := 3;
 
     SourceLine := Work.ScanLine[0];
     Delta := Integer(Work.ScanLine[1]) - Integer(SourceLine);
@@ -1023,27 +1435,33 @@ begin
     for K := 0 to TargetWidth - 1 do
     begin
       DestPixel := Pointer(DestLine);
-      FillLineChache(SourceHeight, Delta, SourceLine);
+      FillLineCache(SourceHeight, Delta, SourceLine, UseAlphaChannel);
       for I := 0 to TargetHeight - 1 do
         with ContributorList[I] do
         begin
-          DestPixel^ := ApplyContributors(N, ContributorList[I].Contributors);
-          Inc(Integer(DestPixel), DestDelta);
+          ContributorResult := ApplyContributors(N, ContributorList[I].Contributors, UseAlphaChannel);
+          Move(ContributorResult, DestPixel^, PixelSize);
+          // move on to next column
+          Inc(PByte(DestPixel), DestDelta);
         end;
-      Inc(SourceLine);
-      Inc(DestLine);
+      Inc(PByte(SourceLine), PixelSize);
+      Inc(PByte(DestLine), PixelSize);
     end;
 
     // free the memory allocated for vertical filter weights
-    for I := 0 to TargetHeight - 1 do ContributorList[I].Contributors := nil;
+    for I := 0 to TargetHeight - 1 do
+      ContributorList[I].Contributors := nil;
     // this one is done automatically on exit, but is here for completeness
     ContributorList := nil;
 
   finally
+    Work.Canvas.Unlock;
     Work.Free;
     CurrentLineR := nil;
     CurrentLineG := nil;
     CurrentLineB := nil;
+    if UseAlphaChannel then
+      CurrentLineA := nil;
   end;
 end;
 
@@ -1056,12 +1474,15 @@ procedure Stretch(NewWidth, NewHeight: Cardinal; Filter: TResamplingFilter; Radi
 // Is Radius = 0 then the recommended filter area will be used (see DefaultFilterRadius).
 
 begin
-  if Radius = 0 then Radius := DefaultFilterRadius[Filter];
-  Target.Handle := 0;
-  Target.PixelFormat := pf24Bit;
+  if Source.PixelFormat in [pfDevice, pf8Bit, pf16Bit] then
+    raise Exception.Create('Bitmap must have 24 or 32 bpp!');
+
+  if Radius = 0 then
+    Radius := DefaultFilterRadius[Filter];
+  Target.Height := 0; // Avoid unnecessary image data copies.
+  Target.PixelFormat := Source.PixelFormat;
   Target.Width := NewWidth;
   Target.Height := NewHeight;
-  Source.PixelFormat := pf24Bit;
   DoStretch(FilterList[Filter], Radius, Source, Target);
 end;
 
@@ -1073,17 +1494,60 @@ var
   Target: TBitmap;
 
 begin
-  if Radius = 0 then Radius := DefaultFilterRadius[Filter];
+  if Source.PixelFormat in [pfDevice, pf8Bit, pf16Bit] then
+    raise Exception.Create('Bitmap must have 24 or 32 bpp!');
+
+  if Radius = 0 then
+    Radius := DefaultFilterRadius[Filter];
   Target := TBitmap.Create;
   try
-    Target.PixelFormat := pf24Bit;
     Target.Width := NewWidth;
     Target.Height := NewHeight;
-    Source.PixelFormat := pf24Bit;
+    Target.PixelFormat := Source.PixelFormat;
     DoStretch(FilterList[Filter], Radius, Source, Target);
     Source.Assign(Target);
   finally
     Target.Free;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function ReadImageProperties(const FileName: string; var Properties: TImageProperties): Boolean;
+
+// Reads the properties of an image given by FileName. It just simplifies to find a proper loader class.
+// Reading image properties is a light weight task. Only a small part of the image must be accessed.
+// It is not loaded into memory.
+// True is returned if the properties could be read. False appears in case on a problem (e.g. read error). 
+
+var
+  Extension: string;
+  GraphicClass: TGraphicClass;
+  NewGraphic: TGraphic;
+
+begin
+  Result := False;
+
+  try
+    Extension := ExtractFileExt(FileName);
+    GraphicClass := FileFormatList.GraphicFromExtension(Extension);
+
+    if (GraphicClass <> nil) and (GraphicClass.ClassParent = TGraphicExGraphic) then
+    begin
+      NewGraphic := GraphicClass.Create;
+      try
+        with TGraphicExGraphic(NewGraphic) do
+        begin
+          ReadImageProperties(FileName, 0);
+          Properties := ImageProperties;
+          Result := True;
+        end;
+      finally
+        NewGraphic.Free;
+      end;
+    end;
+  except
+    // Silent exception, we return False for any error.
   end;
 end;
 
@@ -1095,13 +1559,16 @@ procedure SwapShort(P: PWord; Count: Cardinal);
 // EAX contains P, EDX contains Count
 
 asm
+        TEST    EDX, EDX
+        JZ      @@Finish
 @@Loop:
-              MOV CX, [EAX]
-              XCHG CH, CL
-              MOV [EAX], CX
-              ADD EAX, 2
-              DEC EDX
-              JNZ @@Loop
+        MOV     CX, [EAX]
+        XCHG    CH, CL
+        MOV     [EAX], CX
+        ADD     EAX, 2
+        DEC     EDX
+        JNZ     @@Loop
+@@Finish:
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1112,23 +1579,126 @@ procedure SwapLong(P: PInteger; Count: Cardinal); overload;
 // EAX contains P, EDX contains Count
 
 asm
+        TEST    EDX, EDX
+        JZ      @@Finish
 @@Loop:
-              MOV ECX, [EAX]
-              BSWAP ECX
-              MOV [EAX], ECX
-              ADD EAX, 4
-              DEC EDX
-              JNZ @@Loop
+        MOV     ECX, [EAX]
+        BSWAP   ECX
+        MOV     [EAX], ECX
+        ADD     EAX, 4
+        DEC     EDX
+        JNZ     @@Loop
+@@Finish:
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
 function SwapLong(Value: Cardinal): Cardinal; overload;
 
-// swaps high and low bytes of the given 32 bit value
+// Swaps high and low bytes of the given 32 bit value.
 
 asm
-              BSWAP EAX
+        BSWAP   EAX
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function SwapLong(Value: Integer): Integer; overload;
+
+// Swaps high and low bytes of the given 32 bit value.
+
+asm
+        BSWAP   EAX
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure SwapDouble(const Source; var Target);
+
+// Reverses the byte order in Source which must be 8 bytes in size (as well as the target).
+
+var
+  I: Int64;
+
+begin
+  I := Int64(Source);
+  Int64(Target) := SwapLong(Cardinal(I shr 32)) + Int64(SwapLong(Cardinal(I))) shl 32;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function ReadBigEndianCardinal(var Run: PAnsiChar): Cardinal;
+
+// Reads the next four bytes from the memory pointed to by Run, converts this into a cardinal number (inclusive byte
+// order swapping) and advances Run.
+
+begin
+  Result := SwapLong(PCardinal(Run)^);
+  Inc(PCardinal(Run));
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function ReadBigEndianDouble(var Run: PAnsiChar): Double;
+
+// Reads the next two bytes from the memory pointed to by Run, converts this into a word number (inclusive byte
+// order swapping) and advances Run.
+
+begin
+  SwapDouble(Run^, Result);
+  Inc(Run, SizeOf(Double));
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function ReadBigEndianInteger(var Run: PAnsiChar): Integer;
+
+// Reads the next four bytes from the memory pointed to by Run, converts this into a cardinal number (inclusive byte
+// order swapping) and advances Run.
+
+begin
+  Result := SwapLong(PInteger(Run)^);
+  Inc(PInteger(Run));
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function ReadBigEndianString(var Run: PAnsiChar; Len: Cardinal): WideString; overload;
+
+// Reads the next Len bytes from the memory pointed to by Run, converts this into a Unicode string (inclusive byte
+// order swapping) and advances Run.
+// Run is not really a PChar type, but an untyped pointer using PChar for easier pointer maths.
+
+begin
+  SetString(Result, PWideChar(Run), Len);
+  Inc(PWideChar(Run), Len);
+  SwapShort(Pointer(Result), Len);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function ReadBigEndianString(var Run: PAnsiChar): WideString; overload;
+
+// Same as ReadBigEndianString with length parameter. However the length must first be retrieved.
+
+var
+  Len: Cardinal;
+
+begin
+  Len := ReadBigEndianCardinal(Run);
+  Result := ReadBigEndianString(Run, Len);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function ReadBigEndianWord(var Run: PAnsiChar): Word;
+
+// Reads the next two bytes from the memory pointed to by Run, converts this into a word number (inclusive byte
+// order swapping) and advances Run.
+
+begin
+  Result := Swap(PWord(Run)^);
+  Inc(Run, SizeOf(Word));
 end;
 
 //----------------- various conversion routines ------------------------------------------------------------------------
@@ -1139,11 +1709,11 @@ procedure Depredict1(P: Pointer; Count: Cardinal);
 
 asm
 @@1:
-              MOV CL, [EAX]
-              ADD [EAX + 1], CL
-              INC EAX
-              DEC EDX
-              JNZ @@1
+        MOV     CL, [EAX]
+        ADD     [EAX + 1], CL
+        INC     EAX
+        DEC     EDX
+        JNZ     @@1
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1153,15 +1723,15 @@ procedure Depredict3(P: Pointer; Count: Cardinal);
 // EAX contains P and EDX Count
 
 asm
-              MOV ECX, EDX
-              SHL ECX, 1
-              ADD ECX, EDX         // 3 * Count
+        MOV     ECX, EDX
+        SHL     ECX, 1
+        ADD     ECX, EDX  // 3 * Count
 @@1:
-              MOV DL, [EAX]
-              ADD [EAX + 3], DL
-              INC EAX
-              DEC ECX
-              JNZ @@1
+        MOV     DL, [EAX]
+        ADD     [EAX + 3], DL
+        INC     EAX
+        DEC     ECX
+        JNZ     @@1
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1171,13 +1741,96 @@ procedure Depredict4(P: Pointer; Count: Cardinal);
 // EAX contains P and EDX Count
 
 asm
-              SHL EDX, 2          // 4 * Count
+        SHL     EDX, 2 // 4 * Count
 @@1:
-              MOV CL, [EAX]
-              ADD [EAX + 4], CL
-              INC EAX
-              DEC EDX
-              JNZ @@1
+        MOV     CL, [EAX]
+        ADD     [EAX + 4], CL
+        INC     EAX
+        DEC     EDX
+        JNZ     @@1
+end;
+
+//----------------- TFileMapping ---------------------------------------------------------------------------------------
+
+constructor TFileMapping.Create(const FileName: string; Mode: TFileMappingMode);
+
+var
+  AccessFlags,
+  CreationFlag: Cardinal;
+  SizeLow,
+  SizeHigh: Cardinal;
+  
+begin
+  FFileName := FileName;
+
+  AccessFlags := GENERIC_READ;
+  if Mode <> fmmReadOnly then
+    AccessFlags := AccessFlags or GENERIC_WRITE;
+  case Mode of
+    fmmCreateNew:
+      CreationFlag := CREATE_ALWAYS;
+    fmmOpenOrCreate:
+      CreationFlag := OPEN_ALWAYS;
+  else
+    // fmmReadOnly, fmmReadWrite
+    CreationFlag := OPEN_EXISTING;
+  end;
+  FFileHandle := CreateFile(PChar(FileName), AccessFLags, FILE_SHARE_READ, nil, CreationFlag, FILE_ATTRIBUTE_NORMAL
+    or FILE_FLAG_SEQUENTIAL_SCAN, 0);
+  if FFileHandle = INVALID_HANDLE_VALUE then
+    RaiseLastOSError
+  else
+  begin
+    SizeLow := GetFileSize(FFileHandle, @SizeHigh);
+    FFileSize := Int64(SizeHigh) shl 32 + SizeLow;
+    FFileMapping := CreateFileMapping(FFileHandle, nil, PAGE_READONLY	, 0, 0, nil);
+    if FFileMapping = 0 then
+      RaiseLastOSError;
+    FMemory := MapViewOfFile(FFileMapping, FILE_MAP_READ, 0, 0, 0);
+    if FMemory = nil then
+      RaiseLastOSError;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+constructor TFileMapping.Create(Stream: THandleStream);
+
+// Alternative constructor to create the mapping from a handle stream which is usually a wrapper for a normal file.
+// NOTE: you must not change the file content using the stream as long as the mapping exists otherwise inconsitencies
+//       will appear! However you can write into the stream using the memory pointer from the mapping.
+
+var
+  SizeLow,
+  SizeHigh: Cardinal;
+
+begin
+  // Set the file handle to invalid so it does not get freed in the destructor.
+  FFileHandle := INVALID_HANDLE_VALUE;
+
+  SizeLow := GetFileSize(Stream.Handle, @SizeHigh);
+  FFileSize := Int64(SizeHigh) shl 32 + SizeLow;
+  FFileMapping := CreateFileMapping(Stream.Handle, nil, PAGE_READONLY, 0, 0, nil);
+  if FFileMapping = 0 then
+    RaiseLastOSError;
+  FMemory := MapViewOfFile(FFileMapping, FILE_MAP_READ, 0, 0, 0);
+  if FMemory = nil then
+    RaiseLastOSError;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+destructor TFileMapping.Destroy;
+
+begin
+  if Assigned(FMemory) then
+    UnmapViewOfFile(Memory);
+  if FFileMapping <> 0 then
+    CloseHandle(FFileMapping);
+  if FFileHandle <> INVALID_HANDLE_VALUE then
+    FileClose(FFileHandle);
+
+  inherited;
 end;
 
 //----------------- TGraphicExGraphic ----------------------------------------------------------------------------------
@@ -1187,6 +1840,7 @@ constructor TGraphicExGraphic.Create;
 begin
   inherited;
   FColorManager := TColorManager.Create;
+  Decoder := nil;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1194,8 +1848,177 @@ end;
 destructor TGraphicExGraphic.Destroy;
 
 begin
+  ClearProgressStack;
   FColorManager.Free;
+  Decoder.Free;
+
   inherited;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+// Since loading an image involves often a lot of processing it is diffcult to provide the user with
+// usefull progress information. This is mainly due to the impossibility to tell in advance how
+// much overall percent a particular part needs and/or has finished.
+// TGraphicExGraphic implements an advanced management which takes socalled sections as base interval.
+// A section is the amount of percents a process will take up in the whole range of 0..100% relative to its
+// "parent section".
+// Stepping up the progress always means here to count "locally" (i.e. in the current section).
+// This way a particular process can always step from 0 to 100% and the steps are automatically transformed to an
+// overall value depending on the section sizes.
+//
+
+procedure TGraphicExGraphic.AdvanceProgress(Amount: Single; OffsetX, OffsetY: Integer; DoRedraw: Boolean);
+
+// Steps the current progress section up by Amount percent (0..100%).
+// The meaning of the parameters in the method is:
+//   Amount   - Value which is used to increase the section's current progress position (0..100%)
+//   OffsetX,
+//   OffsetY  - Values to offset the progress rectangle with
+//   DoRedraw - Tells the application to update its display.
+
+var
+  CurrentSection: PProgressSection;
+
+begin
+  Assert(Assigned(FProgressStack), 'Start progress display first using InitProgress.');
+  Assert(FProgressStack.Count > 0, 'Initialize a progress section first using StartProgressSection.');
+
+  // Advance the top section.
+  CurrentSection := FProgressStack.Peek;
+  Amount := Amount / 100;
+  // Ensure that we never exceed the 100% limit.
+  if CurrentSection.Position + Amount > 1 then
+  begin
+    Amount := 1 - CurrentSection.Position;
+    CurrentSection.Position := 1;
+  end
+  else
+    CurrentSection.Position := CurrentSection.Position + Amount;
+
+  // Sum up the section's percents under consideration of the section size.
+  FPercentDone := FPercentDone + CurrentSection.TransformFactor * Amount;
+  OffsetRect(FProgressRect, OffsetX, OffsetY);
+  Progress(Self, psRunning, Round(100 * FPercentDone), DoRedraw, FProgressRect, CurrentSection.Message);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TGraphicExGraphic.ClearProgressStack;
+
+// Empties the current progress stack and frees it afterwards.
+
+var
+  CurrentSection: PProgressSection;
+
+begin
+  if Assigned(FProgressStack) then
+  begin
+    while FProgressStack.Count > 0 do
+    begin
+      CurrentSection := FProgressStack.Pop;
+      Dispose(CurrentSection);
+    end;
+    FreeAndNil(FProgressStack);
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TGraphicExGraphic.FinishProgressSection(DoRedraw: Boolean);
+
+// Finishes the current section and removes it from the progress stack.
+// The parent section is updated assuming this section has exactly used 100% (regardless of the actual amount).
+
+var
+  Percent: Single;
+  CurrentSection,
+  ParentSection: PProgressSection;
+
+begin
+  Assert(Assigned(FProgressStack), 'Start progress display first using InitProgress.');
+  Assert(FProgressStack.Count > 0, 'Initialize a progress section first using StartProgressSection.');
+
+  CurrentSection := FProgressStack.Pop;
+  if FProgressStack.Count = 0 then
+    FreeAndNil(FProgressStack)
+  else
+  begin
+    // Update position of the parent section.
+    ParentSection := FProgressStack.Peek;
+    if ParentSection.Position + CurrentSection.ParentSize > 1 then
+      ParentSection.Position := 1
+    else
+      ParentSection.Position :=  ParentSection.Position + CurrentSection.ParentSize;
+  end;
+
+  // Update the overall percent value.
+  Percent := 1 - CurrentSection.Position;
+  if Percent > 0 then
+    FPercentDone := FPercentDone + CurrentSection.TransformFactor * Percent;
+  Dispose(CurrentSection);
+
+  if FProgressStack = nil then
+    Progress(Self, psEnding, Round(100 * FPercentDone), DoRedraw, FProgressRect, '')
+  else
+    Progress(Self, psRunning, Round(100 * FPercentDone), DoRedraw, FProgressRect, '');
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TGraphicExGraphic.InitProgress(Width, Height: Integer);
+
+// Initializes all progress related variables.
+
+begin
+  ClearProgressStack;
+  FProgressStack := TStack.Create;
+
+  FProgressRect := Rect(0, 0, Width, Height);
+  FPercentDone := 0;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TGraphicExGraphic.StartProgressSection(Size: Single; const S: string);
+
+// Starts a new progress section within the current section.
+// Size determines the amount the new section will take up in the current section and must be given in
+// percent (0..100%). If Size is 0 then the full rest of the current section is taken.
+// S is the message string to use for the progress event.
+
+var
+  CurrentSection,
+  NewSection: PProgressSection;
+
+begin
+  Assert(Assigned(FProgressStack), 'Start progress display first using InitProgress.');
+
+  New(NewSection);
+  if FProgressStack.Count = 0 then
+  begin
+    // This is the first (root) section.
+    NewSection.ParentSize := 1;
+    NewSection.TransformFactor := 1;
+  end
+  else
+  begin
+    CurrentSection := FProgressStack.Peek;
+    if Size = 0 then
+      NewSection.ParentSize := 1 - CurrentSection.Position
+    else
+      NewSection.ParentSize := Size / 100;
+    NewSection.TransformFactor := CurrentSection.TransformFactor * NewSection.ParentSize;
+  end;
+
+  NewSection.Position := 0;
+  NewSection.Message := S;
+
+  FProgressStack.Push(NewSection);
+  if FProgressStack.Count = 1 then
+    Progress(Self, psStarting, Round(100 * FPercentDone), False, FProgressRect, S)
+  else
+    Progress(Self, psRunning, Round(100 * FPercentDone), False, FProgressRect, S);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1203,13 +2026,14 @@ end;
 procedure TGraphicExGraphic.Assign(Source: TPersistent);
 
 begin
-  if Source is TGraphicExGraphic then FImageProperties := TGraphicExGraphic(Source).FImageProperties;
+  if Source is TGraphicExGraphic then
+    FImageProperties := TGraphicExGraphic(Source).FImageProperties;
   inherited;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TGraphicExGraphic.CanLoad(const FileName: String): Boolean;
+class function TGraphicExGraphic.CanLoad(const FileName: string): Boolean;
 
 var
   Stream: TFileStream;
@@ -1225,11 +2049,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TGraphicExGraphic.CanLoad(Stream: TStream): Boolean;
-
-// Descentants have to override this method and return True if they consider the data in Stream
-// as loadable by the particular class.
-// Note: Make sure the stream position is the same on exit as it was on enter!
+class function TGraphicExGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
   Result := False;
@@ -1237,7 +2057,77 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TGraphicExGraphic.LoadFromResourceID(Instance: THandle; ResID: Integer);
+class function TGraphicExGraphic.CanLoad(Stream: TStream): Boolean;
+
+begin
+  // We can optimize load operations by using direct memory access if possible.
+  // For file streams a file mapping is created, memory streams can directly be accessed and
+  // other streams (e.g. blob streams) are converted into a memory stream first.
+  if Stream is TCustomMemoryStream then
+  begin
+    // Simple case: memory streams already are in memory.
+    with Stream as TCustomMemoryStream do
+      Result := CanLoad(Memory, Size);
+  end
+  else
+    if (Stream is THandleStream) and (GetFileType(THandleStream(Stream).Handle) = FILE_TYPE_DISK) then
+    begin
+      // File streams can be mapped to access their content directly.
+      with TFileMapping.Create(Stream as THandleStream) do
+      try
+        Result := CanLoad(Memory, Size);
+      finally
+        Free;
+      end;
+    end
+    else
+    begin
+      // Any other stream is converted into a memory stream first.
+      with TMemoryStream.Create do
+      try
+        CopyFrom(Stream, 0);
+        Position := 0;
+        Result := CanLoad(Memory, Size);
+      finally
+        Free;
+      end;
+    end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TGraphicExGraphic.LoadFromFile(const FileName: string);
+
+begin
+  LoadFromFileByIndex(FileName, 0);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TGraphicExGraphic.LoadFromFileByIndex(const FileName: string; ImageIndex: Cardinal = 0);
+
+begin
+  // Create a file mapping for the file to access the data without intermediate buffering.
+  with TFileMapping.Create(FileName, fmmReadOnly) do
+  try
+    LoadFromMemory(Memory, Size, ImageIndex);
+  finally
+    Free;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TGraphicExGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
+
+begin
+  FreeAndNil(Decoder);
+  Handle := 0;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TGraphicExGraphic.LoadFromResourceID(Instance: THandle; ResID: Integer; ImageIndex: Cardinal = 0);
 
 var
   Stream: TResourceStream;
@@ -1245,7 +2135,9 @@ var
 begin
   Stream := TResourceStream.CreateFromID(Instance, ResID, RT_RCDATA);
   try
-    LoadFromStream(Stream);
+    // Resource streams are memory streams, so we can directly access their data.
+    with Stream do
+      LoadFromMemory(Memory, Size, ImageIndex);
   finally
     Stream.Free;
   end;
@@ -1253,7 +2145,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TGraphicExGraphic.LoadFromResourceName(Instance: THandle; const ResName: String);
+procedure TGraphicExGraphic.LoadFromResourceName(Instance: THandle; const ResName: string; ImageIndex: Cardinal = 0);
 
 var
   Stream: TResourceStream;
@@ -1261,9 +2153,72 @@ var
 begin
   Stream := TResourceStream.Create(Instance, ResName, RT_RCDATA);
   try
-    LoadFromStream(Stream);
+    // Resource streams are memory streams, so we can directly access their data.
+    with Stream do
+      LoadFromMemory(Memory, Size, ImageIndex);
   finally
     Stream.Free;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TGraphicExGraphic.LoadFromStream(Stream: TStream);
+
+begin
+  LoadFromStreamByIndex(Stream, 0);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TGraphicExGraphic.LoadFromStreamByIndex(Stream: TStream; ImageIndex: Cardinal = 0);
+
+begin
+  // We can optimize load operations by using direct memory access if possible.
+  // For file streams a file mapping is created, memory streams can directly be accessed and
+  // other streams (e.g. blob streams) are converted into a memory stream first.
+  if Stream is TCustomMemoryStream then
+  begin
+    // Simple case: memory streams already are in memory.
+    with Stream as TCustomMemoryStream do
+      LoadFromMemory(Memory, Size, ImageIndex);
+  end
+  else
+    if (Stream is THandleStream) and (GetFileType(THandleStream(Stream).Handle) = FILE_TYPE_DISK) then
+    begin
+      // File streams can be mapped to access their content directly.
+      with TFileMapping.Create(Stream as THandleStream) do
+      try
+        LoadFromMemory(Memory, Size, ImageIndex);
+      finally
+        Free;
+      end;
+    end
+    else
+    begin
+      // Any other stream is converted into a memory stream first.
+      with TMemoryStream.Create do
+      try
+        CopyFrom(Stream, 0);
+        Position := 0;
+        LoadFromMemory(Memory, Size, ImageIndex);
+      finally
+        Free;
+      end;
+    end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TGraphicExGraphic.ReadImageProperties(const Name: string; ImageIndex: Cardinal): Boolean;
+
+begin
+  // Create a file mapping for the file to access the data without intermediate buffering.
+  with TFileMapping.Create(Name, fmmReadOnly) do
+  try
+    Result := ReadImageProperties(Memory, Size, ImageIndex);
+  finally
+    Free;
   end;
 end;
 
@@ -1272,14 +2227,57 @@ end;
 function TGraphicExGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
 
 // Initializes the internal image properties structure.
-// Descentants must override this method to fill in the actual values.
-// Result is always False to show there is no image to load.
+// This is the overloaded variant for streams.
+
+var
+  LastPos: Int64;
 
 begin
-  Finalize(FImageProperties);
+  LastPos := Stream.Position;
+  if Stream is TCustomMemoryStream then
+  begin
+    // Simple case: memory streams already are in memory.
+    with Stream as TCustomMemoryStream do
+      Result := ReadImageProperties(Memory, Size, ImageIndex);
+  end
+  else
+    if (Stream is THandleStream) and (GetFileType(THandleStream(Stream).Handle) = FILE_TYPE_DISK) then
+    begin
+      // File streams can be mapped to access their content directly.
+      with TFileMapping.Create(Stream as THandleStream) do
+      try
+        Result := ReadImageProperties(Memory, Size, ImageIndex);
+      finally
+        Free;
+      end;
+    end
+    else
+    begin
+      // Any other stream is converted into a memory stream first.
+      with TMemoryStream.Create do
+      try
+        CopyFrom(Stream, 0);
+        Position := 0;
+        Result := ReadImageProperties(Memory, Size, ImageIndex);
+      finally
+        Free;
+      end;
+    end;
+
+  Stream.Position := LastPos;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TGraphicExGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
+
+// Initializes the internal image properties structure.
+// Descentants must override this method to fill in the actual values.
+
+begin
   ZeroMemory(@FImageProperties, SizeOf(FImageProperties));
   FImageProperties.FileGamma := 1;
-  Result := False;
+  Result := True;
 end;
 
 //----------------- TAutodeskGraphic -----------------------------------------------------------------------------------
@@ -1287,6 +2285,7 @@ end;
 {$ifdef AutodeskGraphic}
 
 type
+  PAutodeskHeader = ^TAutodeskHeader;
   TAutodeskHeader = packed record
     Width,
     Height,
@@ -1300,110 +2299,102 @@ type
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TAutodeskGraphic.CanLoad(Stream: TStream): Boolean;
+class function TAutodeskGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 var
-  FileID: Word;
-  Header: TAutodeskHeader;
-  LastPosition: Cardinal;
+  Run: PByte;
 
 begin
-  with Stream do
+  Run := Memory;
+  Result := Size > SizeOf(Word) + SizeOf(TAutodeskHeader);
+  if Result then
   begin
-    Result := (Size - Position) > (SizeOf(FileID) + SizeOf(Header));
+    // Check file ID.
+    Result := PWord(Run)^ = $9119;
     if Result then
     begin
-      LastPosition := Position;
-      Read(FileID, SizeOf(FileID));
-      Result := FileID = $9119;
-      if Result then
-      begin
-        // read image dimensions
-        Read(Header, SizeOf(Header));
-        Result := (Header.Depth = 8) and (Header.Compression = 0);
-      end;
-      Position := LastPosition;
+      // Read image dimensions.
+      Inc(Run, SizeOf(Word));
+      with PAutodeskHeader(Run)^ do
+        Result := (Depth = 8) and (Compression = 0);
     end;
   end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TAutodeskGraphic.LoadFromStream(Stream: TStream);
+procedure TAutodeskGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
-  FileID: Word;
-  FileHeader: TAutodeskHeader;
+  Run: PChar;
   LogPalette: TMaxLogPalette;
   I: Integer;
 
 begin
-  Handle := 0;
-  FBasePosition := Stream.Position;
+  inherited;
 
-  if ReadImageProperties(Stream, 0) then
+  Run := Memory;
+  
+  if ReadImageProperties(Memory, Size, ImageIndex) then
   begin
-    with Stream do
+    FProgressRect := Rect(0, 0, Width, 1);
+    Progress(Self, psStarting, 0, False, FProgressRect, gesTransfering);
+
+    // Skip file ID and header.
+    Inc(Run, 2 + SizeOf(TAutodeskHeader));
+
+    // Read palette entries and create a palette.
+    ZeroMemory(@LogPalette, SizeOf(LogPalette));
+    LogPalette.palVersion := $300;
+    LogPalette.palNumEntries := 256;
+    for I := 0 to 255 do
     begin
-      Position := FBasePosition;
-
-      FProgressRect := Rect(0, 0, Width, 1);
-      Progress(Self, psStarting, 0, False, FProgressRect, gesTransfering);
-      Read(FileID, 2);
-
-      // read image dimensions
-      Read(FileHeader, SizeOf(FileHeader));
-
-      // read palette entries and create a palette
-      ZeroMemory(@LogPalette, SizeOf(LogPalette));
-      LogPalette.palVersion := $300;
-      LogPalette.palNumEntries := 256;
-      for I := 0 to 255 do
+      with PPaletteEntry(Run)^ do
       begin
-        Read(LogPalette.palPalEntry[I], 3);
-        LogPalette.palPalEntry[I].peBlue := LogPalette.palPalEntry[I].peBlue shl 2;
-        LogPalette.palPalEntry[I].peGreen := LogPalette.palPalEntry[I].peGreen shl 2;
-        LogPalette.palPalEntry[I].peRed := LogPalette.palPalEntry[I].peRed shl 2;
+        LogPalette.palPalEntry[I].peBlue := Byte(peBlue shl 2);
+        LogPalette.palPalEntry[I].peGreen := Byte(peGreen shl 2);
+        LogPalette.palPalEntry[I].peRed := Byte(peRed shl 2);
       end;
-
-      // setup bitmap properties
-      PixelFormat := pf8Bit;
-      Palette := CreatePalette(PLogPalette(@LogPalette)^);
-      Width := FileHeader.Width;
-      Height := FileHeader.Height;
-      // finally read image data
-      for I := 0 to Height - 1 do
-      begin
-        Read(Scanline[I]^, FileHeader.Width);
-                                                        
-        Progress(Self, psRunning, MulDiv(I, 100, Height), True, FProgressRect, '');
-        OffsetRect(FProgressRect, 0, 1);
-      end;
-
-      Progress(Self, psEnding, 0, False, FProgressRect, '');
+      Inc(Run, 3);
     end;
+
+    // Setup bitmap properties.
+    PixelFormat := pf8Bit;
+    Palette := CreatePalette(PLogPalette(@LogPalette)^);
+    Width := FImageProperties.Width;
+    Height := FImageProperties.Height;
+    // Finally read image data.
+    for I := 0 to Height - 1 do
+    begin
+      Move(Run^, Scanline[I]^, Width);
+      Inc(Run, Width);
+                                                        
+      Progress(Self, psRunning, MulDiv(I, 100, Height), True, FProgressRect, '');
+      OffsetRect(FProgressRect, 0, 1);
+    end;
+
+    Progress(Self, psEnding, 0, False, FProgressRect, '');
   end
-  else GraphicExError(gesInvalidImage, ['Autodesk']);
+  else
+    GraphicExError(gesInvalidImage, ['Autodesk']);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TAutodeskGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+function TAutodeskGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
-  FileID: Word;
-  Header: TAutodeskHeader;
+  Run: PChar;
+  Header: PAutodeskHeader;
 
 begin
-  Result := inherited ReadImageProperties(Stream, ImageIndex);
-  with Stream, FImageProperties do
-  begin
-    Read(FileID, 2);
-    if FileID = $9119 then
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
+  if Result then
+    with FImageProperties do
     begin
-      // read image dimensions
-      Read(Header, SizeOf(Header));
-
+      Run := Memory;
+      // Skip file ID. This has been check in the inherited call.
+      Header := Pointer(Run + 2);
       ColorScheme := csIndexed;
       Width := Header.Width;
       Height := Header.Height;
@@ -1411,13 +2402,10 @@ begin
       SamplesPerPixel := 1;
       BitsPerPixel := 8;
       Compression := ctNone;
-
-      Result := True;
     end;
-  end;
 end;
 
-{$endif} // AutodeskGraphic
+{$endif AutodeskGraphic}
 
 //----------------- TSGIGraphic ----------------------------------------------------------------------------------------
 
@@ -1430,6 +2418,7 @@ const
   SGI_COMPRESSION_RLE = 1;
 
 type
+  PSGIHeader = ^TSGIHeader;
   TSGIHeader = packed record
     Magic: SmallInt;         // IRIS image file magic number
     Storage,                 // Storage format
@@ -1444,7 +2433,7 @@ type
     PixMin,                  // Minimum pixel value
     PixMax: Cardinal;        // Maximum pixel value
     Dummy: Cardinal;         // ignored
-    ImageName: array[0..79] of AnsiChar;
+    ImageName: array[0..79] of Char;
     ColorMap: Integer;       // Colormap ID
                              //  0 - default, almost all images are stored with this flag
                              //  1 - dithered, only one channel of data (pixels are packed), obsolete
@@ -1455,130 +2444,82 @@ type
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TSGIGraphic.CanLoad(Stream: TStream): Boolean;
-
-// returns True if the data in Stream represents a graphic which can be loaded by this class
+procedure TSGIGraphic.GetComponents(const Memory: Pointer; var Red, Green, Blue, Alpha: Pointer; Row: Integer);
 
 var
-  Header: TSGIHeader;
-  LastPosition: Cardinal;
+ RowWidth: Integer;
+ PlaneSize: Integer;
 
 begin
-  with Stream do
+ RowWidth := Row * Width * FImageProperties.BitsPerSample div 8;
+ PlaneSize := Width * Height * FImageProperties.BitsPerSample div 8;
+
+ Red := PChar(Memory) + 512 + RowWidth;
+ Green := PChar(Memory) + 512 + RowWidth + PlaneSize;
+ Blue := PChar(Memory) + 512 + RowWidth + 2 * PlaneSize;
+ Alpha := PChar(Memory) + 512 + RowWidth + 3 * PlaneSize;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TSGIGraphic.ReadAndDecode(const Memory: Pointer; Red, Green, Blue, Alpha: Pointer; Row: Integer; BPC: Cardinal);
+
+var
+  Count: Cardinal;
+  Run: PChar;
+
+begin
+  if Assigned(Red) then
   begin
-    Result := (Size - Position) > SizeOf(TSGIHeader);
-    if Result then
-    begin
-      LastPosition := Position;
-      ReadBuffer(Header, SizeOf(Header));
-      // one number as check is too unreliable, hence we take some more fields into the check
-      Result := (Swap(Header.Magic) = SGIMagic) and
-                (Header.BPC in [1, 2]) and
-                (Swap(Header.Dimension) in [1..3]);
-      Position := LastPosition;
-    end;
+    Run := PChar(Memory) + FRowStart[Row + 0 * Height];
+    Count := BPC * FRowSize[Row + 0 * Height];
+    Decoder.Decode(Pointer(Run), Red, Count, Width);
+  end;
+
+  if Assigned(Green) then
+  begin
+    Run := PChar(Memory) + FRowStart[Row + 1 * Height];
+    Count := BPC * FRowSize[Row + 1 * Height];
+    Decoder.Decode(Pointer(Run), Green, Count, Width);
+  end;
+
+  if Assigned(Blue) then
+  begin
+    Run := PChar(Memory) + FRowStart[Row + 2 * Height];
+    Count := BPC * FRowSize[Row + 2 * Height];
+    Decoder.Decode(Pointer(Run), Blue, Count, Width);
+  end;
+
+  if Assigned(Alpha) then
+  begin
+    Run := PChar(Memory) + FRowStart[Row + 3 * Height];
+    Count := BPC * FRowSize[Row + 3 * Height];
+    Decoder.Decode(Pointer(Run), Alpha, Count, Width);
   end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TSGIGraphic.ReadAndDecode(Red, Green, Blue, Alpha: Pointer; Row, BPC: Cardinal);
-
-var
-  Count: Cardinal;
-  RawBuffer: Pointer;
+class function TSGIGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
-  with FStream, FImageProperties do
-    // compressed image?
-    if Assigned(FDecoder) then
+  Result := Size > SizeOf(TSGIHeader);
+  if Result then
+    with PSGIHeader(Memory)^ do
     begin
-      if Assigned(Red) then
-      begin
-        Position := FBasePosition + FRowStart[Row + 0 * Height];
-        Count := BPC * FRowSize[Row + 0 * Height];
-        GetMem(RawBuffer, Count);
-        try
-          Read(RawBuffer^, Count);
-          FDecoder.Decode(RawBuffer, Red, Count, Width);
-        finally
-          if Assigned(RawBuffer) then FreeMem(RawBuffer);
-        end;
-      end;
-
-      if Assigned(Green) then
-      begin
-        Position := FBasePosition + FRowStart[Row + 1 * Height];
-        Count := BPC * FRowSize[Row + 1 * Height];
-        GetMem(RawBuffer, Count);
-        try
-          Read(RawBuffer^, Count);
-          FDecoder.Decode(RawBuffer, Green, Count, Width);
-        finally
-          if Assigned(RawBuffer) then FreeMem(RawBuffer);
-        end;
-      end;
-
-      if Assigned(Blue) then
-      begin
-        Position := FBasePosition + FRowStart[Row + 2 * Height];
-        Count := BPC * FRowSize[Row + 2 * Height];
-        GetMem(RawBuffer, Count);
-        try
-          Read(RawBuffer^, Count);
-          FDecoder.Decode(RawBuffer, Blue, Count, Width);
-        finally
-          if Assigned(RawBuffer) then FreeMem(RawBuffer);
-        end;
-      end;
-
-      if Assigned(Alpha) then
-      begin
-        Position := FBasePosition + FRowStart[Row + 3 * Height];
-        Count := BPC * FRowSize[Row + 3 * Height];
-        GetMem(RawBuffer, Count);
-        try
-          Read(RawBuffer^, Count);
-          FDecoder.Decode(RawBuffer, Alpha, Count, Width);
-        finally
-          if Assigned(RawBuffer) then FreeMem(RawBuffer);
-        end;
-      end;
-    end
-    else
-    begin
-      if Assigned(Red) then
-      begin
-        Position := FBasePosition + 512 + (Row * Width);
-        Read(Red^, BPC * Width);
-      end;
-
-      if Assigned(Green) then
-      begin
-        Position := FBasePosition + 512 + (Row * Width) + (Width * Height);
-        Read(Green^, BPC * Width);
-      end;
-
-      if Assigned(Blue) then
-      begin
-        Position := FBasePosition + 512 + (Row * Width) + (2 * Width * Height);
-        Read(Blue^, BPC * Width);
-      end;
-
-      if Assigned(Alpha) then
-      begin
-        Position := FBasePosition + 512 + (Row * Width) + (3 * Width * Height);
-        Read(Alpha^, BPC * Width);
-      end;
+      // There are not many unique fields which can be used for identification, so
+      // we do some simple plausibility checks too.
+      Result := (Swap(Magic) = SGIMagic) and (BPC in [1, 2]) and (Swap(Dimension) in [1..3]);
     end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TSGIGraphic.LoadFromStream(Stream: TStream);
+procedure TSGIGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
-  Y: Cardinal;
+  Run: PChar;
+  Y: Integer;
   RedBuffer,
   GreenBuffer,
   BlueBuffer,
@@ -1587,46 +2528,41 @@ var
   Count: Cardinal;
 
 begin
-  // free previous image
-  Handle := 0;
+  inherited;
 
-  // keep stream reference and start position for seek operations
-  FStream := Stream;
-  FBasePosition := Stream.Position;
-
-  if ReadImageProperties(Stream, 0) then
+  if ReadImageProperties(Memory, Size, ImageIndex) then
   begin
-    with FImageProperties, Stream do
+    Run := Memory;
+    with FImageProperties do
     begin
       FProgressRect := Rect(0, 0, Width, 1);
       Progress(Self, psStarting, 0, False, FProgressRect, gesPreparing);
 
-      Stream.Position := FBasePosition;
-      // read header again, we need some additional information
-      ReadBuffer(Header, SizeOf(Header));
+      // Read header again. We need some additional information.
+      Move(Run^, Header, SizeOf(TSGIHeader));
+      Inc(Run, SizeOf(TSGIHeader));
 
       // SGI images are always stored in big endian style
       ColorManager.SourceOptions := [coNeedByteSwap];
-      with Header do ColorMap := SwapLong(ColorMap);
+      with Header do
+        ColorMap := SwapLong(ColorMap);
 
       if Compression = ctRLE then
       begin
         Count := Height * SamplesPerPixel;
         SetLength(FRowStart, Count);
         SetLength(FRowSize, Count);
-        // read line starts and sizes from stream
-        Read(FRowStart[0], Count * SizeOf(Cardinal));
-        SwapLong(@FRowStart[0], Count);
-        Read(FRowSize[0], Count * SizeOf(Cardinal));
-        SwapLong(@FRowSize[0], Count);
-        FDecoder := TSGIRLEDecoder.Create(BitsPerSample);
+        // Convert line starts and sizes.
+        Move(Run^, Pointer(FRowStart)^, Count * SizeOf(Cardinal));
+        SwapLong(Pointer(FRowStart), Count);
+        Move(Run^, Pointer(FRowSize)^, Count * SizeOf(Cardinal));
+        SwapLong(Pointer(FRowSize), Count);
+        Decoder := TSGIRLEDecoder.Create(BitsPerSample);
       end
       else
-      begin
-        FDecoder := nil;
-      end;
+        Decoder := nil;
 
-      // set pixel format before size to avoid possibly large conversion operation
+      // Set pixel format before size to avoid possibly large conversion operation.
       with ColorManager do
       begin
         SourceBitsPerSample := BitsPerSample;
@@ -1647,10 +2583,6 @@ begin
       Self.Width := Width;
       Self.Height := Height;
 
-      RedBuffer := nil;
-      GreenBuffer := nil;
-      BlueBuffer := nil;
-      AlphaBuffer := nil;
       Progress(Self, psEnding, 100, True, FProgressRect, '');
 
       Progress(Self, psStarting, 0, False, FProgressRect, gesTransfering);
@@ -1659,391 +2591,154 @@ begin
         // read lines and put them into the bitmap
         case ColorScheme of
           csRGBA:
+            if Decoder = nil then
+            begin
+              // Uncompressed storage.
+              for  Y := 0 to Height - 1 do
+              begin
+                GetComponents(Memory, RedBuffer, GreenBuffer, BlueBuffer, AlphaBuffer, Y);
+                ColorManager.ConvertRow([RedBuffer, GreenBuffer, BlueBuffer, AlphaBuffer], ScanLine[Height - Y - 1],
+                  Width, $FF);
+                Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
+                OffsetRect(FProgressRect, 0, 1);
+              end;
+            end
+            else
             begin
               GetMem(RedBuffer, Count);
               GetMem(GreenBuffer, Count);
               GetMem(BlueBuffer, Count);
               GetMem(AlphaBuffer, Count);
-              for  Y := 0 to Height - 1 do
-              begin
-                ReadAndDecode(RedBuffer, GreenBuffer, BlueBuffer, AlphaBuffer, Y, Header.BPC);
-                ColorManager.ConvertRow([RedBuffer, GreenBuffer, BlueBuffer, AlphaBuffer],
-                                        ScanLine[Height - Y - 1], Width, $FF);
-                Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                OffsetRect(FProgressRect, 0, 1);
+              try
+                for  Y := 0 to Height - 1 do
+                begin
+                  ReadAndDecode(Memory, RedBuffer, GreenBuffer, BlueBuffer, AlphaBuffer, Y, Header.BPC);
+                  ColorManager.ConvertRow([RedBuffer, GreenBuffer, BlueBuffer, AlphaBuffer], ScanLine[Height - Y - 1],
+                    Width, $FF);
+                  Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
+                  OffsetRect(FProgressRect, 0, 1);
+                end;
+              finally
+                FreeMem(RedBuffer);
+                FreeMem(GreenBuffer);
+                FreeMem(BlueBuffer);
+                FreeMem(AlphaBuffer);
               end;
             end;
           csRGB:
+            if Decoder = nil then
+            begin
+              // Uncompressed storage.
+              for  Y := 0 to Height - 1 do
+              begin
+                GetComponents(Memory, RedBuffer, GreenBuffer, BlueBuffer, AlphaBuffer, Y);
+                ColorManager.ConvertRow([RedBuffer, GreenBuffer, BlueBuffer], ScanLine[Height - Y - 1], Width, $FF);
+                Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
+                OffsetRect(FProgressRect, 0, 1);
+              end;
+            end
+            else
             begin
               GetMem(RedBuffer, Count);
               GetMem(GreenBuffer, Count);
               GetMem(BlueBuffer, Count);
-              for  Y := 0 to Height - 1 do
-              begin
-                ReadAndDecode(RedBuffer, GreenBuffer, BlueBuffer, nil, Y, Header.BPC);
-                ColorManager.ConvertRow([RedBuffer, GreenBuffer, BlueBuffer],
-                                        ScanLine[Height - Y - 1], Width, $FF);
-                Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                OffsetRect(FProgressRect, 0, 1);
+              try
+                for  Y := 0 to Height - 1 do
+                begin
+                  ReadAndDecode(Memory, RedBuffer, GreenBuffer, BlueBuffer, nil, Y, Header.BPC);
+                  ColorManager.ConvertRow([RedBuffer, GreenBuffer, BlueBuffer], ScanLine[Height - Y - 1], Width, $FF);
+                  Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
+                  OffsetRect(FProgressRect, 0, 1);
+                end;
+              finally
+                FreeMem(RedBuffer);
+                FreeMem(GreenBuffer);
+                FreeMem(BlueBuffer);
               end;
             end;
         else
-          // any other format is interpreted as being 256 gray scales
+          // Any other format is interpreted as being 256 gray scales.
           Palette := ColorManager.CreateGrayscalePalette(False);
-          for  Y := 0 to Height - 1 do
+          if Decoder = nil then
           begin
-            ReadAndDecode(ScanLine[Height - Y - 1], nil, nil, nil, Y, Header.BPC);
-            Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-            OffsetRect(FProgressRect, 0, 1);
+            // Uncompressed storage.
+            for  Y := 0 to Height - 1 do
+            begin
+              GetComponents(Memory, RedBuffer, GreenBuffer, BlueBuffer, AlphaBuffer, Y);
+              Move(RedBuffer^, ScanLine[Height - Y - 1]^, Width);
+              Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
+              OffsetRect(FProgressRect, 0, 1);
+            end;
+          end
+          else
+          begin
+            for  Y := 0 to Height - 1 do
+            begin
+              ReadAndDecode(Memory, ScanLine[Height - Y - 1], nil, nil, nil, Y, Header.BPC);
+              Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
+              OffsetRect(FProgressRect, 0, 1);
+            end;
           end;
         end;
-
       finally
         Progress(Self, psEnding, 100, True, FProgressRect, '');
-
-        if Assigned(RedBuffer) then FreeMem(RedBuffer);
-        if Assigned(GreenBuffer) then FreeMem(GreenBuffer);
-        if Assigned(BlueBuffer) then FreeMem(BlueBuffer);
-        if Assigned(AlphaBuffer) then FreeMem(AlphaBuffer);
-        FDecoder.Free;
+        FreeAndNil(Decoder);
       end;
     end;
   end
-  else GraphicExError(gesInvalidImage, ['sgi, bw or rgb(a)']);
+  else
+    GraphicExError(gesInvalidImage, ['sgi, bw or rgb(a)']);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TSGIGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+function TSGIGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
   Header: TSGIHeader;
- 
-begin
-  Result := inherited ReadImageProperties(Stream, ImageIndex);
-  with FImageProperties do
-  begin
-    Stream.ReadBuffer(Header, SizeOf(Header));
-    if Swap(Header.Magic) = SGIMagic then
-    begin 
-      Options := [ioBigEndian];
-      BitsPerSample := Header.BPC * 8;
-      Width := Swap(Header.XSize);
-      Height := Swap(Header.YSize);
-      SamplesPerPixel := Swap(Header.ZSize);
-      case SamplesPerPixel of
-        4:
-          ColorScheme := csRGBA;
-        3:
-          ColorScheme := csRGB;
-      else
-        // all other is considered as being 8 bit gray scale
-        ColorScheme := csIndexed;
-      end;
 
-      BitsPerPixel := BitsPerSample * SamplesPerPixel;
-      if Header.Storage = SGI_COMPRESSION_RLE then Compression := ctRLE
-                                              else Compression := ctNone;
-      Result := True;
+begin
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
+  if Result then
+    with FImageProperties do
+    begin
+      Move(Memory^, Header, SizeOf(TSGIHeader));
+      if Swap(Header.Magic) = SGIMagic then
+      begin
+        Options := [ioBigEndian];
+        BitsPerSample := Header.BPC * 8;
+        Width := Swap(Header.XSize);
+        Height := Swap(Header.YSize);
+        SamplesPerPixel := Swap(Header.ZSize);
+        case SamplesPerPixel of
+          4:
+            ColorScheme := csRGBA;
+          3:
+            ColorScheme := csRGB;
+        else
+          // All other is considered as being 8 bit gray scale.
+          ColorScheme := csIndexed;
+        end;
+
+        BitsPerPixel := BitsPerSample * SamplesPerPixel;
+        if Header.Storage = SGI_COMPRESSION_RLE then
+          Compression := ctRLE
+        else
+          Compression := ctNone;
+      end
+      else
+        Result := False;
     end;
-  end;
 end;
 
-{$endif} // SGIGraphic
+{$endif SGIGraphic}
 
 //----------------- TTIFFGraphic ---------------------------------------------------------------------------------------
 
 {$ifdef TIFFGraphic}
 
-const // TIFF tags
-  TIFFTAG_SUBFILETYPE = 254;                     // subfile data descriptor
-    FILETYPE_REDUCEDIMAGE = $1;                  // reduced resolution version
-    FILETYPE_PAGE = $2;                          // one page of many
-    FILETYPE_MASK = $4;                          // transparency mask
-  TIFFTAG_OSUBFILETYPE = 255;                    // kind of data in subfile (obsolete by revision 5.0)
-    OFILETYPE_IMAGE = 1;                         // full resolution image data
-    OFILETYPE_REDUCEDIMAGE = 2;                  // reduced size image data
-    OFILETYPE_PAGE = 3;                          // one page of many
-  TIFFTAG_IMAGEWIDTH = 256;                      // image width in pixels
-  TIFFTAG_IMAGELENGTH = 257;                     // image height in pixels
-  TIFFTAG_BITSPERSAMPLE = 258;                   // bits per channel (sample)
-  TIFFTAG_COMPRESSION = 259;                     // data compression technique
-    COMPRESSION_NONE = 1;                        // dump mode
-    COMPRESSION_CCITTRLE = 2;                    // CCITT modified Huffman RLE
-    COMPRESSION_CCITTFAX3 = 3;                   // CCITT Group 3 fax encoding
-    COMPRESSION_CCITTFAX4 = 4;                   // CCITT Group 4 fax encoding
-    COMPRESSION_LZW = 5;                         // Lempel-Ziv & Welch
-    COMPRESSION_OJPEG = 6;                       // 6.0 JPEG (old version)
-    COMPRESSION_JPEG = 7;                        // JPEG DCT compression (new version)
-    COMPRESSION_ADOBE_DEFLATE = 8;               // new id but same as COMPRESSION_DEFLATE
-    COMPRESSION_NEXT = 32766;                    // next 2-bit RLE
-    COMPRESSION_CCITTRLEW = 32771;               // modified Huffman with word alignment
-    COMPRESSION_PACKBITS = 32773;                // Macintosh RLE
-    COMPRESSION_THUNDERSCAN = 32809;             // ThunderScan RLE
-    // codes 32895-32898 are reserved for ANSI IT8 TIFF/IT <dkelly@etsinc.com)
-    COMPRESSION_IT8CTPAD = 32895;                // IT8 CT w/padding
-    COMPRESSION_IT8LW = 32896;                   // IT8 Linework RLE
-    COMPRESSION_IT8MP = 32897;                   // IT8 Monochrome picture
-    COMPRESSION_IT8BL = 32898;                   // IT8 Binary line art
-    // compression codes 32908-32911 are reserved for Pixar
-    COMPRESSION_PIXARFILM = 32908;               // Pixar companded 10bit LZW
-    COMPRESSION_PIXARLOG = 32909;                // Pixar companded 11bit ZIP
-    COMPRESSION_DEFLATE = 32946;                 // Deflate compression (LZ77)
-    // compression code 32947 is reserved for Oceana Matrix <dev@oceana.com>
-    COMPRESSION_DCS = 32947;                     // Kodak DCS encoding
-    COMPRESSION_JBIG = 34661;                    // ISO JBIG
-  TIFFTAG_PHOTOMETRIC = 262;                     // photometric interpretation
-    PHOTOMETRIC_MINISWHITE = 0;                  // min value is white
-    PHOTOMETRIC_MINISBLACK = 1;                  // min value is black
-    PHOTOMETRIC_RGB = 2;                         // RGB color model
-    PHOTOMETRIC_PALETTE = 3;                     // color map indexed
-    PHOTOMETRIC_MASK = 4;                        // holdout mask
-    PHOTOMETRIC_SEPARATED = 5;                   // color separations
-    PHOTOMETRIC_YCBCR = 6;                       // CCIR 601
-    PHOTOMETRIC_CIELAB = 8;                      // 1976 CIE L*a*b*
-  TIFFTAG_THRESHHOLDING = 263;                   // thresholding used on data (obsolete by revision 5.0)
-    THRESHHOLD_BILEVEL = 1;                      // b&w art scan
-    THRESHHOLD_HALFTONE = 2;                     // or dithered scan
-    THRESHHOLD_ERRORDIFFUSE = 3;                 // usually floyd-steinberg
-  TIFFTAG_CELLWIDTH = 264;                       // dithering matrix width (obsolete by revision 5.0)
-  TIFFTAG_CELLLENGTH = 265;                      // dithering matrix height (obsolete by revision 5.0)
-  TIFFTAG_FILLORDER = 266;                       // data order within a Byte
-    FILLORDER_MSB2LSB = 1;                       // most significant -> least
-    FILLORDER_LSB2MSB = 2;                       // least significant -> most
-  TIFFTAG_DOCUMENTNAME = 269;                    // name of doc. image is from
-  TIFFTAG_IMAGEDESCRIPTION = 270;                // info about image
-  TIFFTAG_MAKE = 271;                            // scanner manufacturer name
-  TIFFTAG_MODEL = 272;                           // scanner model name/number
-  TIFFTAG_STRIPOFFSETS = 273;                    // Offsets to data strips
-  TIFFTAG_ORIENTATION = 274;                     // image FOrientation (obsolete by revision 5.0)
-    ORIENTATION_TOPLEFT = 1;                     // row 0 top, col 0 lhs
-    ORIENTATION_TOPRIGHT = 2;                    // row 0 top, col 0 rhs
-    ORIENTATION_BOTRIGHT = 3;                    // row 0 bottom, col 0 rhs
-    ORIENTATION_BOTLEFT = 4;                     // row 0 bottom, col 0 lhs
-    ORIENTATION_LEFTTOP = 5;                     // row 0 lhs, col 0 top
-    ORIENTATION_RIGHTTOP = 6;                    // row 0 rhs, col 0 top
-    ORIENTATION_RIGHTBOT = 7;                    // row 0 rhs, col 0 bottom
-    ORIENTATION_LEFTBOT = 8;                     // row 0 lhs, col 0 bottom
-  TIFFTAG_SAMPLESPERPIXEL = 277;                 // samples per pixel
-  TIFFTAG_ROWSPERSTRIP = 278;                    // rows per strip of data
-  TIFFTAG_STRIPBYTECOUNTS = 279;                 // bytes counts for strips
-  TIFFTAG_MINSAMPLEVALUE = 280;                  // minimum sample value (obsolete by revision 5.0)
-  TIFFTAG_MAXSAMPLEVALUE = 281;                  // maximum sample value (obsolete by revision 5.0)
-  TIFFTAG_XRESOLUTION = 282;                     // pixels/resolution in x
-  TIFFTAG_YRESOLUTION = 283;                     // pixels/resolution in y
-  TIFFTAG_PLANARCONFIG = 284;                    // storage organization
-    PLANARCONFIG_CONTIG = 1;                     // single image plane
-    PLANARCONFIG_SEPARATE = 2;                   // separate planes of data
-  TIFFTAG_PAGENAME = 285;                        // page name image is from
-  TIFFTAG_XPOSITION = 286;                       // x page offset of image lhs
-  TIFFTAG_YPOSITION = 287;                       // y page offset of image lhs
-  TIFFTAG_FREEOFFSETS = 288;                     // byte offset to free block (obsolete by revision 5.0)
-  TIFFTAG_FREEBYTECOUNTS = 289;                  // sizes of free blocks (obsolete by revision 5.0)
-  TIFFTAG_GRAYRESPONSEUNIT = 290;                // gray scale curve accuracy
-    GRAYRESPONSEUNIT_10S = 1;                    // tenths of a unit
-    GRAYRESPONSEUNIT_100S = 2;                   // hundredths of a unit
-    GRAYRESPONSEUNIT_1000S = 3;                  // thousandths of a unit
-    GRAYRESPONSEUNIT_10000S = 4;                 // ten-thousandths of a unit
-    GRAYRESPONSEUNIT_100000S = 5;                // hundred-thousandths
-  TIFFTAG_GRAYRESPONSECURVE = 291;               // gray scale response curve
-  TIFFTAG_GROUP3OPTIONS = 292;                   // 32 flag bits
-    GROUP3OPT_2DENCODING = $1;                   // 2-dimensional coding
-    GROUP3OPT_UNCOMPRESSED = $2;                 // data not compressed
-    GROUP3OPT_FILLBITS = $4;                     // fill to byte boundary
-  TIFFTAG_GROUP4OPTIONS = 293;                   // 32 flag bits
-    GROUP4OPT_UNCOMPRESSED = $2;                 // data not compressed
-  TIFFTAG_RESOLUTIONUNIT = 296;                  // units of resolutions
-    RESUNIT_NONE = 1;                            // no meaningful units
-    RESUNIT_INCH = 2;                            // english
-    RESUNIT_CENTIMETER = 3;                      // metric
-  TIFFTAG_PAGENUMBER = 297;                      // page numbers of multi-page
-  TIFFTAG_COLORRESPONSEUNIT = 300;               // color curve accuracy
-    COLORRESPONSEUNIT_10S = 1;                   // tenths of a unit
-    COLORRESPONSEUNIT_100S = 2;                  // hundredths of a unit
-    COLORRESPONSEUNIT_1000S = 3;                 // thousandths of a unit
-    COLORRESPONSEUNIT_10000S = 4;                // ten-thousandths of a unit
-    COLORRESPONSEUNIT_100000S = 5;               // hundred-thousandths
-  TIFFTAG_TRANSFERFUNCTION = 301;                // colorimetry info
-  TIFFTAG_SOFTWARE = 305;                        // name & release
-  TIFFTAG_DATETIME = 306;                        // creation date and time
-  TIFFTAG_ARTIST = 315;                          // creator of image
-  TIFFTAG_HOSTCOMPUTER = 316;                    // machine where created
-  TIFFTAG_PREDICTOR = 317;                       // prediction scheme w/ LZW
-    PREDICTION_NONE = 1;                         // no prediction scheme used before coding
-    PREDICTION_HORZ_DIFFERENCING = 2;            // horizontal differencing prediction scheme used
-  TIFFTAG_WHITEPOINT = 318;                      // image white point
-  TIFFTAG_PRIMARYCHROMATICITIES = 319;           // primary chromaticities
-  TIFFTAG_COLORMAP = 320;                        // RGB map for pallette image
-  TIFFTAG_HALFTONEHINTS = 321;                   // highlight+shadow info
-  TIFFTAG_TILEWIDTH = 322;                       // rows/data tile
-  TIFFTAG_TILELENGTH = 323;                      // cols/data tile
-  TIFFTAG_TILEOFFSETS = 324;                     // offsets to data tiles
-  TIFFTAG_TILEBYTECOUNTS = 325;                  // Byte counts for tiles
-  TIFFTAG_BADFAXLINES = 326;                     // lines w/ wrong pixel count
-  TIFFTAG_CLEANFAXDATA = 327;                    // regenerated line info
-    CLEANFAXDATA_CLEAN = 0;                      // no errors detected
-    CLEANFAXDATA_REGENERATED = 1;                // receiver regenerated lines
-    CLEANFAXDATA_UNCLEAN = 2;                    // uncorrected errors exist
-  TIFFTAG_CONSECUTIVEBADFAXLINES = 328;          // max consecutive bad lines
-  TIFFTAG_SUBIFD = 330;                          // subimage descriptors
-  TIFFTAG_INKSET = 332;                          // inks in separated image
-    INKSET_CMYK = 1;                             // cyan-magenta-yellow-black
-  TIFFTAG_INKNAMES = 333;                        // ascii names of inks
-  TIFFTAG_DOTRANGE = 336;                        // 0% and 100% dot codes
-  TIFFTAG_TARGETPRINTER = 337;                   // separation target
-  TIFFTAG_EXTRASAMPLES = 338;                    // info about extra samples
-    EXTRASAMPLE_UNSPECIFIED = 0;                 // unspecified data
-    EXTRASAMPLE_ASSOCALPHA = 1;                  // associated alpha data
-    EXTRASAMPLE_UNASSALPHA = 2;                  // unassociated alpha data
-  TIFFTAG_SAMPLEFORMAT = 339;                    // data sample format
-    SAMPLEFORMAT_UINT = 1;                       // unsigned integer data
-    SAMPLEFORMAT_INT = 2;                        // signed integer data
-    SAMPLEFORMAT_IEEEFP = 3;                     // IEEE floating point data
-    SAMPLEFORMAT_VOID = 4;                       // untyped data
-  TIFFTAG_SMINSAMPLEVALUE = 340;                 // variable MinSampleValue
-  TIFFTAG_SMAXSAMPLEVALUE = 341;                 // variable MaxSampleValue
-  TIFFTAG_JPEGTABLES = 347;                      // JPEG table stream
-
-  // Tags 512-521 are obsoleted by Technical Note #2 which specifies a revised JPEG-in-TIFF scheme.
-
-  TIFFTAG_JPEGPROC = 512;                        // JPEG processing algorithm
-    JPEGPROC_BASELINE = 1;                       // baseline sequential
-    JPEGPROC_LOSSLESS = 14;                      // Huffman coded lossless
-  TIFFTAG_JPEGIFOFFSET = 513;                    // Pointer to SOI marker
-  TIFFTAG_JPEGIFBYTECOUNT = 514;                 // JFIF stream length
-  TIFFTAG_JPEGRESTARTINTERVAL = 515;             // restart interval length
-  TIFFTAG_JPEGLOSSLESSPREDICTORS = 517;          // lossless proc predictor
-  TIFFTAG_JPEGPOINTTRANSFORM = 518;              // lossless point transform
-  TIFFTAG_JPEGQTABLES = 519;                     // Q matrice offsets
-  TIFFTAG_JPEGDCTABLES = 520;                    // DCT table offsets
-  TIFFTAG_JPEGACTABLES = 521;                    // AC coefficient offsets
-  TIFFTAG_YCBCRCOEFFICIENTS = 529;               // RGB -> YCbCr transform
-  TIFFTAG_YCBCRSUBSAMPLING = 530;                // YCbCr subsampling factors
-  TIFFTAG_YCBCRPOSITIONING = 531;                // subsample positioning
-    YCBCRPOSITION_CENTERED = 1;                  // as in PostScript Level 2
-    YCBCRPOSITION_COSITED = 2;                   // as in CCIR 601-1
-  TIFFTAG_REFERENCEBLACKWHITE = 532;             // colorimetry info
-  // tags 32952-32956 are private tags registered to Island Graphics
-  TIFFTAG_REFPTS = 32953;                        // image reference points
-  TIFFTAG_REGIONTACKPOINT = 32954;               // region-xform tack point
-  TIFFTAG_REGIONWARPCORNERS = 32955;             // warp quadrilateral
-  TIFFTAG_REGIONAFFINE = 32956;                  // affine transformation mat
-  // tags 32995-32999 are private tags registered to SGI
-  TIFFTAG_MATTEING = 32995;                      // use ExtraSamples
-  TIFFTAG_DATATYPE = 32996;                      // use SampleFormat
-  TIFFTAG_IMAGEDEPTH = 32997;                    // z depth of image
-  TIFFTAG_TILEDEPTH = 32998;                     // z depth/data tile
-
-  // tags 33300-33309 are private tags registered to Pixar
-  //
-  // TIFFTAG_PIXAR_IMAGEFULLWIDTH and TIFFTAG_PIXAR_IMAGEFULLLENGTH
-  // are set when an image has been cropped out of a larger image.
-  // They reflect the size of the original uncropped image.
-  // The TIFFTAG_XPOSITION and TIFFTAG_YPOSITION can be used
-  // to determine the position of the smaller image in the larger one.
-
-  TIFFTAG_PIXAR_IMAGEFULLWIDTH = 33300;          // full image size in x
-  TIFFTAG_PIXAR_IMAGEFULLLENGTH = 33301;         // full image size in y
-  // tag 33405 is a private tag registered to Eastman Kodak
-  TIFFTAG_WRITERSERIALNUMBER = 33405;            // device serial number
-  // tag 33432 is listed in the 6.0 spec w/ unknown ownership
-  TIFFTAG_COPYRIGHT = 33432;                     // copyright string
-  // 34016-34029 are reserved for ANSI IT8 TIFF/IT <dkelly@etsinc.com)
-  TIFFTAG_IT8SITE = 34016;                       // site name
-  TIFFTAG_IT8COLORSEQUENCE = 34017;              // color seq. [RGB,CMYK,etc]
-  TIFFTAG_IT8HEADER = 34018;                     // DDES Header
-  TIFFTAG_IT8RASTERPADDING = 34019;              // raster scanline padding
-  TIFFTAG_IT8BITSPERRUNLENGTH = 34020;           // # of bits in short run
-  TIFFTAG_IT8BITSPEREXTENDEDRUNLENGTH = 34021;   // # of bits in long run
-  TIFFTAG_IT8COLORTABLE = 34022;                 // LW colortable
-  TIFFTAG_IT8IMAGECOLORINDICATOR = 34023;        // BP/BL image color switch
-  TIFFTAG_IT8BKGCOLORINDICATOR = 34024;          // BP/BL bg color switch
-  TIFFTAG_IT8IMAGECOLORVALUE = 34025;            // BP/BL image color value
-  TIFFTAG_IT8BKGCOLORVALUE = 34026;              // BP/BL bg color value
-  TIFFTAG_IT8PIXELINTENSITYRANGE = 34027;        // MP pixel intensity value
-  TIFFTAG_IT8TRANSPARENCYINDICATOR = 34028;      // HC transparency switch
-  TIFFTAG_IT8COLORCHARACTERIZATION = 34029;      // color character. table
-  // tags 34232-34236 are private tags registered to Texas Instruments
-  TIFFTAG_FRAMECOUNT = 34232;                    // Sequence Frame Count
-  // tag 34750 is a private tag registered to Pixel Magic
-  TIFFTAG_JBIGOPTIONS = 34750;                   // JBIG options
-  // tags 34908-34914 are private tags registered to SGI
-  TIFFTAG_FAXRECVPARAMS = 34908;                 // encoded class 2 ses. parms
-  TIFFTAG_FAXSUBADDRESS = 34909;                 // received SubAddr string
-  TIFFTAG_FAXRECVTIME = 34910;                   // receive time (secs)
-  // tag 65535 is an undefined tag used by Eastman Kodak
-  TIFFTAG_DCSHUESHIFTVALUES = 65535;             // hue shift correction data
-
-  // The following are 'pseudo tags' that can be used to control codec-specific functionality.
-  // These tags are not written to file.  Note that these values start at $FFFF + 1 so that they'll
-  // never collide with Aldus-assigned tags.
-
-  TIFFTAG_FAXMODE = 65536;                       // Group 3/4 format control
-    FAXMODE_CLASSIC = $0000;                     // default, include RTC
-    FAXMODE_NORTC = $0001;                       // no RTC at end of data
-    FAXMODE_NOEOL = $0002;                       // no EOL code at end of row
-    FAXMODE_BYTEALIGN = $0004;                   // Byte align row
-    FAXMODE_WORDALIGN = $0008;                   // Word align row
-    FAXMODE_CLASSF = FAXMODE_NORTC;              // TIFF class F
-  TIFFTAG_JPEGQUALITY = 65537;                   // compression quality level
-  // Note: quality level is on the IJG 0-100 scale.  Default value is 75
-  TIFFTAG_JPEGCOLORMODE = 65538;                 // Auto RGB<=>YCbCr convert?
-    JPEGCOLORMODE_RAW = $0000;                   // no conversion (default)
-    JPEGCOLORMODE_RGB = $0001;                   // do auto conversion
-  TIFFTAG_JPEGTABLESMODE = 65539;                // What to put in JPEGTables
-    JPEGTABLESMODE_QUANT = $0001;                // include quantization tbls
-    JPEGTABLESMODE_HUFF = $0002;                 // include Huffman tbls
-  // Note: default is JPEGTABLESMODE_QUANT or JPEGTABLESMODE_HUFF
-  TIFFTAG_FAXFILLFUNC = 65540;                   // G3/G4 fill function
-  TIFFTAG_PIXARLOGDATAFMT = 65549;               // PixarLogCodec I/O data sz
-    PIXARLOGDATAFMT_8BIT = 0;                    // regular u_char samples
-    PIXARLOGDATAFMT_8BITABGR = 1;                // ABGR-order u_chars
-    PIXARLOGDATAFMT_11BITLOG = 2;                // 11-bit log-encoded (raw)
-    PIXARLOGDATAFMT_12BITPICIO = 3;              // as per PICIO (1.0==2048)
-    PIXARLOGDATAFMT_16BIT = 4;                   // signed short samples
-    PIXARLOGDATAFMT_FLOAT = 5;                   // IEEE float samples
-  // 65550-65556 are allocated to Oceana Matrix <dev@oceana.com>
-  TIFFTAG_DCSIMAGERTYPE = 65550;                 // imager model & filter
-    DCSIMAGERMODEL_M3 = 0;                       // M3 chip (1280 x 1024)
-    DCSIMAGERMODEL_M5 = 1;                       // M5 chip (1536 x 1024)
-    DCSIMAGERMODEL_M6 = 2;                       // M6 chip (3072 x 2048)
-    DCSIMAGERFILTER_IR = 0;                      // infrared filter
-    DCSIMAGERFILTER_MONO = 1;                    // monochrome filter
-    DCSIMAGERFILTER_CFA = 2;                     // color filter array
-    DCSIMAGERFILTER_OTHER = 3;                   // other filter
-  TIFFTAG_DCSINTERPMODE = 65551;                 // interpolation mode
-    DCSINTERPMODE_NORMAL = $0;                   // whole image, default
-    DCSINTERPMODE_PREVIEW = $1;                  // preview of image (384x256)
-  TIFFTAG_DCSBALANCEARRAY = 65552;               // color balance values
-  TIFFTAG_DCSCORRECTMATRIX = 65553;              // color correction values
-  TIFFTAG_DCSGAMMA = 65554;                      // gamma value
-  TIFFTAG_DCSTOESHOULDERPTS = 65555;             // toe & shoulder points
-  TIFFTAG_DCSCALIBRATIONFD = 65556;              // calibration file desc
-  // Note: quality level is on the ZLIB 1-9 scale. Default value is -1
-  TIFFTAG_ZIPQUALITY = 65557;                    // compression quality level
-  TIFFTAG_PIXARLOGQUALITY = 65558;               // PixarLog uses same scale
-
-  // TIFF data types
-  TIFF_NOTYPE = 0;                               // placeholder
-  TIFF_BYTE = 1;                                 // 8-bit unsigned integer
-  TIFF_ASCII = 2;                                // 8-bit bytes w/ last byte null
-  TIFF_SHORT = 3;                                // 16-bit unsigned integer
-  TIFF_LONG = 4;                                 // 32-bit unsigned integer
-  TIFF_RATIONAL = 5;                             // 64-bit unsigned fraction
-  TIFF_SBYTE = 6;                                // 8-bit signed integer
-  TIFF_UNDEFINED = 7;                            // 8-bit untyped data
-  TIFF_SSHORT = 8;                               // 16-bit signed integer
-  TIFF_SLONG = 9;                                // 32-bit signed integer
-  TIFF_SRATIONAL = 10;                           // 64-bit signed fraction
-  TIFF_FLOAT = 11;                               // 32-bit IEEE floating point
-  TIFF_DOUBLE = 12;                              // 64-bit IEEE floating point
-
-  TIFF_BIGENDIAN = $4D4D;
-  TIFF_LITTLEENDIAN = $4949;
-
-  TIFF_VERSION = 42;
-
 type
+  PTIFFHeader = ^TTIFFHeader;
   TTIFFHeader = packed record
     ByteOrder: Word;
     Version: Word;
@@ -2052,465 +2747,298 @@ type
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TTIFFGraphic.CanLoad(Stream: TStream): Boolean;
+// For the libtiff library we need global functions to do the data retrieval. The setup is so that the currently
+// loading TIFF instance is given in the fd parameter.
+
+function TIFFReadProc(fd: thandle_t; buf: tdata_t; size: tsize_t): tsize_t; cdecl;
 
 var
-  Header: TTIFFHeader;
-  LastPosition: Cardinal;
+  Graphic: TTIFFGraphic;
 
 begin
-  with Stream do
-  begin
-    Result := (Size - Position) > SizeOf(Header);
-    if Result then
-    begin
-      LastPosition := Position;
-
-      Stream.ReadBuffer(Header, SizeOf(Header));
-      Result := (Header.ByteOrder = TIFF_BIGENDIAN) or
-                (Header.ByteOrder = TIFF_LITTLEENDIAN);
-      if Result then
-      begin
-        if Header.ByteOrder = TIFF_BIGENDIAN then
-        begin
-          Header.Version := Swap(Header.Version);
-          Header.FirstIFD := SwapLong(Header.FirstIFD);
-        end;
-
-        Result := (Header.Version = TIFF_VERSION) and (Integer(Header.FirstIFD) < (Size - Integer(LastPosition)));
-      end;
-      Position := LastPosition;
-    end;
-  end;
+  Graphic := TTIFFGraphic(fd);
+  Move(Graphic.FCurrentPointer^, Pointer(buf)^, size);
+  Inc(Graphic.FCurrentPointer, size);
+  Result := size;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TTIFFGraphic.FindTag(Tag: Cardinal; var Index: Cardinal): Boolean;
-
-// looks through the currently loaded IFD for the entry indicated by Tag;
-// returns True and the index of the entry in Index if the entry is there
-// otherwise the result is False and Index undefined
-// Note: The IFD is sorted so we can use a binary search here.
-
-var
-  L, H, I, C: Integer;
+function TIFFWriteProc(fd: thandle_t; buf: tdata_t; size: tsize_t): tsize_t; cdecl;
 
 begin
-  Result := False;
-  L := 0;
-  H := High(FIFD);
-  while L <= H do
-  begin
-    I := (L + H) shr 1;
-    C := Integer(FIFD[I].Tag) - Integer(Tag);
-    if C < 0 then L := I + 1
-             else
-    begin
-      H := I - 1;
-      if C = 0 then
-      begin
-        Result := True;
-        L := I;
-      end;
-    end;
-  end;
-  Index := L;
+  Result := 0; // Writing is not supported yet.
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
+
+function TIFFSeekProc(fd: thandle_t; off: toff_t; whence: Integer): toff_t; cdecl;
 
 const
-  DataTypeToSize: array[TIFF_NOTYPE..TIFF_SLONG] of Byte = (0, 1, 1, 2, 4, 8, 1, 1, 2, 4);
-
-procedure TTIFFGraphic.GetValueList(Stream: TStream; Tag: Cardinal; var Values: TByteArray);
-
-// returns the values of the IFD entry indicated by Tag
+  SEEK_SET = 0; // seek to an absolute position
+  SEEK_CUR = 1; // seek relative to current position 
+  SEEK_END = 2; // seek relative to end of file
 
 var
-  Index,
-  Value,
-  Shift: Cardinal;
-  I: Integer;
+  Graphic: TTIFFGraphic;
 
 begin
-  Values := nil;
-  if FindTag(Tag, Index) and
-     (FIFD[Index].DataLength > 0) then
-  begin
-    // prepare value list
-    SetLength(Values, FIFD[Index].DataLength);
+  Graphic := TTIFFGraphic(fd);
 
-    // determine whether the data fits into 4 bytes
-    Value := DataTypeToSize[FIFD[Index].DataType] * FIFD[Index].DataLength;
-
-    // data fits into one cardinal -> extract it
-    if Value <= 4 then
-    begin
-      Shift := DataTypeToSize[FIFD[Index].DataType] * 8;
-      Value := FIFD[Index].Offset;
-      for I := 0 to FIFD[Index].DataLength - 1 do
-      begin
-        case FIFD[Index].DataType of
-          TIFF_BYTE:
-            Values[I] := Byte(Value);
-          TIFF_SHORT,
-          TIFF_SSHORT:
-            // no byte swap needed here because values in the IFD are already swapped
-            // (if necessary at all)
-            Values[I] := Word(Value);
-          TIFF_LONG,
-          TIFF_SLONG:
-            Values[I] := Value;
-        end;
-        Value := Value shr Shift;
-      end;
-    end
-    else
-    begin
-      // data of this tag does not fit into one 32 bits value
-      Stream.Position := FBasePosition + FIFD[Index].Offset;
-      // bytes sized data can be read directly instead of looping through the array
-      if FIFD[Index].DataType in [TIFF_BYTE, TIFF_ASCII, TIFF_SBYTE, TIFF_UNDEFINED]
-        then Stream.Read(Values[0], Value)
-        else
-      begin
-        for I := 0 to High(Values) do
-        begin
-          Stream.Read(Value, DataTypeToSize[FIFD[Index].DataType]);
-          case FIFD[Index].DataType of
-            TIFF_BYTE:
-              Value := Byte(Value);
-            TIFF_SHORT,
-            TIFF_SSHORT:
-              begin
-                if ioBigEndian in FImageProperties.Options then Value := Swap(Word(Value))
-                                                           else Value := Word(Value);
-              end;
-            TIFF_LONG,
-            TIFF_SLONG:
-              if ioBigEndian in FImageProperties.Options then Value := SwapLong(Value);
-          end;
-          Values[I] := Value;
-        end;
-      end;
-    end;
-  end;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure TTIFFGraphic.GetValueList(Stream: TStream; Tag: Cardinal; var Values: TCardinalArray);
-
-// returns the values of the IFD entry indicated by Tag
-
-var
-  Index,
-  Value,
-  Shift: Cardinal;
-  I: Integer;
-
-begin
-  Values := nil;
-  if FindTag(Tag, Index) and
-     (FIFD[Index].DataLength > 0) then
-  begin
-    // prepare value list
-    SetLength(Values, FIFD[Index].DataLength);
-
-    // determine whether the data fits into 4 bytes
-    Value := DataTypeToSize[FIFD[Index].DataType] * FIFD[Index].DataLength;
-
-    // data fits into one cardinal -> extract it
-    if Value <= 4 then
-    begin
-      Shift := DataTypeToSize[FIFD[Index].DataType] * 8;
-      Value := FIFD[Index].Offset;
-      for I := 0 to FIFD[Index].DataLength - 1 do
-      begin
-        case FIFD[Index].DataType of
-          TIFF_BYTE,
-          TIFF_ASCII,
-          TIFF_SBYTE,
-          TIFF_UNDEFINED:
-            Values[I] := Byte(Value);
-          TIFF_SHORT,
-          TIFF_SSHORT:
-            // no byte swap needed here because values in the IFD are already swapped
-            // (if necessary at all)
-            Values[I] := Word(Value);
-          TIFF_LONG,
-          TIFF_SLONG:
-            Values[I] := Value;
-        end;
-        Value := Value shr Shift;
-      end;
-    end
-    else
-    begin
-      // data of this tag does not fit into one 32 bits value
-      Stream.Position := FBasePosition + FIFD[Index].Offset;
-      // even bytes sized data must be read by the loop as it is expanded to cardinals
-      for I := 0 to High(Values) do
-      begin
-        Stream.Read(Value, DataTypeToSize[FIFD[Index].DataType]);
-        case FIFD[Index].DataType of
-          TIFF_BYTE:
-            Value := Byte(Value);
-          TIFF_SHORT,
-          TIFF_SSHORT:
-            begin
-              if ioBigEndian in FImageProperties.Options then Value := Swap(Word(Value))
-                                                         else Value := Word(Value);
-            end;
-          TIFF_LONG,
-          TIFF_SLONG:
-            if ioBigEndian in FImageProperties.Options then Value := SwapLong(Value);
-        end;
-        Values[I] := Value;
-      end;
-    end;
-  end;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure TTIFFGraphic.GetValueList(Stream: TStream; Tag: Cardinal; var Values: TFloatArray);
-
-// returns the values of the IFD entry indicated by Tag
-
-var
-  Index,
-  Shift,
-  IntValue: Cardinal;
-  Value: Single;
-  I: Integer;
-  IntNominator,
-  IntDenominator: Cardinal;
-  FloatNominator,
-  FloatDenominator: Cardinal;
-
-begin
-  Values := nil;
-  if FindTag(Tag, Index) and
-     (FIFD[Index].DataLength > 0) then
-  begin
-    // prepare value list
-    SetLength(Values, FIFD[Index].DataLength);
-
-    // determine whether the data fits into 4 bytes
-    Value := DataTypeToSize[FIFD[Index].DataType] * FIFD[Index].DataLength;
-
-    // data fits into one cardinal -> extract it
-    if Value <= 4 then
-    begin
-      Shift := DataTypeToSize[FIFD[Index].DataType] * 8;
-      IntValue := FIFD[Index].Offset;
-      for I := 0 to FIFD[Index].DataLength - 1 do
-      begin
-        case FIFD[Index].DataType of
-          TIFF_BYTE,
-          TIFF_ASCII,
-          TIFF_SBYTE,
-          TIFF_UNDEFINED:
-            Values[I] := Byte(IntValue);
-          TIFF_SHORT,
-          TIFF_SSHORT:
-            // no byte swap needed here because values in the IFD are already swapped
-            // (if necessary at all)
-            Values[I] := Word(IntValue);
-          TIFF_LONG,
-          TIFF_SLONG:
-            Values[I] := IntValue;
-        end;
-        IntValue := IntValue shr Shift;
-      end;
-    end
-    else
-    begin
-      // data of this tag does not fit into one 32 bits value
-      Stream.Position := FBasePosition + FIFD[Index].Offset;
-      // even bytes sized data must be read by the loop as it is expanded to Single
-      for I := 0 to High(Values) do
-      begin
-        case FIFD[Index].DataType of
-          TIFF_BYTE:
-            begin
-              Stream.Read(IntValue, DataTypeToSize[FIFD[Index].DataType]);
-              Value := Byte(IntValue);
-            end;
-          TIFF_SHORT,
-          TIFF_SSHORT:
-            begin
-              Stream.Read(IntValue, DataTypeToSize[FIFD[Index].DataType]);
-              if ioBigEndian in FImageProperties.Options then Value := Swap(Word(IntValue))
-                                                         else Value := Word(IntValue);
-            end;
-          TIFF_LONG,
-          TIFF_SLONG:
-            begin
-              Stream.Read(IntValue, DataTypeToSize[FIFD[Index].DataType]);
-              if ioBigEndian in FImageProperties.Options then Value := SwapLong(IntValue);
-            end;
-          TIFF_RATIONAL,
-          TIFF_SRATIONAL:
-            begin
-              Stream.ReadBuffer(FloatNominator, SizeOf(FloatNominator));
-              Stream.ReadBuffer(FloatDenominator, SizeOf(FloatDenominator));
-              if ioBigEndian in FImageProperties.Options then
-              begin
-                FloatNominator := SwapLong(Cardinal(FloatNominator));
-                FloatDenominator := SwapLong(Cardinal(FloatDenominator));
-              end;
-              Value := FloatNominator / FloatDenominator;
-            end;
-          TIFF_FLOAT:
-            begin
-              Stream.ReadBuffer(IntNominator, SizeOf(IntNominator));
-              Stream.ReadBuffer(IntDenominator, SizeOf(IntDenominator));
-              if ioBigEndian in FImageProperties.Options then
-              begin
-                IntNominator := SwapLong(IntNominator);
-                IntDenominator := SwapLong(IntDenominator);
-              end;
-              Value := IntNominator / IntDenominator;
-            end;
-          end;
-        Values[I] := Value;
-      end;
-    end;
-  end;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-function TTIFFGraphic.GetValue(Stream: TStream; Tag: Cardinal; Default: Single = 0): Single;
-
-// returns the value of the IFD entry indicated by Tag or the default value if the entry is not there
-
-var
-  Index: Cardinal;
-  IntNominator,
-  IntDenominator: Cardinal;
-  FloatNominator,
-  FloatDenominator: Cardinal;
-
-begin
-  Result := Default;
-  if FindTag(Tag, Index) then
-  begin
-    // if the data length is > 1 then Offset is a real offset into the stream,
-    // otherwise it is the value itself and must be shortend depending on the data type
-    if FIFD[Index].DataLength = 1 then
-    begin
-      case FIFD[Index].DataType of
-        TIFF_BYTE:
-          Result := Byte(FIFD[Index].Offset);
-        TIFF_SHORT,
-        TIFF_SSHORT:
-          Result := Word(FIFD[Index].Offset);
-        TIFF_LONG,
-        TIFF_SLONG: // nothing to do
-          Result := FIFD[Index].Offset;
-        TIFF_RATIONAL,
-        TIFF_SRATIONAL:
-          begin
-            Stream.Position := FBasePosition + FIFD[Index].Offset;
-            Stream.ReadBuffer(FloatNominator, SizeOf(FloatNominator));
-            Stream.ReadBuffer(FloatDenominator, SizeOf(FloatDenominator));
-            if ioBigEndian in FImageProperties.Options then
-            begin
-              FloatNominator := SwapLong(Cardinal(FloatNominator));
-              FloatDenominator := SwapLong(Cardinal(FloatDenominator));
-            end;
-            Result := FloatNominator / FloatDenominator;
-          end;
-        TIFF_FLOAT:
-          begin
-            Stream.Position := FBasePosition + FIFD[Index].Offset;
-            Stream.ReadBuffer(IntNominator, SizeOf(IntNominator));
-            Stream.ReadBuffer(IntDenominator, SizeOf(IntDenominator));
-            if ioBigEndian in FImageProperties.Options then
-            begin
-              IntNominator := SwapLong(IntNominator);
-              IntDenominator := SwapLong(IntDenominator);
-            end;
-            Result := IntNominator / IntDenominator;
-          end;
-      end;
-    end;
-  end;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-function TTIFFGraphic.GetValue(Tag: Cardinal; Default: Cardinal = 0): Cardinal;
-
-// returns the value of the IFD entry indicated by Tag or the default value if the entry is not there
-
-var
-  Index: Cardinal;
-
-begin
-  if not FindTag(Tag, Index) then Result := Default
-                             else
-  begin
-    Result := FIFD[Index].Offset;
-    // if the data length is > 1 then Offset is a real offset into the stream,
-    // otherwise it is the value itself and must be shortend depending on the data type
-    if FIFD[Index].DataLength = 1 then
-    begin
-      case FIFD[Index].DataType of
-        TIFF_BYTE:
-          Result := Byte(Result);
-        TIFF_SHORT,
-        TIFF_SSHORT:
-          Result := Word(Result);
-        TIFF_LONG,
-        TIFF_SLONG: // nothing to do
-          ;
-      else
-        Result := Default;
-      end;
-    end;
-  end;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-function TTIFFGraphic.GetValue(Tag: Cardinal; var Size: Cardinal; Default: Cardinal): Cardinal;
-
-// Returns the value of the IFD entry indicated by Tag or the default value if the entry is not there.
-// If the tag exists then also the data size is returned.
-
-var
-  Index: Cardinal;
-
-begin
-  if not FindTag(Tag, Index) then
-  begin
-    Result := Default;
-    Size := 0;
-  end
+  case whence of
+    SEEK_CUR:
+      Inc(Graphic.FCurrentPointer, off);
+    SEEK_END:
+      Graphic.FCurrentPointer := Pointer(PChar(Graphic.FMemory) + Graphic.FSize - off);
   else
-  begin
-    Result := FIFD[Index].Offset;
-    Size := FIFD[Index].DataLength;
-    // if the data length is > 1 then Offset is a real offset into the stream,
-    // otherwise it is the value itself and must be shortend depending on the data type
-    if FIFD[Index].DataLength = 1 then
+    Graphic.FCurrentPointer := Pointer(PChar(Graphic.FMemory) + off);
+  end;
+  Result := toff_t(PChar(Graphic.FCurrentPointer) - PChar(Graphic.FMemory));
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TIFFCloseProc(fd: thandle_t): Integer; cdecl;
+
+var
+  Graphic: TTIFFGraphic;
+
+begin
+  Graphic := TTIFFGraphic(fd);
+  Graphic.FCurrentPointer := nil;
+  Result := 0;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TIFFSizeProc(fd: thandle_t): toff_t; cdecl;
+
+var
+  Graphic: TTIFFGraphic;
+
+begin
+  Graphic := TTIFFGraphic(fd);
+  Result := Graphic.FSize;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TIFFMapProc(fd: thandle_t; var pbase: tdata_t; var psize: toff_t): Integer; cdecl;
+
+begin
+  Result := 0;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TIFFUnmapProc(fd: thandle_t; base: tdata_t; size: toff_t); cdecl;
+
+begin
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TTIFFGraphic.ReadContiguous(tif: PTIFF);
+
+var
+  Row, Y,
+  RowsToRead: Integer;
+  Pos: Integer;
+  Buffer: Pointer;
+  FromSkew: Integer;
+  RowCount,
+  LineSize: Integer;
+  RowsPerStrip: Integer;
+  Source: PChar;
+  Line: Pointer;
+  RowInc: Integer;
+  LineOffset: Integer;
+
+begin
+  GetMem(Buffer, TIFFStripSize(tif));
+  with FImageProperties do
+  try
+    Y := SetOrientation(tif, Height);
+
+    TIFFGetFieldDefaulted(tif, TIFFTAG_ROWSPERSTRIP, @RowsPerStrip);
+    if RowsPerStrip = -1 then
+      RowsPerStrip := Height;
+
+    LineSize := TIFFScanlineSize(tif);
+    if (BitsPerPixel = 1) and ((Width mod 8) <> 0) then
+      FromSkew := ((Width + 7) and not 7) - Width
+    else
+      FromSkew := 0;
+
+    if FImageProperties.Orientation = ORIENTATION_TOPLEFT then
+      RowInc := 1
+    else
+      RowInc := -1;
+      
+    Row := 0;
+    while Row < Height do
     begin
-      case FIFD[Index].DataType of
-        TIFF_BYTE:
-          Result := Byte(Result);
-        TIFF_SHORT,
-        TIFF_SSHORT:
-          Result := Word(Result);
-        TIFF_LONG,
-        TIFF_SLONG: // nothing to do
-          ;
+      RowsToRead := RowsPerStrip - Row mod RowsPerStrip;
+      if Row + RowsToRead > Height then
+        RowCount := Height - Row
       else
-        Result := Default;
+        RowCount := RowsToRead;
+      TIFFReadEncodedStrip(tif, TIFFComputeStrip(tif, Row, 0), Buffer, (Row mod RowsPerStrip + RowCount) * LineSize);
+      Pos := (Row mod RowsPerStrip) * LineSize;
+
+      Source := PChar(Buffer) + Pos;
+      Inc(Row, RowCount);
+      LineOffset := Ceil(BitsPerPixel * (Width + FromSkew) / 8);
+      while RowCount > 0 do
+      begin
+        Line := Scanline[Y];
+        ColorManager.ConvertRow([Source], Line, Width, $FF);
+        Inc(Source, LineOffset);
+        Inc(Y, RowInc);
+        Dec(RowCount);
+      end;
+      AdvanceProgress(100 * RowCount / Height, 0, 1, True);
+    end;
+  finally
+    FreeMem(Buffer);
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TTIFFGraphic.ReadTiled(tif: PTIFF);
+
+var
+  Column, Row, Y,
+  RowsToRead: Integer;
+  Pos, Counter: Integer;
+  TileWidth, TileHeight: Integer;
+  Buffer: Pointer;
+  FromSkew: Integer;
+  RowCount: Integer;
+  PixelCount: Integer;
+  Source: PChar;
+  Line: PChar;
+  RowInc: Integer;
+  ColumnOffset: Integer;
+
+begin
+  GetMem(Buffer, TIFFTileSize(tif));
+  with FImageProperties do
+  try
+    TIFFGetField(tif, TIFFTAG_TILEWIDTH, @TileWidth);
+    TIFFGetField(tif, TIFFTAG_TILELENGTH, @TileHeight);
+    if Orientation = ORIENTATION_TOPLEFT then
+      RowInc := 1
+    else
+      RowInc := -1;
+
+    Row := 0;
+    while Row < Height do
+    begin
+      RowsToRead := TileHeight - (Row mod TileHeight);
+      if Row + RowsToRead > Height then
+        RowCount := Height - Row
+      else
+        RowCount := RowsToRead;
+
+      Column := 0;
+      while Column < Width do
+      begin
+        TIFFReadTile(tif, Buffer, Column, Row, 0, 0);
+        Pos := (Row mod TileHeight) * Integer(TIFFTileRowSize(tif));
+
+        Source := PChar(Buffer) + Pos;
+
+        Y := Row;
+        if Column + TileWidth > Width then
+        begin
+          // Tile is clipped horizontally.  Calculate visible portion and skewing factors.
+          PixelCount := Width - Column;
+          FromSkew := TileWidth - PixelCount;
+          Counter := RowCount;
+          ColumnOffset := BitsPerPixel * PixelCount div 8;
+          while Counter > 0 do
+          begin
+            Line := Scanline[Y];
+            Inc(Line, ColumnOffset);
+            ColorManager.ConvertRow([Source], Line, PixelCount, $FF);
+            Inc(Source, BitsPerPixel * (PixelCount + FromSkew) div 8);
+            Inc(Y, RowInc);
+            Dec(Counter);
+          end;
+        end
+        else
+        begin
+          Counter := RowCount;
+          ColumnOffset := BitsPerPixel * Column div 8;
+          while Counter > 0 do
+          begin
+            Line := Scanline[Y];
+            Inc(Line, ColumnOffset);
+            ColorManager.ConvertRow([Source], Line, TileWidth, $FF);
+            Inc(Source, BitsPerPixel * TileWidth div 8);
+            Inc(Y, RowInc);
+            Dec(Counter);
+          end;
+        end;
+        Inc(Column, TileWidth);
+      end;
+
+      Inc(Row, RowCount);
+      AdvanceProgress(100 * RowCount / Height, 0, 1, True);
+    end;
+  finally
+    FreeMem(Buffer);
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TTIFFGraphic.SetOrientation(tif: PTIFF; H: Cardinal): Cardinal;
+
+begin
+  case FImageProperties.Orientation of
+    ORIENTATION_BOTRIGHT,
+    ORIENTATION_RIGHTBOT,
+    ORIENTATION_LEFTBOT,
+    ORIENTATION_BOTLEFT:
+        Result := H - 1;
+  else
+    // ORIENTATION_TOPRIGHT
+    // ORIENTATION_RIGHTTOP
+    // ORIENTATION_LEFTTOP etc.
+    FImageProperties.Orientation := ORIENTATION_TOPLEFT;
+    Result := 0;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+class function TTIFFGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
+
+var
+  Run: PByte;
+  Header: TTIFFHeader;
+
+begin
+  Run := Memory;
+  Result := Size > SizeOf(TTIFFHeader);
+  if Result then
+  begin
+    Move(Run^, Header, SizeOf(Header));
+    with Header do
+    begin
+      Result := (ByteOrder = TIFF_BIGENDIAN) or (ByteOrder = TIFF_LITTLEENDIAN);
+      if Result then
+      begin
+        if ByteOrder = TIFF_BIGENDIAN then
+        begin
+          Version := Swap(Header.Version);
+          FirstIFD := SwapLong(Header.FirstIFD);
+        end;
+
+        Result := (Version = TIFF_VERSION) and (Integer(FirstIFD) < Size);
       end;
     end;
   end;
@@ -2518,585 +3046,361 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TTIFFGraphic.SortIFD;
-
-// Although all entries in the IFD should be sorted there are still files where this is not the case.
-// Because the lookup for certain tags in the IFD uses binary search it must be made sure the IFD is
-// sorted (what we do here).
-
-  //--------------- local function --------------------------------------------
-
-  procedure QuickSort(L, R: Integer);
-
-  var
-    I, J, M: Integer;
-    T: TIFDEntry;
-
-  begin
-    repeat
-      I := L;
-      J := R;
-      M := (L + R) shr 1;
-      repeat
-        while FIFD[I].Tag < FIFD[M].Tag do Inc(I);
-        while FIFD[J].Tag > FIFD[M].Tag do Dec(J);
-        if I <= J then
-        begin
-          T := FIFD[I];
-          FIFD[I] := FIFD[J];
-          FIFD[J] := T;
-          Inc(I);
-          Dec(J);
-        end;
-      until I > J;
-      if L < J then QuickSort(L, J);
-      L := I;
-    until I >= R;
-  end;
-
-  //--------------- end local functions ---------------------------------------
-
-begin
-  QuickSort(0, High(FIFD));
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure TTIFFGraphic.SwapIFD;
-
-// swap the member fields of all entries of the currently loaded IFD from big endian to little endian
+procedure TTIFFGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
+  TIFFImage: PTIFF;
+  Run: PChar;
+  Count: Cardinal;
+  Pixels: Pointer;
   I: Integer;
-  Size: Cardinal;
+  Line: Pointer;
 
-begin
-  for I := 0 to High(FIFD) do
-    with FIFD[I] do
-    begin
-      Tag := Swap(Tag);
-      DataType := Swap(DataType);
-      DataLength := SwapLong(DataLength);
-      
-      // determine whether the data fits into 4 bytes
-      Size := DataTypeToSize[FIFD[I].DataType] * FIFD[I].DataLength;
-      if Size >= 4 then Offset := SwapLong(Offset)
-                   else
-        case DataType of
-          TIFF_SHORT,
-          TIFF_SSHORT:
-            if DataLength > 1 then Offset := SwapLong(Offset)
-                              else Offset := Swap(Word(Offset));
-        end;
+  {$ifndef DELPHI_7_UP}
+    // Structure used to build a va_list array.
+    ExtraInfo: record
+      Value1: Pointer;
+      Value2: Pointer;
+      Value3: Pointer;
     end;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure TTIFFGraphic.LoadFromStream(Stream: TStream);
-
-var
-  IFDCount: Word;
-  Buffer: Pointer;
-  Run: PAnsiChar;
-  Pixels,
-  EncodedData,
-  DataPointerCopy: Pointer;
-  Offsets,
-  ByteCounts: TCardinalArray;
-  ColorMap: Cardinal;
-
-  StripSize: Cardinal;
-  Decoder: TDecoder;
-
-  // dynamically assigned handler
-  Deprediction: procedure(P: Pointer; Count: Cardinal);
+  {$endif DELPHI_7_UP}
+  RedMap,
+  GreenMap,
+  BlueMap: PWord;
+  GotPalette: Integer;
 
 begin
-  Handle := 0;
-  Deprediction := nil;
-  Decoder := nil;
+  inherited;
 
-  // we need to keep the current stream position because all position information
-  // are relative to this one
-  FBasePosition := Stream.Position;
-  if ReadImageProperties(Stream, 0) then
+  if ReadImageProperties(Memory, Size, ImageIndex) then
   begin
     with FImageProperties do
     try
-      // tiled images aren't supported
-      if ioTiled in Options then Exit;
-      
-      FProgressRect := Rect(0, 0, 0, 1);
-      Progress(Self, psStarting, 0, False, FProgressRect, gesPreparing);
+      // Initialize outermost progress display.
+      InitProgress(Width, 1);
+      StartProgressSection(0, '');
 
-      // read data of the first image file directory (IFD)
-      Stream.Position := FBasePosition + FirstIFD;
-      Stream.ReadBuffer(IFDCount, SizeOf(IFDCount));
-      if ioBigEndian in Options then IFDCount := Swap(IFDCount);
-      SetLength(FIFD, IFDCount);
-      Stream.ReadBuffer(FIFD[0], IFDCount * SizeOf(TIFDEntry));
-      if ioBigEndian in Options then SwapIFD;
-      SortIFD;
+      // Initialize sub section for image preparation. We give it a (guessed) value of 1%.
+      StartProgressSection(1, gesPreparing);
 
-      // --- read the data of the directory which are needed to actually load the image:
+      FMemory := Memory;
+      FCurrentPointer := Memory;
+      FSize := Size;
 
-      // data organization
-      GetValueList(Stream, TIFFTAG_STRIPOFFSETS, Offsets);
-      GetValueList(Stream, TIFFTAG_STRIPBYTECOUNTS, ByteCounts);
+      TIFFImage := TIFFClientOpen('', 'r', Cardinal(Self), TIFFReadProc, TIFFWriteProc, TIFFSeekProc, TIFFCloseProc,
+        TIFFSizeProc, TIFFMapProc, TIFFUnmapProc);
+      try
+        // The preparation part is finished. Finish also progress section (which will step the main progress).
+        FinishProgressSection(False);
 
-      // retrive additional tile data if necessary
-      if ioTiled in Options then
-      begin
-        GetValueList(Stream, TIFFTAG_TILEOFFSETS, Offsets);
-        GetValueList(Stream, TIFFTAG_TILEBYTECOUNTS, ByteCounts);
-      end;
-
-      // determine pixelformat and setup color conversion
-      with ColorManager do
-      begin
-        if ioBigEndian in Options then SourceOptions := [coNeedByteSwap]
-                                  else SourceOptions := [];
-        SourceBitsPerSample := BitsPerSample;
-        if SourceBitsPerSample = 16 then TargetBitsPerSample := 8
-                                    else TargetBitsPerSample := SourceBitsPerSample;
-
-        // the JPEG lib does internally a conversion to RGB
-        if Compression in [ctOJPEG, ctJPEG] then SourceColorScheme := csBGR
-                                            else SourceColorScheme := ColorScheme;
-
-        case SourceColorScheme of
-          csRGBA:
-            TargetColorScheme := csBGRA;
-          csRGB:
-            TargetColorScheme := csBGR;
-          csCMY,
-          csCMYK,
-          csCIELab,
-          csYCbCr:
-            TargetColorScheme := csBGR;
-          csIndexed:
-            begin
-              if HasAlpha then SourceColorScheme := csGA; // fake indexed images with alpha (used in EPS)
-                                                          // as being grayscale with alpha
-              TargetColorScheme := csIndexed;
-            end;
-        else
-          TargetColorScheme := SourceColorScheme;
-        end;
-
-        SourceSamplesPerPixel := SamplesPerPixel;
-        if SourceColorScheme = csCMYK then TargetSamplesPerPixel := 3
-                                      else TargetSamplesPerPixel := SamplesPerPixel;
-        if SourceColorScheme = csCIELab then SourceOptions := SourceOptions + [coLabByteRange];
-
-        if SourceColorScheme = csGA then PixelFormat := pf8Bit
-                                    else PixelFormat := TargetPixelFormat;
-      end;
-      
-      // now that the pixel format is set we can also set the (possibly large) image dimensions
-      Self.Width := Width;
-      Self.Height := Height;
-      if (Width = 0) or (Height = 0) then GraphicExError(gesInvalidImage, ['TIF/TIFF']);
-
-      FProgressRect.Right := Width;
-      if ColorManager.TargetColorScheme in [csIndexed, csG, csGA] then
-      begin
-        // load palette data and build palette
-        if ColorManager.TargetColorScheme = csIndexed then
+        if Assigned(TIFFImage) then
         begin
-          ColorMap := GetValue(TIFFTAG_COLORMAP, StripSize, 0);
-          if StripSize > 0 then
+          TIFFSetDirectory(TIFFImage, ImageIndex);
+
+          ColorManager.SourceColorScheme := ColorScheme;
+          // Split loading image data depending on pixel depth.
+          if (SamplesPerPixel = 1) and (ColorScheme in [csIndexed, csG, csIndexedA, csGA]) then
           begin
-            Stream.Position := FBasePosition + ColorMap;
-            // number of palette entries is also given by the color map tag
-            // (3 components each (r,g,b) and two bytes per component)
-            Stream.ReadBuffer(FPalette[0] , 2 * StripSize);
-            Palette := ColorManager.CreateColorPalette([@FPalette[0], @FPalette[StripSize div 3],
-                                                       @FPalette[2 * StripSize div 3]], pfPlane16Triple, StripSize, False);
-          end;
-        end
-        else Palette := ColorManager.CreateGrayScalePalette(ioMinIsWhite in Options);
-      end
-      else
-        if ColorManager.SourceColorScheme = csYCbCr then
-          ColorManager.SetYCbCrParameters(FYCbCrCoefficients, YCbCrSubSampling[0], YCbCrSubSampling[1]);
+            // Monochrome or palette images with 1, 2, 4, 8 and 16 bits per pixel.
+            ColorManager.SourceBitsPerSample := BitsPerSample;
+            ColorManager.SourceSamplesPerPixel := SamplesPerPixel;
 
-      // intermediate buffer for data
-      BytesPerLine := (BitsPerPixel * Width + 7) div 8;
-
-      // determine prediction scheme
-      if Compression <> ctNone then
-      begin
-        // Prediction without compression makes no sense at all (as it is to improve
-        // compression ratios). Appearently there are image which are uncompressed but still
-        // have a prediction scheme set. Hence we must check for it.
-        case Predictor of
-          PREDICTION_HORZ_DIFFERENCING: // currently only one prediction scheme is defined
-            case SamplesPerPixel of
-              4:
-                Deprediction := Depredict4;
-              3:
-                Deprediction := Depredict3;
+            if BitsPerSample in [8, 16] then
+              ColorManager.TargetBitsPerSample := 8
             else
-              Deprediction := Depredict1;
+              ColorManager.TargetBitsPerSample := BitsPerSample;
+            ColorManager.TargetSamplesPerPixel := SamplesPerPixel;
+
+            // Monochrome images are handled just like indexed images (a gray scale palette is used).
+            ColorManager.TargetColorScheme := csindexed;
+            PixelFormat := ColorManager.TargetPixelFormat;
+            Self.Width := Width;
+            Self.Height := Height;
+
+            if ColorScheme = csIndexed then
+            begin
+              {$ifndef DELPHI_7_UP}
+                ExtraInfo.Value1 := @RedMap;
+                ExtraInfo.Value2 := @GreenMap;
+                ExtraInfo.Value3 := @BlueMap;
+                GotPalette := TIFFVGetField(TIFFImage, TIFFTAG_COLORMAP, @ExtraInfo);
+              {$else}
+                GotPalette := TIFFGetField(TIFFImage, TIFFTAG_COLORMAP, @RedMap, @GreenMap, @BlueMap);
+              {$endif DELPHI_7_UP}
+
+              if GotPalette > 0 then
+              begin
+                // Create the palette from the three maps.
+                Palette := ColorManager.CreateColorPalette([RedMap, GreenMap, Bluemap], pfPlane16Triple, 1 shl BitsPerPixel, True);
+              end
+              else // If there was no palette then use a grayscale palette.
+                Palette := ColorManager.CreateGrayscalePalette(False);
+            end
+            else
+            begin
+              // Gray scale image data.
+              Palette := ColorManager.CreateGrayscalePalette(ioMinIsWhite in Options);
             end;
-        end;
-      end;
-      
-      // create decompressor for the image
-      case Compression of
-        ctNone:
-          ;
-        {$ifdef UseLZW}
-        ctLZW:
-          Decoder := TTIFFLZWDecoder.Create;
-        {$endif}
-        ctPackedBits:
-          Decoder := TPackbitsRLEDecoder.Create;
-        ctFaxRLE,
-        ctFaxRLEW:
-          Decoder := TCCITTMHDecoder.Create(GetValue(TIFFTAG_GROUP3OPTIONS),
-                                            ioReversed in Options,
-                                            Compression = ctFaxRLEW,
-                                            Width);
-        ctFax3:
-          Decoder := TCCITTFax3Decoder.Create(GetValue(TIFFTAG_GROUP3OPTIONS), ioReversed in Options, False, Width);
-        ctJPEG:
-          begin
-            // some extra work is needed for JPEG
-            GetValueList(Stream, TIFFTAG_JPEGTABLES, JPEGTables);
 
-            Decoder := TTIFFJPEGDecoder.Create(@FImageProperties);
-          end;
-        ctThunderscan:
-          Decoder := TThunderDecoder.Create(Width);
-        ctLZ77:
-          Decoder := TLZ77Decoder.Create(Z_PARTIAL_FLUSH, True);
-      else
-        {
-        COMPRESSION_OJPEG,
-        COMPRESSION_CCITTFAX4
-        COMPRESSION_NEXT
-        COMPRESSION_IT8CTPAD
-        COMPRESSION_IT8LW
-        COMPRESSION_IT8MP
-        COMPRESSION_IT8BL
-        COMPRESSION_PIXARFILM
-        COMPRESSION_PIXARLOG
-        COMPRESSION_DCS
-        COMPRESSION_JBIG}
-        GraphicExError(gesUnsupportedFeature, [gesCompressionScheme, 'TIF/TIFF']);
-      end;
-
-      if Assigned(Decoder) then Decoder.DecodeInit;
-      Progress(Self, psEnding, 0, False, FProgressRect, '');
- 
-      Progress(Self, psStarting, 0, False, FProgressRect, gesTransfering);
-      // go for each strip in the image (which might contain more than one line)
-      CurrentRow := 0;
-      CurrentStrip := 0;
-      StripCount := Length(Offsets);
-      while CurrentStrip < StripCount do
-      begin
-        Stream.Position := FBasePosition + Offsets[CurrentStrip];
-        if CurrentStrip < Length(RowsPerStrip) then StripSize := BytesPerLine * RowsPerStrip[CurrentStrip]
-                                               else StripSize := BytesPerLine * RowsPerStrip[High(RowsPerStrip)];
-
-        GetMem(Buffer, StripSize);
-        Run := Buffer;
-        try
-          // decompress strip if necessary
-          if Assigned(Decoder) then
-          begin
-            GetMem(EncodedData, ByteCounts[CurrentStrip]);
-            try
-              DataPointerCopy := EncodedData;
-              Stream.Read(EncodedData^, ByteCounts[CurrentStrip]);
-              // need pointer copies here because they could get modified
-              // while decoding
-              Decoder.Decode(DataPointerCopy, Pointer(Run), ByteCounts[CurrentStrip], StripSize);
-            finally
-              if Assigned(EncodedData) then FreeMem(EncodedData);
-            end;
+            StartProgressSection(0, gesLoadingData);
+            if ioTiled in Options then
+              ReadTiled(TIFFImage)
+            else
+              ReadContiguous(TIFFImage);
+            FinishProgressSection(False);
           end
           else
-          begin
-            Stream.Read(Buffer^, StripSize);
-          end;
+            if Height > 0 then
+            begin
+              // 3 or more samples per pixel are used for RGB(A), CMYK, L*a*b*, YCbCr etc.
+              // All of these will be converted to RGBA.
+              PixelFormat := pf32Bit;
+              Self.Width := Width;
+              Self.Height := Height;
 
-          Run := Buffer;
-          // go for each line (row) in the strip
-          while (CurrentRow < Height) and ((Run - Buffer) < Integer(StripSize)) do
-          begin
-            Pixels := ScanLine[CurrentRow];
-            // depredict strip if necessary
-            if Assigned(Deprediction) then Deprediction(Run, Width - 1);
-            // any color conversion comes last
-            ColorManager.ConvertRow([Run], Pixels, Width, $FF);
-            Inc(PAnsiChar(Run), BytesPerLine);
-            Inc(CurrentRow);
+              // We can improve speed a bit by directly loading the image data to the scan lines
+              // for bottom-up images (which is usually the case).
+              if Integer(Scanline[0]) - Integer(Scanline[1]) > 0 then
+              begin
+                StartProgressSection(0, gesLoadingData);
+                TIFFReadRGBAImage(TIFFImage, Width, Height, Scanline[Height - 1], True);
+                FinishProgressSection(True);
+              end
+              else
+              begin
+                Count := Width * Height;
+                GetMem(Pixels, Count * SizeOf(Cardinal));
+                try
+                  StartProgressSection(70, gesLoadingData);
+                  if TIFFReadRGBAImage(TIFFImage, Width, Height, Pixels, True) then
+                  begin
+                    FinishProgressSection(False);
 
-            Progress(Self, psRunning, MulDiv(CurrentRow, 100, Height), True, FProgressRect, '');
-            OffsetRect(FProgressRect, 0, 1);
-          end;
-
-        finally
-          if Assigned(Buffer) then FreeMem(Buffer);
+                    StartProgressSection(30, gesTransfering);
+                    Run := Pointer(Pixels);
+                    for I := Height - 1 downto 0 do
+                    begin
+                      Line := Scanline[I];
+                      Move(Run^, Line^, Width * 4);
+                      Inc(Run, Width * 4);
+                      AdvanceProgress(100 / Height, 0, 1, True);
+                    end;
+                  end;
+                  FinishProgressSection(False);
+                finally
+                  FreeMem(Pixels);
+                end;
+              end;
+            end;
         end;
-
-        Inc(CurrentStrip);
+      finally
+        TIFFClose(TIFFImage);
       end;
     finally
-      Progress(Self, psEnding, 0, False, FProgressRect, '');
+      FinishProgressSection(False);
 
-      if Assigned(Decoder) then Decoder.DecodeEnd;
-      Decoder.Free;
+      if Assigned(Decoder) then
+        Decoder.DecodeEnd;
+      FreeAndNil(Decoder);
     end;
   end
-  else GraphicExError(gesInvalidImage, ['TIF/TIFF']);
+  else
+    GraphicExError(gesInvalidImage, ['TIF/TIFF']);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TTIFFGraphic.SaveToStream(Stream: TStream);
-
-begin
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-function TTIFFGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+function TTIFFGraphic.ReadImageProperties(const Memory: Pointer; Size:Int64; ImageIndex: Cardinal): Boolean;
 
 // Reads all relevant TIF properties of the image of index ImageIndex (zero based).
-// Returns True if the image ImageIndex could be read, otherwise False.
-
-const
-  PhotometricToColorScheme: array[PHOTOMETRIC_MINISWHITE..PHOTOMETRIC_CIELAB] of TColorScheme = (
-    csG,
-    csG,
-    csRGBA,
-    csIndexed,
-    csUnknown,
-    csCMYK,
-    csYCbCr,
-    csUnknown,
-    csCIELab
-  );
 
 var
-  IFDCount: Word;
-  ExtraSamples: TCardinalArray;
-  PhotometricInterpretation: Byte;
-  TIFCompression: Word;
-  Index: Cardinal;
-  
-  IFDOffset: Cardinal;
-  Header: TTIFFHeader;
-  LocalBitsPerSample: TCardinalArray;
+  TIFFImage: PTIFF;
+  PhotometricInterpretation: Word;
+  ExtraSamples: Word;
+  SampleInfo: PWord;
+  TIFFValue: Word;
+  TIFFCompression: Word;
+  ResUnit: Word;
+  FillOrder: Word;
+
+  {$ifndef DELPHI_7_UP}
+    // Structure used to build a va_list array.
+    ExtraInfo: record
+      Value1: Pointer;
+      Value2: Pointer;
+    end;
+  {$endif DELPHI_7_UP}
   
 begin
-  // clear image properties
-  Result := inherited ReadImageProperties(Stream, ImageIndex);
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
 
-  with FImageProperties do
+  if Result then
   begin
-    // rewind stream to header position
-    Stream.Position := FBasePosition;
-
-    Stream.ReadBuffer(Header, SizeOf(Header));
-    if Header.ByteOrder = TIFF_BIGENDIAN then
+    with FImageProperties do
     begin
-      Options := Options + [ioBigEndian];
-      Header.Version := Swap(Header.Version);
-      Header.FirstIFD := SwapLong(Header.FirstIFD);
-    end;
+      FMemory := Memory;
+      FCurrentPointer := Memory;
+      FSize := Size;
 
-    Version := Header.Version;
-    FirstIFD := Header.FirstIFD;
-    if Version = TIFF_VERSION then
-    begin
-      IFDOffset := Header.FirstIFD;
-      // advance to next IFD until we have the desired one
-      repeat
-        Stream.Position := FBasePosition + IFDOffset;
-        // number of entries in this directory
-        Stream.ReadBuffer(IFDCount, SizeOf(IFDCount));
-        if Header.ByteOrder = TIFF_BIGENDIAN then IFDCount := Swap(IFDCount);
-
-        // if we already have the desired image then get out of here
-        if ImageIndex = 0 then Break;
-
-        Dec(ImageIndex);
-        // advance to offset for next IFD
-        Stream.Seek(IFDCount * SizeOf(TIFDEntry), soFromCurrent);
-        Stream.ReadBuffer(IFDOffset, SizeOf(IFDOffset));
-        // no further image available, but the required index is still not found
-        if IFDOffset = 0 then Exit;
-      until False;
-
-      SetLength(FIFD, IFDCount);
-      Stream.ReadBuffer(FIFD[0], IFDCount * SizeOf(TIFDEntry));
-      if Header.ByteOrder = TIFF_BIGENDIAN then SwapIFD;
-      SortIFD;
-
-      Width := GetValue(TIFFTAG_IMAGEWIDTH);
-      Height := GetValue(TIFFTAG_IMAGELENGTH);
-      if (Width = 0) or (Height = 0) then Exit;
-
-      // data organization
-      GetValueList(Stream, TIFFTAG_ROWSPERSTRIP, RowsPerStrip);
-      // some images rely on the default size ($FFFFFFFF) if only one stripe is in the image,
-      // make sure there's a valid value also in this case
-      if (Length(RowsPerStrip) = 0) or (RowsPerStrip[0] = $FFFFFFFF) then
-      begin
-        SetLength(RowsPerStrip, 1);
-        RowsPerStrip[0] := Height;
-      end;
-
-      // number of color components per pixel (1 for b&w, 16 and 256 colors, 3 for RGB, 4 for CMYK etc.)
-      SamplesPerPixel := GetValue(TIFFTAG_SAMPLESPERPIXEL, 1);
-
-      // number of bits per color component
-      GetValueList(Stream, TIFFTAG_BITSPERSAMPLE, LocalBitsPerSample);
-      if Length(LocalBitsPerSample) = 0 then BitsPerSample := 1
-                                        else BitsPerSample := LocalBitsPerSample[0];
-
-      // determine whether image is tiled and retrive tile data if necessary
-      TileWidth := GetValue(TIFFTAG_TILEWIDTH, 0);
-      TileLength := GetValue(TIFFTAG_TILELENGTH, 0);
-      if  (TileWidth > 0) and (TileLength > 0) then Include(Options, ioTiled);
-
-      // photometric interpretation determines the color space
-      PhotometricInterpretation := GetValue(TIFFTAG_PHOTOMETRIC);
-      // type of extra information for additional samples per pixel
-      GetValueList(Stream, TIFFTAG_EXTRASAMPLES, ExtraSamples);
-
-      // determine whether extra samples must be considered
-      HasAlpha := Length(ExtraSamples) > 0;
-      // if any of the extra sample contains an invalid value then consider
-      // it as being not existant to avoid wrong interpretation for badly
-      // written images
-      if HasAlpha then
-      begin
-        for Index := 0 to High(ExtraSamples) do
-          if ExtraSamples[Index] > EXTRASAMPLE_UNASSALPHA then
-          begin
-            HasAlpha := False;
-            Break;
-          end;
-      end;
-
-      // currently all bits per sample values are equal
-      BitsPerPixel := BitsPerSample * SamplesPerPixel;
-
-      // create decompressor for the image
-      TIFCompression := GetValue(TIFFTAG_COMPRESSION);
-      case TIFCompression of
-        COMPRESSION_NONE:
-          Compression := ctNone;
-        COMPRESSION_LZW:
-          Compression := ctLZW;
-        COMPRESSION_PACKBITS:
-          Compression := ctPackedBits;
-        COMPRESSION_CCITTRLE:
-          Compression := ctFaxRLE;
-        COMPRESSION_CCITTRLEW:
-          Compression := ctFaxRLEW;
-        COMPRESSION_CCITTFAX3:
-          Compression := ctFax3;
-        COMPRESSION_OJPEG:
-          Compression := ctOJPEG;
-        COMPRESSION_JPEG:
-          Compression := ctJPEG;
-        COMPRESSION_CCITTFAX4:
-          Compression := ctFax4;
-        COMPRESSION_NEXT:
-          Compression := ctNext;
-        COMPRESSION_THUNDERSCAN:
-          Compression := ctThunderscan;
-        COMPRESSION_IT8CTPAD:
-          Compression := ctIT8CTPAD;
-        COMPRESSION_IT8LW:
-          Compression := ctIT8LW;
-        COMPRESSION_IT8MP:
-          Compression := ctIT8MP;
-        COMPRESSION_IT8BL:
-          Compression := ctIT8BL;
-        COMPRESSION_PIXARFILM:
-          Compression := ctPixarFilm;
-        COMPRESSION_PIXARLOG: // also a LZ77 clone
-          Compression := ctPixarLog;
-        COMPRESSION_ADOBE_DEFLATE,
-        COMPRESSION_DEFLATE: 
-          Compression := ctLZ77;
-        COMPRESSION_DCS:
-          Compression := ctDCS;
-        COMPRESSION_JBIG:
-          Compression := ctJBIG;
-      else
-        Compression := ctUnknown;
-      end; 
-
-      if PhotometricInterpretation in [PHOTOMETRIC_MINISWHITE..PHOTOMETRIC_CIELAB] then
-      begin
-        ColorScheme := PhotometricToColorScheme[PhotometricInterpretation];
-        if (PhotometricInterpretation = PHOTOMETRIC_RGB) and (SamplesPerPixel < 4) then ColorScheme := csRGB;
-        if PhotometricInterpretation = PHOTOMETRIC_MINISWHITE then Include(Options, ioMinIsWhite);
-
-        // extra work necessary for YCbCr
-        if PhotometricInterpretation = PHOTOMETRIC_YCBCR then
-        begin
-          if FindTag(TIFFTAG_YCBCRSUBSAMPLING, Index)
-            then GetValueList(Stream, TIFFTAG_YCBCRSUBSAMPLING, YCbCrSubSampling)
-            else
-            begin
-              // initialize default values if nothing is given in the file
-              SetLength(YCbCrSubSampling, 2);
-              YCbCrSubSampling[0] := 2;
-              YCbCrSubSampling[1] := 2;
-            end;
-          if FindTag(TIFFTAG_YCBCRPOSITIONING, Index) then FYCbCrPositioning := GetValue(TIFFTAG_YCBCRPOSITIONING)
-                                                      else FYCbCrPositioning := YCBCRPOSITION_CENTERED;
-
-          if FindTag(TIFFTAG_YCBCRCOEFFICIENTS, Index)
-            then GetValueList(Stream, TIFFTAG_YCBCRCOEFFICIENTS, FYCbCrCoefficients)
-            else
-            begin
-              // defaults are from CCIR recommendation 601-1
-              SetLength(FYCbCrCoefficients, 3);
-              FYCbCrCoefficients[0] := 0.299;
-              FYCbCrCoefficients[1] := 0.587;
-              FYCbCrCoefficients[2] := 0.114;
-            end;
+      TIFFImage := TIFFClientOpen('', 'r', Cardinal(Self), TIFFReadProc, TIFFWriteProc, TIFFSeekProc, TIFFCloseProc,
+        TIFFSizeProc, TIFFMapProc, TIFFUnmapProc);
+      if Assigned(TIFFImage) then
+      try
+        // This version is actually a magic number, which does never change.
+        Version := TIFF_VERSION;
+        try
+          // Account for invalid files.
+          ImageCount := TIFFNumberOfDirectories(TIFFImage);
+        except
+          ImageCount := 1;
         end;
+
+        TIFFSetDirectory(TIFFImage, ImageIndex);
+        TIFFGetField(TIFFImage, TIFFTAG_IMAGEWIDTH, @Width);
+        TIFFGetField(TIFFImage, TIFFTAG_IMAGELENGTH, @Height);
+        TIFFGetFieldDefaulted(TIFFImage, TIFFTAG_ORIENTATION, @Orientation);
+
+        // Number of color components per pixel (1 for b&w, 16 and 256 colors, 3 for RGB, 4 for CMYK etc.).
+        TIFFGetFieldDefaulted(TIFFImage, TIFFTAG_SAMPLESPERPIXEL, @TIFFValue);
+        SamplesPerPixel := TIFFValue;
+
+        // Number of bits per color component.
+        TIFFGetFieldDefaulted(TIFFImage, TIFFTAG_BITSPERSAMPLE, @TIFFValue);
+        BitsPerSample := TIFFValue;
+
+        // Determine whether image is tiled.
+        if TIFFIsTiled(TIFFImage) then
+          Include(Options, ioTiled);
+
+        // Photometric interpretation determines the color space.
+        TIFFGetField(TIFFImage, TIFFTAG_PHOTOMETRIC, @PhotometricInterpretation);
+        // Type of extra information for additional samples per pixel.
+        {$ifndef DELPHI_7_UP}
+          ExtraInfo.Value1 := @ExtraSamples;
+          ExtraInfo.Value2 := @SampleInfo;
+          TIFFVGetFieldDefaulted(TIFFImage, TIFFTAG_EXTRASAMPLES, @ExtraInfo);
+        {$else}
+          TIFFGetFieldDefaulted(TIFFImage, TIFFTAG_EXTRASAMPLES, @ExtraSamples, @SampleInfo);
+        {$endif DELPHI_7_UP}
+
+        // Determine whether extra samples must be considered.
+        HasAlpha := (ExtraSamples = 1) and
+          (SampleInfo^ in [EXTRASAMPLE_ASSOCALPHA, EXTRASAMPLE_UNASSALPHA]);
+        
+        // Currently all bits per sample values are equal.
+        BitsPerPixel := BitsPerSample * SamplesPerPixel;
+
+        // Convert compression identifier.
+        TIFFGetFieldDefaulted(TIFFImage, TIFFTAG_COMPRESSION, @TIFFCompression);
+        case TIFFCompression of
+          COMPRESSION_NONE:
+            Compression := ctNone;
+          COMPRESSION_LZW:
+            Compression := ctLZW;
+          COMPRESSION_PACKBITS:
+            Compression := ctPackedBits;
+          COMPRESSION_CCITTRLE:
+            Compression := ctFaxRLE;
+          COMPRESSION_CCITTRLEW:
+            Compression := ctFaxRLEW;
+          COMPRESSION_CCITTFAX3:
+            begin
+              TIFFGetFieldDefaulted(TIFFImage, TIFFTAG_T4OPTIONS, @TIFFValue);
+              if (TIFFValue and GROUP3OPT_2DENCODING) <> 0 then
+                Compression := ct2DFax3
+              else
+                Compression := ctFax3;
+            end;
+          COMPRESSION_OJPEG:
+            Compression := ctOJPEG;
+          COMPRESSION_JPEG:
+            Compression := ctJPEG;
+          COMPRESSION_CCITTFAX4:
+            Compression := ctFax4;
+          COMPRESSION_NEXT:
+            Compression := ctNext;
+          COMPRESSION_THUNDERSCAN:
+            Compression := ctThunderscan;
+          COMPRESSION_IT8CTPAD:
+            Compression := ctIT8CTPAD;
+          COMPRESSION_IT8LW:
+            Compression := ctIT8LW;
+          COMPRESSION_IT8MP:
+            Compression := ctIT8MP;
+          COMPRESSION_IT8BL:
+            Compression := ctIT8BL;
+          COMPRESSION_PIXARFILM:
+            Compression := ctPixarFilm;
+          COMPRESSION_PIXARLOG: // also a LZ77 clone
+            Compression := ctPixarLog;
+          COMPRESSION_ADOBE_DEFLATE,
+          COMPRESSION_DEFLATE: 
+            Compression := ctLZ77;
+          COMPRESSION_DCS:
+            Compression := ctDCS;
+          COMPRESSION_JBIG:
+            Compression := ctJBIG;
+          COMPRESSION_SGILOG:
+            Compression := ctSGILog;
+          COMPRESSION_SGILOG24:
+            Compression := ctSGILog24;
+        else
+          Compression := ctUnknown;
+        end;
+
+        case PhotometricInterpretation of
+          PHOTOMETRIC_MINISWHITE:
+            begin
+              ColorScheme := csG;
+              Include(Options, ioMinIsWhite);
+            end;
+          PHOTOMETRIC_MINISBLACK:
+            ColorScheme := csG;
+          PHOTOMETRIC_RGB:
+            begin
+              if (SamplesPerPixel < 4) then
+                ColorScheme := csRGB
+              else
+                ColorScheme := csRGBA;
+            end;
+          PHOTOMETRIC_PALETTE:
+            ColorScheme := csIndexed;
+          PHOTOMETRIC_SEPARATED:
+            ColorScheme := csCMYK;
+          PHOTOMETRIC_YCBCR:
+            ColorScheme := csYCbCr;
+          PHOTOMETRIC_CIELAB:
+            ColorScheme := csCIELab;
+          PHOTOMETRIC_ITULAB:
+            ColorScheme := csITULab;
+          PHOTOMETRIC_LOGL:
+            ColorScheme := csCIELog2L;
+          PHOTOMETRIC_LOGLUV:
+            ColorScheme := csCIELog2Luv;
+        else
+          ColorScheme := csUnknown;
+        end;
+
+        TIFFGetFieldDefaulted(TIFFImage, TIFFTAG_XRESOLUTION, @XResolution);
+        TIFFGetFieldDefaulted(TIFFImage, TIFFTAG_YRESOLUTION, @YResolution);
+        TIFFGetFieldDefaulted(TIFFImage, TIFFTAG_RESOLUTIONUNIT, @ResUnit);
+        if ResUnit = RESUNIT_CENTIMETER then
+        begin
+          // Resolution is given in centimeters -> convert to inches.
+          XResolution := XResolution * 2.54;
+          YResolution := YResolution * 2.54;
+        end;
+
+        // Determine fill order in bytes
+        TIFFGetFieldDefaulted(TIFFImage, TIFFTAG_FILLORDER, @FillOrder);
+        if FillOrder = FILLORDER_LSB2MSB then
+          Include(Options, ioReversed);
+      finally
+        TIFFClose(TIFFImage);
       end
-      else ColorScheme := csUnknown;
-
-      JPEGColorMode := GetValue(TIFFTAG_JPEGCOLORMODE, JPEGCOLORMODE_RAW);
-      JPEGTablesMode := GetValue(TIFFTAG_JPEGTABLESMODE, JPEGTABLESMODE_QUANT or JPEGTABLESMODE_HUFF);
-
-      PlanarConfig := GetValue(TIFFTAG_PLANARCONFIG);
-      // other image properties
-      XResolution := GetValue(Stream, TIFFTAG_XRESOLUTION);
-      YResolution := GetValue(Stream, TIFFTAG_YRESOLUTION);
-      if GetValue(TIFFTAG_RESOLUTIONUNIT, RESUNIT_INCH) = RESUNIT_CENTIMETER then
-      begin
-        // Resolution is given in centimeters.
-        // Although I personally prefer the metric system over the old english one :-)
-        // I still convert to inches because it is an unwritten rule to give image resolutions in dpi.
-        XResolution := XResolution * 2.54;
-        YResolution := YResolution * 2.54;
-      end;
-
-      // determine prediction scheme
-      Predictor := GetValue(TIFFTAG_PREDICTOR);
-
-      // determine fill order in bytes
-      if GetValue(TIFFTAG_FILLORDER, FILLORDER_MSB2LSB) = FILLORDER_LSB2MSB then Include(Options, ioReversed);
-
-      // finally show that we found and read an image
-      Result := True;
+      else
+        Result := False;
     end;
   end;
 end;
@@ -3113,10 +3417,11 @@ end;
 // for providing the base information about how to read the preview image.
 
 type
+  PEPSHeader = ^TEPSHeader;
   TEPSHeader = packed record
     Code: Cardinal;   // alway $C6D3D0C5, if not there then this is not an EPS or it is not a binary EPS
     PSStart,          // Offset PostScript-Code
-    PSLen,	          // length of PostScript-Code
+    PSLen,            // length of PostScript-Code
     MetaPos,          // position of a WMF
     MetaLen,          // length of a WMF 
     TiffPos,          // position of TIFF (preview images should be either WMF or TIF but not both)
@@ -3126,41 +3431,29 @@ type
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TEPSGraphic.CanLoad(Stream: TStream): Boolean;
-
-var
-  Header: TEPSHeader;
-  LastPosition: Cardinal;
+class function TEPSGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
-  with Stream do
-  begin
-    Result := (Size - Position) > SizeOf(Header);
-    if Result then
+  Result := Size > SizeOf(TEPSHeader);
+  if Result then
+    with PEPSHeader(Memory)^ do
     begin
-      LastPosition := Position;
-
-      Stream.ReadBuffer(Header, SizeOf(Header));
-      Result := (Header.Code = $C6D3D0C5) and
-                (Header.TiffPos > Integer(LastPosition) + SizeOf(Header)) and
-                (Header.TiffLen > 0);
-      Position := LastPosition;
+      Result := (Code = $C6D3D0C5) and (TiffPos >= SizeOf(TEPSHeader)) and (TiffLen > 0);
     end;
-  end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TEPSGraphic.LoadFromStream(Stream: TStream);
-
-var
-  Header: TEPSHeader;
+procedure TEPSGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 begin
-  Stream.ReadBuffer(Header, SizeOf(Header));
-  if Header.Code <> $C6D3D0C5 then GraphicExError(gesInvalidImage, ['EPS']);
-  Stream.Seek(Header.TiffPos - SizeOf(Header), soFromCurrent);
-  inherited;
+  with PEPSHeader(Memory)^ do
+  begin
+    if Code = $C6D3D0C5 then
+      inherited LoadFromMemory(PChar(Memory) + TiffPos, TiffLen)
+    else
+      GraphicExError(gesInvalidImage, ['EPS']);
+  end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -3171,9 +3464,9 @@ begin
   Result := inherited ReadImageProperties(Stream, ImageIndex);
 end;
 
-{$endif} // EPSGraphic
+{$endif EPSGraphic}
 
-{$endif} // TIFFGraphic
+{$endif TIFFGraphic}
 
 //----------------- TTargaGraphic --------------------------------------------------------------------------------------
 
@@ -3228,6 +3521,7 @@ const
   TARGA_BW_RLE_IMAGE = 11;
 
 type
+  PTargaHeader = ^TTargaHeader; 
   TTargaHeader = packed record
     IDLength,
     ColorMapType,
@@ -3246,66 +3540,54 @@ type
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TTargaGraphic.CanLoad(Stream: TStream): Boolean;
+class function TTargaGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
-var
-  Header: TTargaHeader;
-  LastPosition: Cardinal;
-  
 begin
-  with Stream do
-  begin
-    LastPosition := Position;
-    Result := (Size - Position) > SizeOf(Header);
-    if Result then
+  Result := Size > SizeOf(TTargaHeader);
+  if Result then
+    with PTargaHeader(Memory)^ do
     begin
-      ReadBuffer(Header, SizeOf(Header));
       // Targa images are hard to determine because there is no magic id or something like that.
       // Hence all we can do is to check if all values from the header are within correct limits.
-      Result := (Header.ImageType in [TARGA_EMPTY_IMAGE, TARGA_INDEXED_IMAGE, TARGA_TRUECOLOR_IMAGE, TARGA_BW_IMAGE,
-                 TARGA_INDEXED_RLE_IMAGE, TARGA_TRUECOLOR_RLE_IMAGE, TARGA_BW_RLE_IMAGE]) and
-                 (Header.ColorMapType in [TARGA_NO_COLORMAP, TARGA_COLORMAP]) and
-                 (Header.ColorMapEntrySize in [15, 16, 24, 32]) and
-                 (Header.PixelSize in [8, 15, 16, 24, 32]);
+      Result := (ImageType in [TARGA_EMPTY_IMAGE, TARGA_INDEXED_IMAGE, TARGA_TRUECOLOR_IMAGE, TARGA_BW_IMAGE,
+        TARGA_INDEXED_RLE_IMAGE, TARGA_TRUECOLOR_RLE_IMAGE, TARGA_BW_RLE_IMAGE]) and
+        (ColorMapType in [TARGA_NO_COLORMAP, TARGA_COLORMAP]) and
+        (ColorMapEntrySize in [0, 15, 16, 24, 32]) and
+        (PixelSize in [8, 15, 16, 24, 32]);
     end;
-    Position := LastPosition;
-  end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TTargaGraphic.LoadFromStream(Stream: TStream);
+procedure TTargaGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
   Run,
-  RLEBuffer: PAnsiChar;
+  Source,
+  Buffer: PByte;
   I: Integer;
   LineSize: Integer;
   LineBuffer: Pointer;
-  ReadLength: Integer;
   LogPalette: TMaxLogPalette;
-  Color16: Word;
   Header: TTargaHeader;
   FlipV: Boolean;
   Decoder: TTargaRLEDecoder;
 
 begin
-  Handle := 0;
-  FBasePosition := Stream.Position;
-  if ReadImageProperties(Stream, 0) then
-    with Stream, FImageProperties do
-    begin
-      Stream.Position := FBasePosition;
+  inherited;
 
+  if ReadImageProperties(Memory, Size, ImageIndex) then
+    with FImageProperties do
+    begin
       FProgressRect := Rect(0, 0, Width, 1);
       Progress(Self, psStarting, 0, False, FProgressRect, gesPreparing);
 
-      Stream.Read(Header, SizeOf(Header));
+      Move(Memory^, Header, SizeOf(Header));
       FlipV := (Header.ImageDescriptor and $20) <> 0;
       Header.ImageDescriptor := Header.ImageDescriptor and $F;
 
       // skip image ID
-      Seek(Header.IDLength, soFromCurrent);
+      Source := Pointer(PChar(Memory) + SizeOf(Header) + Header.IDLength);
 
       with ColorManager do
       begin
@@ -3329,7 +3611,8 @@ begin
           LineSize := (Header.ColorMapEntrySize div 8) * Header.ColorMapSize;
           GetMem(LineBuffer, LineSize);
           try
-            ReadBuffer(LineBuffer^, LineSize);
+            Move(Source^, LineBuffer^, LineSize);
+            Inc(Source, LineSize);
             case Header.ColorMapEntrySize of
               32:
                 Palette := ColorManager.CreateColorPalette([LineBuffer], pfInterlaced8Quad, Header.ColorMapSize, True);
@@ -3347,16 +3630,17 @@ begin
                 // but make 8 bit from 5 bit per color component)
                 for I := 0 to Header.ColorMapSize - 1 do
                 begin
-                  Stream.Read(Color16, 2);
-                  palPalEntry[I].peBlue := (Color16 and $1F) shl 3;
-                  palPalEntry[I].peGreen := (Color16 and $3E0) shr 2;
-                  palPalEntry[I].peRed := (Color16 and $7C00) shr 7;
+                  palPalEntry[I].peBlue := Byte((PWord(Source)^ and $1F) shl 3);
+                  palPalEntry[I].peGreen := Byte((PWord(Source)^ and $3E0) shr 2);
+                  palPalEntry[I].peRed := Byte((PWord(Source)^ and $7C00) shr 7);
+                  Inc(PWord(Source));
                 end;
                 Palette := CreatePalette(PLogPalette(@LogPalette)^);
               end;
             end;
           finally
-            if Assigned(LineBuffer) then FreeMem(LineBuffer);
+            if Assigned(LineBuffer) then
+              FreeMem(LineBuffer);
           end;
         end;
       end;
@@ -3377,9 +3661,12 @@ begin
           begin
             for I := 0 to Height - 1 do
             begin
-              if FlipV then LineBuffer := ScanLine[I]
-                       else LineBuffer := ScanLine[Header.Height - (I + 1)];
-              ReadBuffer(LineBuffer^, LineSize);
+              if FlipV then
+                LineBuffer := ScanLine[I]
+              else
+                LineBuffer := ScanLine[Header.Height - (I + 1)];
+              Move(Source^, LineBuffer^, LineSize);
+              Inc(Source, LineSize);
               Progress(Self, psRunning, MulDiv(I, 100, Height), True, FProgressRect, '');
               OffsetRect(FProgressRect, 0, 1);
             end;
@@ -3388,24 +3675,30 @@ begin
         TARGA_INDEXED_RLE_IMAGE,
         TARGA_TRUECOLOR_RLE_IMAGE:
           begin
-            RLEBuffer := nil;
+            Buffer := nil;
             Decoder := TTargaRLEDecoder.Create(Header.PixelSize);
             try
-              GetMem(RLEBuffer, 2 * LineSize);
+              // Targa RLE is not line oriented. Convert all the RLE data in one rush.
+              GetMem(Buffer, Height * LineSize);
+              Run := Buffer;
+              Decoder.Decode(Pointer(Source), Pointer(Buffer), Width, Height * Width);
+
+              // Finally put data into the image.
               for I := 0 to Height - 1 do
               begin
-                if FlipV then LineBuffer := ScanLine[I]
-                         else LineBuffer := ScanLine[Header.Height - (I + 1)];
-                ReadLength := Stream.Read(RLEBuffer^, 2 * LineSize);
-                Run := RLEBuffer;
-                Decoder.Decode(Pointer(Run), LineBuffer, 2 * LineSize, Width);
-                Stream.Position := Stream.Position - ReadLength + (Run - RLEBuffer);
+                if FlipV then
+                  LineBuffer := ScanLine[I]
+                else
+                  LineBuffer := ScanLine[Header.Height - (I + 1)];
+                Move(Run^, LineBuffer^, LineSize);
+                Inc(Run, LineSize);
                 Progress(Self, psRunning, MulDiv(I, 100, Height), True, FProgressRect, '');
                 OffsetRect(FProgressRect, 0, 1);
               end;
             finally
-              if Assigned(RLEBuffer) then FreeMem(RLEBuffer);
-              Decoder.Free;
+              if Assigned(Buffer) then
+                FreeMem(Buffer);
+              FreeAndNil(Decoder);
             end;
           end;
       end;
@@ -3415,57 +3708,60 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TTargaGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+function TTargaGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
   Header: TTargaHeader;
 
 begin
-  inherited ReadImageProperties(Stream, ImageIndex);
-  with Stream, FImageProperties do
-  begin
-    ReadBuffer(Header, SizeOf(Header));
-    Header.ImageDescriptor := Header.ImageDescriptor and $F;
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
 
-    Width := Header.Width;
-    Height := Header.Height;
-    BitsPerSample := 8;
+  if Result then
+    with FImageProperties do
+    begin
+      Move(Memory^, Header, SizeOf(Header));
+      Header.ImageDescriptor := Header.ImageDescriptor and $F;
 
-    case Header.PixelSize of
-      8:
-        begin
-          if Header.ImageType in [TARGA_BW_IMAGE, TARGA_BW_RLE_IMAGE] then ColorScheme := csG
-                                                                      else ColorScheme := csIndexed;
-          SamplesPerPixel := 1;
-        end;
-      15,
-      16: // actually, 16 bit are meant being 15 bit
-        begin
-          ColorScheme := csRGB;
-          BitsPerSample := 5;
-          SamplesPerPixel := 3;
-        end;
-      24:
-        begin
-          ColorScheme := csRGB;
-          SamplesPerPixel := 3;
-        end;
-      32:
-        begin
-          ColorScheme := csRGBA;
-          SamplesPerPixel := 4;
-        end;
+      Width := Header.Width;
+      Height := Header.Height;
+      BitsPerSample := 8;
+
+      case Header.PixelSize of
+        8:
+          begin
+            if Header.ImageType in [TARGA_BW_IMAGE, TARGA_BW_RLE_IMAGE] then
+              ColorScheme := csG
+            else
+              ColorScheme := csIndexed;
+            SamplesPerPixel := 1;
+          end;
+        15,
+        16: // actually, 16 bit are meant being 15 bit
+          begin
+            ColorScheme := csRGB;
+            BitsPerSample := 5;
+            SamplesPerPixel := 3;
+          end;
+        24:
+          begin
+            ColorScheme := csRGB;
+            SamplesPerPixel := 3;
+          end;
+        32:
+          begin
+            ColorScheme := csRGBA;
+            SamplesPerPixel := 4;
+          end;
+      end;
+
+      BitsPerPixel := SamplesPerPixel * BitsPerSample;
+      if Header.ImageType in [TARGA_BW_RLE_IMAGE, TARGA_INDEXED_RLE_IMAGE, TARGA_TRUECOLOR_RLE_IMAGE] then
+        Compression := ctRLE
+      else
+        Compression := ctNone;
+
+      Result := True;
     end;
-
-    BitsPerPixel := SamplesPerPixel * BitsPerSample;
-    if Header.ImageType in [TARGA_BW_RLE_IMAGE, TARGA_INDEXED_RLE_IMAGE, TARGA_TRUECOLOR_RLE_IMAGE]
-      then Compression := ctRLE
-      else Compression := ctNone;
-
-    Width := Header.Width;
-    Height := Header.Height;
-    Result := True;
-  end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -3523,46 +3819,59 @@ begin
     with Header do
     begin
       IDLength := 0;
-      if BPP = 1 then ColorMapType := 1
-                 else ColorMapType := 0;
+      if BPP = 1 then
+        ColorMapType := 1
+      else
+        ColorMapType := 0;
       if not Compressed then
         // can't distinct between a B&W and an color indexed image here, so I use always the latter
-        if BPP = 1 then ImageType := TARGA_INDEXED_IMAGE
-                   else ImageType := TARGA_TRUECOLOR_IMAGE
-                        else
-        if BPP = 1 then ImageType := TARGA_INDEXED_RLE_IMAGE
-                   else ImageType := TARGA_TRUECOLOR_RLE_IMAGE;
+        if BPP = 1 then
+          ImageType := TARGA_INDEXED_IMAGE
+        else
+          ImageType := TARGA_TRUECOLOR_IMAGE
+      else
+        if BPP = 1 then
+          ImageType := TARGA_INDEXED_RLE_IMAGE
+        else
+          ImageType := TARGA_TRUECOLOR_RLE_IMAGE;
 
       ColorMapOrigin := 0;
-      // always save entire palette
-      ColorMapSize := 256;
-      // always save complete color information
-      ColorMapEntrySize := 24;
       XOrigin := 0;
       YOrigin := 0;
       Width := Self.Width;
       Height := Self.Height;
       PixelSize := 8 * BPP;
       // if the image is a bottom-up DIB then indicate this in the image descriptor
-      if Cardinal(Scanline[0]) > Cardinal(Scanline[1]) then ImageDescriptor := $20
-                                                       else ImageDescriptor := 0;
-    end;
-  
-    Stream.Write(Header, SizeOf(Header));
+      if Cardinal(Scanline[0]) > Cardinal(Scanline[1]) then
+        ImageDescriptor := $20
+      else
+        ImageDescriptor := 0;
 
-    // store color palette if necessary
-    if Header.ColorMapType = 1 then
-      with LogPalette do
+      Stream.Write(Header, SizeOf(Header));
+
+      // store color palette if necessary
+      if ColorMapType = 1 then
       begin
-        // read palette entries
-        GetPaletteEntries(Palette, 0, 256, palPalEntry);
-        for I := 0 to 255 do
+        with LogPalette do
         begin
-          Stream.Write(palPalEntry[I].peBlue, 1);
-          Stream.Write(palPalEntry[I].peGreen, 1);
-          Stream.Write(palPalEntry[I].peRed, 1);
+          // read palette entries
+          GetPaletteEntries(Palette, 0, 256, palPalEntry);
+          for I := 0 to 255 do
+          begin
+            Stream.Write(palPalEntry[I].peBlue, 1);
+            Stream.Write(palPalEntry[I].peGreen, 1);
+            Stream.Write(palPalEntry[I].peRed, 1);
+          end;
         end;
+        ColorMapSize := 256;
+        ColorMapEntrySize := 24;
+      end
+      else
+      begin
+        ColorMapSize := 0;
+        ColorMapEntrySize := 0;
       end;
+    end;
 
     LineSize := Width * (Header.PixelSize div 8);
     Progress(Self, psEnding, 0, False, FProgressRect, '');
@@ -3584,7 +3893,8 @@ begin
           OffsetRect(FProgressRect, 0, 1);
         end;
       finally
-        if Assigned(RLEBuffer) then FreeMem(RLEBuffer);
+        if Assigned(RLEBuffer) then
+         FreeMem(RLEBuffer);
         Encoder.Free;
       end;
     end
@@ -3603,13 +3913,14 @@ begin
   end;
 end;
 
-{$endif} // TargaGraphic
+{$endif TargaGraphic}
 
 //----------------- TPCXGraphic ----------------------------------------------------------------------------------------
 
 {$ifdef PCXGraphic}
 
 type
+  PPCXHeader = ^TPCXHeader;
   TPCXHeader = record
     FileID: Byte;                      // $0A for PCX files, $CD for SCR files
     Version: Byte;                     // 0: version 2.5; 2: 2.8 with palette; 3: 2.8 w/o palette; 5: version 3
@@ -3631,43 +3942,31 @@ type
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TPCXGraphic.CanLoad(Stream: TStream): Boolean;
-
-var
-  Header: TPCXHeader;
-  LastPosition: Cardinal;
+class function TPCXGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
-  with Stream do
-  begin
-    LastPosition := Position;
-    Result := (Size - Position) > SizeOf(Header);
-    if Result then
+  Result := Size > SizeOf(TPCXHeader);
+  if Result then
+    with PPCXHeader(Memory)^ do
     begin
-      Result := (Header.FileID in [$0A, $0C]) and
-                (Header.Version in [0, 2, 3, 5]) and
-                (Header.Encoding in [0, 1]);
-      ReadBuffer(Header, SizeOf(Header));
+      Result := (FileID in [$0A, $0C]) and (Version in [0, 2, 3, 5]) and (Encoding in [0, 1]);
     end;
-    Position := LastPosition;
-  end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPCXGraphic.LoadFromStream(Stream: TStream);
+procedure TPCXGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
   Header: TPCXHeader;
+  Run: PByte;
 
   //--------------- local functions -------------------------------------------
 
   procedure MakePalette;
 
   var
-    PCXPalette: array[0..255] of TRGB;
-    OldPos: Integer;
-    Marker: Byte;
+    PaletteData: PByte;
 
   begin
     if (Header.Version <> 3) or (PixelFormat = pf1Bit) then
@@ -3678,27 +3977,27 @@ var
         pf4Bit:
           with Header do
           begin
-            if paletteType = 2 then Palette := ColorManager.CreateGrayScalePalette(False)
-                               else Palette := ColorManager.CreateColorPalette([@ColorMap], pfInterlaced8Triple, 16, False);
+            if paletteType = 2 then
+              Palette := ColorManager.CreateGrayScalePalette(False)
+            else
+              Palette := ColorManager.CreateColorPalette([@ColorMap], pfInterlaced8Triple, 16, False);
           end;
         pf8Bit:
           begin
-            OldPos := Stream.Position;
             // 256 colors with 3 components plus one marker byte
-            Stream.Position := Stream.Size - 769;
-            Stream.Read(Marker, 1);
-            if Marker <> $0C then
+            PaletteData := Pointer(PChar(Memory) + Size - 769);
+            if PaletteData^ <> $0C then
             begin
               // palette ID is wrong, perhaps gray scale?
-              if Header.PaletteType = 2 then Palette := ColorManager.CreateGrayScalePalette(False)
-                                        else ; // ignore palette
+              if Header.PaletteType = 2 then
+                Palette := ColorManager.CreateGrayScalePalette(False);
+              // else ignore palette
             end
             else
             begin
-              Stream.Read(PCXPalette[0], 768);
-              Palette := ColorManager.CreateColorPalette([@PCXPalette], pfInterlaced8Triple, 256, False);
+              Inc(PaletteData);
+              Palette := ColorManager.CreateColorPalette([PaletteData], pfInterlaced8Triple, 256, False);
             end;
-            Stream.Position := OldPos;
           end;
       end;
     end
@@ -3714,10 +4013,8 @@ var
 
 var
   PCXSize,
-  Size: Cardinal;
-  RawBuffer,
+  DataSize: Integer;
   DecodeBuffer: Pointer;
-  Run: PByte;
   Plane1,
   Plane2,
   Plane3,
@@ -3726,80 +4023,84 @@ var
   Mask: Byte;
   I, J: Integer;
   Line: PByte;
-  Increment: Cardinal;
+  Increment: Integer;
   NewPixelFormat: TPixelFormat;
 
 begin
-  Handle := 0;
-  FBasePosition := Stream.Position;
-  if ReadImageProperties(Stream, 0) then
-  begin
-    Stream.Position := FBasePosition;
+  inherited;
 
+  if ReadImageProperties(Memory, Size, ImageIndex) then
+  begin
     FProgressRect := Rect(0, 0, Width, 1);
     Progress(Self, psStarting, 0, False, FProgressRect, gesPreparing);
-    Stream.Read(Header, SizeOf(Header));
-    PCXSize := Stream.Size - Stream.Position;
+
+    Run := Memory;
+    Move(Run^, Header, SizeOf(Header));
+    Inc(Run, SizeOf(Header));
     with Header, FImageProperties do
     begin
-      if not (FileID in [$0A, $CD]) then GraphicExError(gesInvalidImage, ['PCX or SCR']);
+      if not (FileID in [$0A, $CD]) then
+        GraphicExError(gesInvalidImage, ['PCX, PCC or SCR']);
 
       with ColorManager do
       begin
         SourceColorScheme := ColorScheme;
         SourceBitsPerSample := BitsPerSample;
         SourceSamplesPerPixel := SamplesPerPixel;
-        if ColorScheme = csIndexed then TargetColorScheme := csIndexed
-                                   else TargetColorScheme := csBGR;
-        if BitsPerPixel = 2 then TargetBitsPerSample := 4
-                            else TargetBitsPerSample := BitsPerSample;
+        if ColorScheme = csIndexed then
+          TargetColorScheme := csIndexed
+        else
+          TargetColorScheme := csBGR;
+        if BitsPerPixel = 2 then
+          TargetBitsPerSample := 4
+        else
+          TargetBitsPerSample := BitsPerSample;
         // Note: pixel depths of 2 and 4 bits may not be used with more than one plane
         //       otherwise the image will not show up correctly
         TargetSamplesPerPixel := SamplesPerPixel;
       end;
-    
+
       NewPixelFormat := ColorManager.TargetPixelFormat;
       if NewPixelFormat = pfCustom then
       begin
-        // there can be a special case comprising 4 planes each with 1 bit
-        if (SamplesPerPixel = 4) and (BitsPerPixel = 4) then NewPixelFormat := pf4Bit
-                                                        else GraphicExError(gesInvalidColorFormat, ['PCX']);
+        // There can be a special case comprising 4 planes each with 1 bit.
+        if (SamplesPerPixel = 4) and (BitsPerPixel = 4) then
+          NewPixelFormat := pf4Bit
+        else
+          GraphicExError(gesInvalidColorFormat, ['PCX']);
       end;
 
       PixelFormat := NewPixelFormat;
-      // 256 colors palette is appended to the actual PCX data
-      if PixelFormat = pf8Bit then Dec(PCXSize, 769);
-      if PixelFormat <> pf24Bit then MakePalette;
+      // 256 colors palette is appended to the actual PCX data.
+      PCXSize := Size;
+      if PixelFormat = pf8Bit then
+        Dec(PCXSize, 769);
+      if PixelFormat <> pf24Bit then
+        MakePalette;
 
       Self.Width := Width;
       Self.Height := Height;
-                                                  
+
       // adjust alignment of line
       Increment := SamplesPerPixel * Header.BytesPerLine;
 
       // allocate pixel data buffer and decode data if necessary
       if Compression = ctRLE then
       begin
-        Size := Increment * Height;
-        GetMem(DecodeBuffer, Size);
+        DataSize := Increment * Height;
+        GetMem(DecodeBuffer, DataSize);
 
-        GetMem(RawBuffer, PCXSize);
+        with TPCXRLEDecoder.Create do
         try
-          Stream.ReadBuffer(RawBuffer^, PCXSize);
-          with TPCXRLEDecoder.Create do
-          try
-            Decode(RawBuffer, DecodeBuffer, PCXSize, Size);
-          finally
-            Free;
-          end;
+          Decode(Pointer(Run), DecodeBuffer, PCXSize, DataSize);
         finally
-          if Assigned(RawBuffer) then FreeMem(RawBuffer);
+          Free;
         end;
       end
       else
       begin
         GetMem(DecodeBuffer, PCXSize);
-        Stream.ReadBuffer(DecodeBuffer^, PCXSize);
+        Move(Run^, DecodeBuffer^, PCXSize);
       end;
       Progress(Self, psEnding, 0, False, FProgressRect, '');
 
@@ -3814,15 +4115,15 @@ begin
           for I := 0 to Height - 1 do
           begin
             Plane1 := Run;
-            PAnsiChar(Plane2) := PAnsiChar(Run) + Increment div 4;
-            PAnsiChar(Plane3) := PAnsiChar(Run) + 2 * (Increment div 4);
-            PAnsiChar(Plane4) := PAnsiChar(Run) + 3 * (Increment div 4);
+            PChar(Plane2) := PChar(Run) + Increment div 4;
+            PChar(Plane3) := PChar(Run) + 2 * (Increment div 4);
+            PChar(Plane4) := PChar(Run) + 3 * (Increment div 4);
 
             Line := ScanLine[I];
             // number of bytes to write
-            Size := (Width * BitsPerPixel + 7) div 8;
+            DataSize := (Width * BitsPerPixel + 7) div 8;
             Mask := 0;
-            while Size > 0 do
+            while DataSize > 0 do
             begin
               Value := 0;
               for J := 0 to 1 do
@@ -3849,7 +4150,7 @@ begin
               end;
               Line^ := Value;
               Inc(Line);
-              Dec(Size);
+              Dec(DataSize);
 
               // two runs above (to construct two nibbles -> one byte), now update marker
               // to know when to switch to next byte in the planes
@@ -3876,8 +4177,8 @@ begin
             begin
               Line := ScanLine[I];
               Plane1 := Run;
-              PAnsiChar(Plane2) := PAnsiChar(Run) + Increment div 3;
-              PAnsiChar(Plane3) := PAnsiChar(Run) + 2 * (Increment div 3);
+              PChar(Plane2) := PChar(Run) + Increment div 3;
+              PChar(Plane3) := PChar(Run) + 2 * (Increment div 3);
               ColorManager.ConvertRow([Plane1, Plane2, Plane3], Line, Width, $FF);
               Inc(Run, Increment);
 
@@ -3899,25 +4200,29 @@ begin
             end;
           end;
       finally
-        if Assigned(DecodeBuffer) then FreeMem(DecodeBuffer);
+        if Assigned(DecodeBuffer) then
+          FreeMem(DecodeBuffer);
       end;
       Progress(Self, psEnding, 0, False, FProgressRect, '');
     end;
-  end;
+  end
+  else
+    GraphicExError(gesInvalidImage, ['PCX, PCC or SCR']);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TPCXGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+function TPCXGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
-  Header: TPCXHeader;
+  Header: PPCXHeader;
 
 begin
-  Result := inherited ReadImageProperties(Stream, 0);
-  with Stream do
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
+
+  if Result then
   begin
-    ReadBuffer(Header, SizeOf(Header));
+    Header := Memory;
     with FImageProperties do
     begin
       if Header.FileID in [$0A, $CD] then
@@ -3928,20 +4233,26 @@ begin
         SamplesPerPixel := Header.ColorPlanes;
         BitsPerSample := Header.BitsPerPixel;
         BitsPerPixel := BitsPerSample * SamplesPerPixel;
-        if BitsPerPixel <= 8 then ColorScheme := csIndexed
-                             else ColorScheme := csRGB;
-        if Header.Encoding = 1 then Compression := ctRLE
-                               else Compression := ctNone;
+        if BitsPerPixel <= 8 then
+          ColorScheme := csIndexed
+        else
+          ColorScheme := csRGB;
+        if Header.Encoding = 1 then
+          Compression := ctRLE
+        else
+          Compression := ctNone;
         XResolution := Header.HRes;
         YResolution := Header.VRes;
 
         Result := True;
-      end;
+      end
+      else
+        Result := False;
     end;
   end;
 end;
 
-{$endif} // PCXGraphic
+{$endif PCXGraphic}
 
 //----------------- TPCDGraphic ----------------------------------------------------------------------------------------
 
@@ -3958,42 +4269,34 @@ const
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TPCDGraphic.CanLoad(Stream: TStream): Boolean;
+class function TPCDGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 var
-  Header: array of Byte;
-  LastPosition: Cardinal;
+  ID1, ID2 : PChar;
 
 begin
-  with Stream do
+  Result := Size > 3 * $800;
+  if Result then
   begin
-    LastPosition := Position;
-    Result := (Size - Position) > 3 * $800;
-    if Result then
-    begin
-      SetLength(Header, $803);
-      ReadBuffer(Header[0], Length(Header));
-      Result := (StrLComp(@Header[0], 'PCD_OPA', 7) = 0) or
-                (StrLComp(@Header[$800], 'PCD', 3) = 0);
-    end;
-    Position := LastPosition;
+    ID1 := Memory;
+    ID2 := ID1 + $800;
+    Result := (StrLComp(ID1, 'PCD_OPA', 7) = 0) or (StrLComp(ID2, 'PCD', 3) = 0);
   end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPCDGraphic.LoadFromStream(Stream: TStream);
+procedure TPCDGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 2);
 
 var
-  C1, C2, YY: PAnsiChar;
-  YCbCrData: array[0..2] of PAnsiChar;
-  SourceDummy,
-  DestDummy: Pointer;
+  C1, C2, YY: PChar;
+  YCbCrData: array[0..2] of PChar;
+  {SourceDummy,
+  DestDummy: Pointer;}
 
   Offset, I,
   X, Y,
-  ImageIndex,
-  Rows,
+  Rows: Integer;
   Columns: Cardinal;
   ScanLines: array of Pointer;
 
@@ -4002,19 +4305,18 @@ var
   Run: PBGR;
   Decoder: TPCDDecoder;
 
+  Source: PByte;
+
 begin
-  Handle := 0;
-  FBasePosition := Stream.Position;
-  ImageIndex := 2; // third image is Base resolution
+  inherited;
 
-  if ReadImageProperties(Stream, ImageIndex) then
+  if ReadImageProperties(Memory, Size, ImageIndex) then
   begin
-    with Stream, FImageProperties do
+    with FImageProperties do
     begin
-      Position := FBasePosition;
-
+      Source := Memory;
       FProgressRect := Rect(0, 0, Width, 1);
-      Progress(Self, psStarting, 0, False, FProgressRect, gesPreparing); 
+      Progress(Self, psStarting, 0, False, FProgressRect, gesPreparing);
       Columns := 192 shl Min(ImageIndex, 2);
       Rows := 128 shl Min(ImageIndex, 2);
 
@@ -4031,12 +4333,15 @@ begin
 
         // advance to image data 
         Offset := 96;
-        if Overview then Offset := 5
-                    else
-          if ImageIndex = 1 then Offset := 23
-                            else
-            if ImageIndex = 0 then Offset := 4;
-        Seek(Offset * $800 , soFromCurrent);
+        if Overview then
+          Offset := 5
+        else
+          if ImageIndex = 1 then
+            Offset := 23
+          else
+            if ImageIndex = 0 then
+              Offset := 4;
+        Inc(Source, Offset * $800);
 
         // color conversion setup
         with ColorManager do
@@ -4055,7 +4360,7 @@ begin
 
         Progress(Self, psEnding, 0, False, FProgressRect, '');
 
-        if False then
+        if Overview then
         begin
           // if Overview then ... no info yet about overview image structure
         end
@@ -4069,39 +4374,48 @@ begin
           while I < Rows do
           begin
             Progress(Self, psRunning, MulDiv(I, 100, Rows), False, FProgressRect, '');
-            ReadBuffer(YY^, Columns);
+
+            Move(Source^, YY^, Columns);
             Inc(YY, Width);
-            ReadBuffer(YY^, Columns);
+            Inc(Source, Columns);
+
+            Move(Source^, YY^, Columns);
             Inc(YY, Width);
-            ReadBuffer(C1^, Columns shr 1);
+            Inc(Source, Columns);
+
+            Move(Source^, C1^, Columns shr 1);
             Inc(C1, Width);
-            ReadBuffer(C2^, Columns shr 1);
+            Inc(Source, Columns shr 1);
+
+            Move(Source^, C2^, Columns shr 1);
             Inc(C2, Width);
+            Inc(Source, Columns shr 1);
+
             Inc(I, 2);
           end;
           Progress(Self, psEnding, 0, False, FProgressRect, '');
 
           Progress(Self, psStarting, 0, False, FProgressRect, gesUpsampling);
-          // Y stands here for maximum number of upsample calls
+          // Y stands here for maximum number of upsample calls.
           Y := 5;
           if ImageIndex >= 3 then
           begin
             Inc(Y, 3 * (ImageIndex - 3));
 
-            Decoder := TPCDDecoder.Create(Stream);
-            SourceDummy := @YCbCrData;
-            DestDummy := nil;
+            Decoder := TPCDDecoder.Create(Source);
+            //SourceDummy := @YCbCrData;
+            //DestDummy := nil;
             try
-              // recover luminance deltas for 1536 x 1024 image
+              // Recover luminance deltas for 1536 x 1024 image.
               Progress(Self, psRunning, MulDiv(0, 100, Y), False, FProgressRect, '');
               Upsample(768, 512, Width, YCbCrData[0]);
               Progress(Self, psRunning, MulDiv(1, 100, Y), False, FProgressRect, '');
               Upsample(384, 256, Width, YCbCrData[1]);
               Progress(Self, psRunning, MulDiv(2, 100, Y), False, FProgressRect, '');
               Upsample(384, 256, Width, YCbCrData[2]);
-              Seek(4 * $800, soFromCurrent);
 
-              Decoder.Decode(SourceDummy, DestDummy, Width, 1024);
+              // The decoder does not work as expected. Larger resolutions are not loaded but created by scaling.
+              //Decoder.Decode(SourceDummy, DestDummy, Width, 1024);
               if ImageIndex >= 4 then
               begin
                 // recover luminance deltas for 3072 x 2048 image
@@ -4111,10 +4425,8 @@ begin
                 Upsample(768, 512, Width, YCbCrData[1]);
                 Progress(Self, psRunning, MulDiv(5, 100, Y), False, FProgressRect, '');
                 Upsample(768, 512, Width, YCbCrData[2]);
-                Offset := (Position - Integer(FBasePosition)) div $800 + 12;
-                Seek(FBasePosition + Offset * $800, soFromBeginning);
 
-                Decoder.Decode(SourceDummy, DestDummy, Width, 2048);
+                //Decoder.Decode(SourceDummy, DestDummy, Width, 2048);
                 if ImageIndex = 5 then
                 begin
                   // recover luminance deltas for 6144 x 4096 image (vaporware)
@@ -4127,7 +4439,7 @@ begin
                 end;
               end;
             finally
-              Decoder.Free;
+              FreeAndNil(Decoder);
             end;
           end;
 
@@ -4153,7 +4465,8 @@ begin
             FProgressRect.Right := Height;
             
             SetLength(ScanLines, Width);
-            for Y := 0 to Width - 1 do ScanLines[Y] := ScanLine[Y];
+            for Y := 0 to Width - 1 do
+              ScanLines[Y] := ScanLine[Y];
             GetMem(LineBuffer, 3 * Width);
           end
           else
@@ -4178,7 +4491,7 @@ begin
                     Run := LineBuffer;
                     for X := 0 to Width - 1 do
                     begin
-                      PAnsiChar(Line) := PAnsiChar(ScanLines[Width - X - 1]) + Y * 3;
+                      PChar(Line) := PChar(ScanLines[Width - X - 1]) + Y * 3;
                       Line^ := Run^;
                       Inc(Run);
                     end;
@@ -4199,7 +4512,7 @@ begin
                     Run := LineBuffer;
                     for X := 0 to Width - 1 do
                     begin
-                      PAnsiChar(Line) := PAnsiChar(ScanLines[X]) + (Height - Y - 1) * 3;
+                      PChar(Line) := PChar(ScanLines[X]) + (Height - Y - 1) * 3;
                       Line^ := Run^;
                       Inc(Run);
                     end;
@@ -4223,44 +4536,52 @@ begin
             Progress(Self, psEnding, 0, False, FProgressRect, '');
           finally
             ScanLines := nil;
-            if Assigned(LineBuffer) then FreeMem(LineBuffer);
+            if Assigned(LineBuffer) then
+              FreeMem(LineBuffer);
           end;
         end;
 
       finally
-        if Assigned(YCbCrData[2]) then FreeMem(YCbCrData[2]);
-        if Assigned(YCbCrData[1]) then FreeMem(YCbCrData[1]);
-        if Assigned(YCbCrData[0]) then FreeMem(YCbCrData[0]);
+        if Assigned(YCbCrData[2]) then
+          FreeMem(YCbCrData[2]);
+        if Assigned(YCbCrData[1]) then
+          FreeMem(YCbCrData[1]);
+        if Assigned(YCbCrData[0]) then
+          FreeMem(YCbCrData[0]);
       end;
     end;
-  end;
+  end
+  else
+    GraphicExError(gesInvalidImage, ['PCD']);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TPCDGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+function TPCDGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
-  Header: array of Byte;
+  Header: PChar;
   Temp: Cardinal;
-  
+
 begin
-  if ImageIndex > 5 then ImageIndex := 5;
-  Result := inherited ReadImageProperties(Stream, ImageIndex) and
-            ((Stream.Size - Integer(FBasePosition)) > 3 * $800);
-  with Stream, FImageProperties do
-  begin
-    SetLength(Header, 3 * $800);
-    ReadBuffer(Header[0], Length(Header));
-    try
-      Overview := StrLComp(@Header[0], 'PCD_OPA', 7) = 0;
+  if ImageIndex > 5 then
+    ImageIndex := 5;
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex) and (Size > 3 * $800);
+
+  if Result then
+    with FImageProperties do
+    begin
+      Header := Memory;
+
+      Overview := StrLComp(Header, 'PCD_OPA', 7) = 0;
       // determine if image is a PhotoCD image
-      if Overview or (StrLComp(@Header[$800], 'PCD', 3) = 0) then
+      if Overview or (StrLComp(Header + $800, 'PCD', 3) = 0) then
       begin
-        Rotate := Header[$0E02] and 3;
+        Rotate := Byte(Header[$0E02]) and 3;
 
         // image sizes are fixed, depending on the given image index
-        if Overview then ImageIndex := 0;
+        if Overview then
+          ImageIndex := 0;
         Width := 192 shl ImageIndex;
         Height := 128 shl ImageIndex;
         if (Rotate = 1) or (Rotate = 3) then
@@ -4273,68 +4594,50 @@ begin
         BitsPerSample := 8;
         SamplesPerPixel := 3;
         BitsPerPixel := BitsPerSample * SamplesPerPixel;
-        if ImageIndex > 2 then Compression := ctPCDHuffmann
-                          else Compression := ctNone;
-        ImageCount := (Header[10] shl 8) or Header[11];
+        if ImageIndex > 2 then
+          Compression := ctPCDHuffmann
+        else
+          Compression := ctNone;
+
+        if Overview then
+          ImageCount := (Byte(Header[10]) shl 8) or Byte(Header[11])
+        else
+          ImageCount := 5; // These are the always present image resolutions.
 
         Result := True;
-      end;
-    finally
-      Header := nil;
+      end
+      else
+        Result := False;
     end;
-  end;
 end;
 
-{$endif} // PCDGraphic
+{$endif PCDGraphic}
 
 //----------------- TPPMGraphic ----------------------------------------------------------------------------------------
 
 {$ifdef PortableMapGraphic}
 
-class function TPPMGraphic.CanLoad(Stream: TStream): Boolean;
-
-var
-  Buffer: array[0..9] of AnsiChar;
-  LastPosition: Cardinal;
+class function TPPMGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
-  with Stream do
+  Result := Size > 10;
+  if Result then
   begin
-    LastPosition := Position;
-    Result := (Size - Position) > 10;
-    if Result then
-    begin
-      ReadBuffer(Buffer, SizeOf(Buffer));
-      Result := (Buffer[0] = 'P') and (Buffer[1] in ['1'..'6']);
-    end;
-    Position := LastPosition;
+    // These are weak criteria here, but there is nothing more to test for this image format.
+    Result := (PChar(Memory)^ = 'P') and (PChar(Memory)[1] in ['1'..'6']);
   end;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-function TPPMGraphic.CurrentChar: Char;
-
-begin
-  if FIndex = SizeOf(FBuffer) then Result := #0
-                              else Result := FBuffer[FIndex];
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
 function TPPMGraphic.GetChar: Char;
 
-// buffered I/O
-
 begin
-  if FIndex = SizeOf(FBuffer) then
-  begin
-    if FStream.Position = FStream.Size then GraphicExError(gesStreamReadError, ['PPM']);
-    FIndex := 0;
-    FStream.Read(FBuffer, SizeOf(FBuffer));
-  end;
-  Result := FBuffer[FIndex];
-  Inc(FIndex);
+  if FRemainingSize = 0 then
+    GraphicExError(gesStreamReadError, ['PPM']);
+  Result := FSource^;
+  Inc(FSource);
+  Dec(FRemainingSize);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -4368,7 +4671,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TPPMGraphic.ReadLine: String;
+function TPPMGraphic.ReadLine: string;
 
 // reads one text line from stream and skips comments
 
@@ -4380,310 +4683,338 @@ begin
   Result := '';
   repeat
     Ch := GetChar;
-    if Ch in [#13, #10] then Break
-                        else Result := Result + Ch;
+    if Ch in [#13, #10] then
+      Break
+    else
+      Result := Result + Ch;
   until False;
   // eat #13#10 combination
-  if (Ch = #13) and (CurrentChar = #10) then GetChar;
+  if (Ch = #13) and (FSource = #10) then
+    GetChar;
 
   // delete comments
   I := Pos('#', Result);
-  if I > 0 then Delete(Result, I, MaxInt);
+  if I > 0 then
+    Delete(Result, I, MaxInt);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPPMGraphic.LoadFromStream(Stream: TStream);
+procedure TPPMGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); 
 
 var
-  Buffer: String;
   Line24: PBGR;
   Line8: PByte;
   X, Y: Integer;
   Pixel: Byte;
+  MaxVal: Word;
 
 begin
-  Handle := 0;
-  FBasePosition := Stream.Position;
-  // copy reference for buffered access
-  FStream := Stream;
-  if ReadImageProperties(Stream, 0) then
+  inherited;
+
+  if ReadImageProperties(Memory, Size, ImageIndex) then
   begin
+    FSource := Memory;
+    FRemainingSize := Size;
     with FImageProperties do
     begin
-      Stream.Position := FBasePosition;
-
       FProgressRect := Rect(0, 0, Width, 1);
       Progress(Self, psStarting, 0, False, FProgressRect, gesTransfering);
-      // set index pointer to end of buffer to cause reload
-      FIndex := SizeOf(FBuffer);
-      with Stream do
-      begin
-        Buffer := ReadLine;
-        case StrToInt(Buffer[2]) of
-          1: // PBM ASCII format (black & white)
+
+      if GetChar <> 'P' then
+        GraphicExError(gesInvalidImage, ['PBM, PGM or PPM']);
+      case StrToInt(GetChar) of
+        1: // PBM ASCII format (black & white)
+          begin
+            PixelFormat := pf1Bit;
+            Self.Width := GetNumber;
+            Self.Height := GetNumber;
+            ColorManager.TargetSamplesPerPixel := 1;
+            ColorManager.TargetBitsPerSample := 1;
+            Palette := ColorManager.CreateGrayScalePalette(True);
+
+            // read image data
+            for Y := 0 to Height - 1 do
             begin
-              PixelFormat := pf1Bit;
-              Self.Width := GetNumber;
-              Self.Height := GetNumber;
-              ColorManager.TargetSamplesPerPixel := 1;
-              ColorManager.TargetBitsPerSample := 1;
-              Palette := ColorManager.CreateGrayScalePalette(True);
-
-              // read image data
-              for Y := 0 to Height - 1 do
+              Line8 := ScanLine[Y];
+              Pixel := 0;
+              for X := 1 to Width do
               begin
-                Line8 := ScanLine[Y];
-                Pixel := 0;
-                for X := 1 to Width do
+                Pixel := (Pixel shl 1) or (GetNumber and 1);
+                if (X mod 8) = 0 then
                 begin
-                  Pixel := (Pixel shl 1) or (GetNumber and 1);
-                  if (X mod 8) = 0 then
-                  begin
-                    Line8^ := Pixel;
-                    Inc(Line8);
-                    Pixel := 0;
-                  end;
-                end;
-                if (Width mod 8) <> 0 then Line8^ := Pixel shl (8 - (Width mod 8));
-
-                Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                OffsetRect(FProgressRect, 0, 1);
-              end;
-            end;
-          2: // PGM ASCII form (gray scale)
-            begin
-              PixelFormat := pf8Bit;
-              Self.Width := GetNumber;
-              Self.Height := GetNumber;
-              // skip maximum color value
-              GetNumber;
-              ColorManager.TargetSamplesPerPixel := 1;
-              ColorManager.TargetBitsPerSample := 8;
-              Palette := ColorManager.CreateGrayScalePalette(False);
-
-              // read image data
-              for Y := 0 to Height - 1 do
-              begin
-                Line8 := ScanLine[Y];
-                for X := 0 to Width - 1 do
-                begin
-                  Line8^ := GetNumber;
+                  Line8^ := Pixel;
                   Inc(Line8);
+                  Pixel := 0;
                 end;
-
-                Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                OffsetRect(FProgressRect, 0, 1);
               end;
+              if (Width mod 8) <> 0 then
+                Line8^ := Pixel shl (8 - (Width mod 8));
+
+              Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
+              OffsetRect(FProgressRect, 0, 1);
             end;
-          3: // PPM ASCII form (true color)
+          end;
+        2: // PGM ASCII form (gray scale)
+          begin
+            PixelFormat := pf8Bit;
+            Self.Width := GetNumber;
+            Self.Height := GetNumber;
+            // skip maximum color value
+            GetNumber;
+            ColorManager.TargetSamplesPerPixel := 1;
+            ColorManager.TargetBitsPerSample := 8;
+            Palette := ColorManager.CreateGrayScalePalette(False);
+
+            // read image data
+            for Y := 0 to Height - 1 do
             begin
-              PixelFormat := pf24Bit;
-              Self.Width := GetNumber;
-              Self.Height := GetNumber;
-              // skip maximum color value
-              GetNumber;
-
-              for Y := 0 to Height - 1 do
+              Line8 := ScanLine[Y];
+              for X := 0 to Width - 1 do
               begin
-                Line24 := ScanLine[Y];
-                for X := 0 to Width - 1 do
-                begin
-                  Line24.R := GetNumber;
-                  Line24.G := GetNumber;
-                  Line24.B := GetNumber;
-                  Inc(Line24);
-                end;
-
-                Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                OffsetRect(FProgressRect, 0, 1);
+                Line8^ := GetNumber;
+                Inc(Line8);
               end;
+
+              Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
+              OffsetRect(FProgressRect, 0, 1);
             end;
-          4: // PBM binary format (black & white)
+          end;
+        3: // PPM ASCII form (true color)
+          begin
+            PixelFormat := pf24Bit;
+            Self.Width := GetNumber;
+            Self.Height := GetNumber;
+            // skip maximum color value
+            GetNumber;
+
+            for Y := 0 to Height - 1 do
             begin
-              PixelFormat := pf1Bit;
-              Self.Width := GetNumber;
-              Self.Height := GetNumber;
-              ColorManager.TargetSamplesPerPixel := 1;
-              ColorManager.TargetBitsPerSample := 1;
-              Palette := ColorManager.CreateGrayScalePalette(True);
-
-              // read image data
-              for Y := 0 to Height - 1 do
+              Line24 := ScanLine[Y];
+              for X := 0 to Width - 1 do
               begin
-                Line8 := ScanLine[Y];
-                for X := 0 to (Width div 8) - 1 do
-                begin
-                  Line8^ := Byte(GetChar);
-                  Inc(Line8);
-                end;
-                if (Width mod 8) <> 0 then Line8^ := Byte(GetChar);
-
-                Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                OffsetRect(FProgressRect, 0, 1);
+                Line24.R := GetNumber;
+                Line24.G := GetNumber;
+                Line24.B := GetNumber;
+                Inc(Line24);
               end;
+
+              Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
+              OffsetRect(FProgressRect, 0, 1);
             end;
-          5: // PGM binary form (gray scale)
+          end;
+        4: // PBM binary format (black & white)
+          begin
+            PixelFormat := pf1Bit;
+            Self.Width := GetNumber;
+            Self.Height := GetNumber;
+            ColorManager.TargetSamplesPerPixel := 1;
+            ColorManager.TargetBitsPerSample := 1;
+            Palette := ColorManager.CreateGrayScalePalette(True);
+
+            // read image data
+            for Y := 0 to Height - 1 do
             begin
-              PixelFormat := pf8Bit;
-              Self.Width := GetNumber;
-              Self.Height := GetNumber;
-              // skip maximum color value
-              GetNumber;
-              ColorManager.TargetSamplesPerPixel := 1;
-              ColorManager.TargetBitsPerSample := 8;
-              Palette := ColorManager.CreateGrayScalePalette(False);
-
-              // read image data
-              for Y := 0 to Height - 1 do
+              Line8 := ScanLine[Y];
+              for X := 0 to (Width div 8) - 1 do
               begin
-                Line8 := ScanLine[Y];
-                for X := 0 to Width - 1 do
-                begin
-                  Line8^ := Byte(GetChar);
-                  Inc(Line8);
-                end;
-
-                Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                OffsetRect(FProgressRect, 0, 1);
+                Line8^ := Byte(GetChar);
+                Inc(Line8);
               end;
-            end;
-          6: // PPM binary form (true color)
-            begin
-              PixelFormat := pf24Bit;
-              Self.Width := GetNumber;
-              Self.Height := GetNumber;
-              // skip maximum color value
-              GetNumber;
+              if (Width mod 8) <> 0 then
+                Line8^ := Byte(GetChar);
 
-              // Pixel values are store linearly (but RGB instead BGR).
-              // There's one allowed white space which will automatically be skipped by the first
-              // GetChar call below
-              // now read the pixels
-              for Y := 0 to Height - 1 do
+              Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
+              OffsetRect(FProgressRect, 0, 1);
+            end;
+          end;
+        5: // PGM binary form (gray scale)
+          begin
+            PixelFormat := pf8Bit;
+            Self.Width := GetNumber;
+            Self.Height := GetNumber;
+            // skip maximum color value
+            GetNumber;
+            ColorManager.TargetSamplesPerPixel := 1;
+            ColorManager.TargetBitsPerSample := 8;
+            Palette := ColorManager.CreateGrayScalePalette(False);
+
+            // read image data
+            for Y := 0 to Height - 1 do
+            begin
+              Line8 := ScanLine[Y];
+              for X := 0 to Width - 1 do
               begin
-                Line24 := ScanLine[Y];
+                Line8^ := Byte(GetChar);
+                Inc(Line8);
+              end;
+
+              Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
+              OffsetRect(FProgressRect, 0, 1);
+            end;
+          end;
+        6: // PPM binary form (true color)
+          begin
+            PixelFormat := pf24Bit;
+            Self.Width := GetNumber;
+            Self.Height := GetNumber;
+            MaxVal := GetNumber;
+
+            // Pixel values are store linearly (but RGB instead BGR).
+            // There's one allowed white space which will automatically be skipped by the first
+            // GetChar call below
+            // now read the pixels
+            for Y := 0 to Height - 1 do
+            begin
+              Line24 := ScanLine[Y];
+              if MaxVal = 255 then
                 for X := 0 to Width - 1 do
                 begin
                   Line24.R := Byte(GetChar);
                   Line24.G := Byte(GetChar);
                   Line24.B := Byte(GetChar);
                   Inc(Line24);
-                end;
+                end
+              else if MaxVal < 255 then
+                for X := 0 to Width - 1 do
+                begin
+                  // These floating point calculations are the same as the GIMP's PPM scaling.
+                  // Precomputing 255/MaxVal or using MulDiv both give slightly different results
+                  // due to precision differences.
+                  // Paint Shop Pro's calculations for MaxVal < 255 are screwed up, and I couldn't
+                  // figure out the exact algorithm they're using.
+                  Line24.R := Trunc(Byte(GetChar) * 255 / MaxVal);
+                  Line24.G := Trunc(Byte(GetChar) * 255 / MaxVal);
+                  Line24.B := Trunc(Byte(GetChar) * 255 / MaxVal);
+                  Inc(Line24);
+                end
+              else
+                GraphicExError(gesInvalidImage, ['PBM, PGM or PPM']);
+                // TODO: PPM does support a MaxVal up to 65535, but I don't have any sample files to test
+//                for X := 0 to Width - 1 do
+//                begin
+//                  Line24.R := Trunc(Byte(GetChar) shl 8 + Byte(GetChar), 255, MaxVal);
+//                  Line24.G := Trunc(Byte(GetChar) shl 8 + Byte(GetChar), 255, MaxVal);
+//                  Line24.B := Trunc(Byte(GetChar) shl 8 + Byte(GetChar), 255, MaxVal);
+//                  Inc(Line24);
+//                end;
 
-                Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                OffsetRect(FProgressRect, 0, 1);
-              end;
+              Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
+              OffsetRect(FProgressRect, 0, 1);
             end;
-        end;
+          end;
+        else
+          GraphicExError(gesInvalidImage, ['PBM, PGM or PPM']);
       end;
       Progress(Self, psEnding, 0, False, FProgressRect, '');
     end;
   end
-  else GraphicExError(gesInvalidImage, ['PBM, PGM or PPM']);
+  else
+    GraphicExError(gesInvalidImage, ['PBM, PGM or PPM']);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TPPMGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
-
-var
-  Buffer: String;
+function TPPMGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 begin
-  Result := inherited ReadImageProperties(Stream, ImageIndex);
-  with Stream, FImageProperties do
-  begin
-    // set index pointer to end of buffer to cause reload
-    FIndex := SizeOf(FBuffer);
-    Buffer := ReadLine;
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
 
-    Compression := ctNone;
-
-    if Buffer[1] = 'P' then
+  if Result then
+    with FImageProperties do
     begin
-      case StrToInt(Buffer[2]) of
-        1: // PBM ASCII format (black & white)
-          begin
-            Width := GetNumber;
-            Height := GetNumber;
+      FSource := Memory;
+      FRemainingSize := Size;
 
-            SamplesPerPixel := 1;
-            BitsPerSample := 1;
-            ColorScheme := csIndexed;
-            BitsPerPixel := SamplesPerPixel * BitsPerSample;
-          end;
-        2: // PGM ASCII form (gray scale)
-          begin
-            Width := GetNumber;
-            Height := GetNumber;
-            // skip maximum color value
-            GetNumber;
+      Compression := ctNone;
 
-            SamplesPerPixel := 1;
-            BitsPerSample := 8;
-            ColorScheme := csIndexed;
-            BitsPerPixel := SamplesPerPixel * BitsPerSample;
-          end;
-        3: // PPM ASCII form (true color)
-          begin
-            Width := GetNumber;
-            Height := GetNumber;
-            // skip maximum color value
-            GetNumber;
+      if GetChar = 'P' then
+      begin
+        case StrToInt(GetChar) of
+          1: // PBM ASCII format (black & white)
+            begin
+              Width := GetNumber;
+              Height := GetNumber;
 
-            SamplesPerPixel := 3;
-            BitsPerSample := 8;
-            ColorScheme := csRGB;
-            BitsPerPixel := SamplesPerPixel * BitsPerSample;
-          end;
-        4: // PBM binary format (black & white)
-          begin
-            Width := GetNumber;
-            Height := GetNumber;
+              SamplesPerPixel := 1;
+              BitsPerSample := 1;
+              ColorScheme := csIndexed;
+              BitsPerPixel := SamplesPerPixel * BitsPerSample;
+            end;
+          2: // PGM ASCII form (gray scale)
+            begin
+              Width := GetNumber;
+              Height := GetNumber;
+              // skip maximum color value
+              GetNumber;
 
-            SamplesPerPixel := 1;
-            BitsPerSample := 1;
-            ColorScheme := csIndexed;
-            BitsPerPixel := SamplesPerPixel * BitsPerSample;
-          end;
-        5: // PGM binary form (gray scale)
-          begin
-            Width := GetNumber;
-            Height := GetNumber;
-            // skip maximum color value
-            GetNumber;
+              SamplesPerPixel := 1;
+              BitsPerSample := 8;
+              ColorScheme := csIndexed;
+              BitsPerPixel := SamplesPerPixel * BitsPerSample;
+            end;
+          3: // PPM ASCII form (true color)
+            begin
+              Width := GetNumber;
+              Height := GetNumber;
+              // skip maximum color value
+              GetNumber;
 
-            SamplesPerPixel := 1;
-            BitsPerSample := 8;
-            ColorScheme := csIndexed;
-            BitsPerPixel := SamplesPerPixel * BitsPerSample;
-          end;
-        6: // PPM binary form (true color)
-          begin
-            Width := GetNumber;
-            Height := GetNumber;
-            // skip maximum color value
-            GetNumber;
+              SamplesPerPixel := 3;
+              BitsPerSample := 8;
+              ColorScheme := csRGB;
+              BitsPerPixel := SamplesPerPixel * BitsPerSample;
+            end;
+          4: // PBM binary format (black & white)
+            begin
+              Width := GetNumber;
+              Height := GetNumber;
 
-            SamplesPerPixel := 3;
-            BitsPerSample := 8;
-            ColorScheme := csRGB;
-            BitsPerPixel := SamplesPerPixel * BitsPerSample;
-          end;
-      end;
-      Result := True;
+              SamplesPerPixel := 1;
+              BitsPerSample := 1;
+              ColorScheme := csIndexed;
+              BitsPerPixel := SamplesPerPixel * BitsPerSample;
+            end;
+          5: // PGM binary form (gray scale)
+            begin
+              Width := GetNumber;
+              Height := GetNumber;
+              // skip maximum color value
+              GetNumber;
+
+              SamplesPerPixel := 1;
+              BitsPerSample := 8;
+              ColorScheme := csIndexed;
+              BitsPerPixel := SamplesPerPixel * BitsPerSample;
+            end;
+          6: // PPM binary form (true color)
+            begin
+              Width := GetNumber;
+              Height := GetNumber;
+              // skip maximum color value
+              GetNumber;
+
+              SamplesPerPixel := 3;
+              BitsPerSample := 8;
+              ColorScheme := csRGB;
+              BitsPerPixel := SamplesPerPixel * BitsPerSample;
+            end;
+        else
+          Result := False;
+        end;
+      end
+      else
+        Result := False;
     end;
-  end;
 end;
 
-{$endif} // PortableMapGraphic
+{$endif PortableMapGraphic}
 
 //----------------- TCUTGraphic ----------------------------------------------------------------------------------------
 
 {$ifdef CUTGraphic}
 
-class function TCUTGraphic.CanLoad(Stream: TStream): Boolean;
+class function TCUTGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 // Note: cut files cannot be determined from stream because the only information
 //       is width and height of the image at stream/image start which is by no means
@@ -4695,9 +5026,9 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TCUTGraphic.LoadFromFile(const FileName: String);
+procedure TCUTGraphic.LoadFromFile(const FileName: string);
 
-// overridden to extract an implicit palette file name
+// Overridden to extract an implicit palette file name.
 
 begin
   FPaletteFile := ChangeFileExt(FileName, '.pal');
@@ -4706,52 +5037,43 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TCUTGraphic.LoadFromStream(Stream: TStream);
+procedure TCUTGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
-  Buffer: PByte;
-  Run,
+  Source: PByte;
   Line: Pointer;
   Decoder: TCUTRLEDecoder;
-  CUTSize: Cardinal;
   Y: Integer;
 
 begin
-  Handle := 0;
-  FBasePosition := Stream.Position;
-  if ReadImageProperties(Stream, 0) then
+  inherited;
+
+  if ReadImageProperties(Memory, Size, ImageIndex) then
   begin
-    with Stream, FImageProperties do
+    with FImageProperties do
     begin
-      Position := FBasePosition + 6;
+      Source := Pointer(PChar(Memory) + 6);
 
       FProgressRect := Rect(0, 0, Width, 0);
       Progress(Self, psStarting, 0, False, FProgressRect, gesTransfering);
+
       PixelFormat := pf8Bit;
       Self.Width := Width;
       Self.Height := Height;
       LoadPalette;
 
-      CutSize := Stream.Size - Stream.Position;
       Decoder := TCUTRLEDecoder.Create;
-      Buffer := nil;
       try
-        GetMem(Buffer, CutSize);
-        Stream.ReadBuffer(Buffer^, CUTSize);
-
-        Run := Buffer;
         for Y := 0 to Height - 1 do
         begin
           Line := ScanLine[Y];
-          Decoder.Decode(Run, Line, 0, Width);
+          Decoder.Decode(Pointer(Source), Line, 0, Width);
 
           Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
           OffsetRect(FProgressRect, 0, 1);
         end;
-
       finally
-        Decoder.Free;
-        if Assigned(Buffer) then FreeMem(Buffer);
+        FreeAndNil(Decoder);
       end;
 
       Progress(Self, psEnding, 0, False, FProgressRect, '');
@@ -4761,30 +5083,30 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TCUTGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+function TCUTGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
-  Dummy: Word;
+  Run: PWord;
   
 begin
-  inherited ReadImageProperties(Stream, ImageIndex);
-  with Stream, FImageProperties do
-  begin
-    PixelFormat := pf8Bit;
-    ReadBuffer(Dummy, SizeOf(Dummy));
-    Width := Dummy;
-    ReadBuffer(Dummy, SizeOf(Dummy));
-    Height := Dummy;
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
 
-    ColorScheme := csIndexed;
-    BitsPerSample := 8;
-    SamplesPerPixel := 1;
-    BitsPerPixel := BitsPerSample * SamplesPerPixel;
+  if Result then
+    with FImageProperties do
+    begin
+      PixelFormat := pf8Bit;
+      Run := Memory;
+      Width := Run^;
+      Inc(Run);
+      Height := Run^;
 
-    Compression := ctRLE;
-    
-    Result := True;
-  end;
+      ColorScheme := csIndexed;
+      BitsPerSample := 8;
+      SamplesPerPixel := 1;
+      BitsPerPixel := BitsPerSample * SamplesPerPixel;
+
+      Compression := ctRLE;
+    end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -4794,7 +5116,7 @@ type
   // image file's header, funny...
   PHaloPaletteHeader = ^THaloPaletteHeader;
   THaloPaletteHeader = packed record
-    ID: array[0..1] of AnsiChar;  // should be 'AH'
+    ID: array[0..1] of Char;  // should be 'AH'
     Version,
     Size: Word;
     FileType,
@@ -4805,7 +5127,7 @@ type
     MaxRed,
     MaxGreen,
     MaxBlue: Word; // colors = MaxIndex + 1
-    Signature: array[0..7] of AnsiChar; // 'Dr. Halo'
+    Signature: array[0..7] of Char; // 'Dr. Halo'
     Filler: array[0..11] of Byte;
   end;
 
@@ -4841,11 +5163,11 @@ begin
           ReadBuffer(Buffer, SizeOf(Buffer));
           Run := @Buffer;
         end;
-        LogPalette.palPalEntry[I].peRed := Run^;
+        LogPalette.palPalEntry[I].peRed := Byte(Run^);
         Inc(Run);
-        LogPalette.palPalEntry[I].peGreen := Run^;
+        LogPalette.palPalEntry[I].peGreen := Byte(Run^);
         Inc(Run);
-        LogPalette.palPalEntry[I].peBlue := Run^;
+        LogPalette.palPalEntry[I].peBlue := Byte(Run^);
         Inc(Run);
       end;
     finally
@@ -4868,7 +5190,7 @@ begin
   Palette := CreatePalette(PLogPalette(@LogPalette)^);
 end;
 
-{$endif} // CUTGraphic
+{$endif CUTGraphic}
 
 //----------------- TGIFGraphic ----------------------------------------------------------------------------------------
 
@@ -4896,9 +5218,10 @@ const
   GIF_TRAILER = Ord(';');
   
 type
+  PGIFHeader = ^TGIFHeader;
   TGIFHeader = packed record
-    Signature: array[0..2] of AnsiChar; // magic ID 'GIF'
-    Version: array[0..2] of AnsiChar;   // '87a' or '89a'
+    Signature: array[0..2] of Char; // magic ID 'GIF'
+    Version: array[0..2] of Char;   // '87a' or '89a' 
   end;
 
   TLogicalScreenDescriptor = packed record
@@ -4920,24 +5243,11 @@ type
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TGIFGraphic.CanLoad(Stream: TStream): Boolean;
-
-var
-  Header: TGIFHeader;
-  LastPosition: Cardinal;
+class function TGIFGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
-  with Stream do
-  begin
-    LastPosition := Position;
-    Result := (Size - Position) > (SizeOf(TGIFHeader) + SizeOf(TLogicalScreenDescriptor) + SizeOf(TImageDescriptor));
-    if Result then
-    begin
-      ReadBuffer(Header, SizeOf(Header));
-      Result := UpperCase(Header.Signature) = 'GIF';
-    end;
-    Position := LastPosition;
-  end;
+  Result := (Size > (SizeOf(TGIFHeader) + SizeOf(TLogicalScreenDescriptor) + SizeOf(TImageDescriptor))) and
+    (StrLIComp(PChar(Memory), 'GIF', 3) = 0);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -4949,70 +5259,93 @@ function TGIFGraphic.SkipExtensions: Byte;
 
 var
   Increment: Byte;
+  Content : array[0..255] of Char; // Gif comment sub-block has a maximum size of 255 bytes
 
 begin
-  with FStream do
-  begin
-    // iterate through the blocks until first image is found
-    repeat
-      ReadBuffer(Result, 1);
-      if Result = GIF_EXTENSIONINTRODUCER then
-      begin
-        // skip any extension
-        ReadBuffer(Result, 1);
-        case Result of
-          GIF_PLAINTEXT:
-            begin
-              // block size of text grid data
-              ReadBuffer(Increment, 1);
-              Seek(Increment, soFromCurrent);
-              // skip variable lengthed text block
-              repeat
-                // block size
-                ReadBuffer(Increment, 1);
-                if Increment = 0 then Break;
-                Seek(Increment, soFromCurrent);
-              until False;
-            end;
-          GIF_GRAPHICCONTROLEXTENSION:
-            begin
-              // block size
-              ReadBuffer(Increment, 1);
-              // skip block and its terminator
-              Seek(Increment + 1, soFromCurrent);
-            end;
-          GIF_COMMENTEXTENSION:
+  FImageProperties.Comment := '';
+  
+  // Iterate through the blocks until first image is found.
+  repeat
+    Result := FSource^;
+    Inc(FSource);
+    if Result = GIF_EXTENSIONINTRODUCER then
+    begin
+      // Read the block control label and act accordingly.
+      Result := FSource^;
+      Inc(FSource);
+      case Result of
+        GIF_PLAINTEXT:
+          begin
+            // Block size of text grid data.
+            Increment := FSource^;
+            Inc(FSource, Increment + 1);
+            // Skip variable lengthed text block.
             repeat
-              // block size
-              ReadBuffer(Increment, 1);
-              if Increment = 0 then Break;
-              Seek(Increment, soFromCurrent);
+              // Block size.
+              Increment := FSource^;
+              Inc(FSource);
+              if Increment = 0 then
+                Break;
+              Inc(FSource, Increment);
             until False;
-          GIF_APPLICATIONEXTENSION:
+          end;
+        GIF_GRAPHICCONTROLEXTENSION:
+          begin
+            // Block size.
+            Increment := FSource^;
+            Inc(FSource);
+            if Increment > 0 then
             begin
-              // application id and authentication code plus potential application data
-              repeat
-                ReadBuffer(Increment, 1);
-                if Increment = 0 then Break;
-                Seek(Increment, soFromCurrent);
-              until False;
+              // The graphic control extention includes the transparency flag.
+              // Read this and the transparency color index.
+              if (FSource^ and 1) <> 0 then
+              begin
+                // Image is transparent, read index.
+                Transparent := True;
+                FTransparentIndex := Byte((PChar(FSource) + 3)^);
+              end;
+              Inc(FSource, Increment);
             end;
-        end;
+            // Finally skip terminator.
+            Inc(FSource);
+          end;
+        GIF_COMMENTEXTENSION:
+          repeat
+            // block size
+            Increment := FSource^;
+            Inc(FSource);
+            if Increment = 0 then
+              Break;
+            Move(FSource^, Content, Increment);
+            Content[Increment] := #0;
+            FImageProperties.Comment := FImageProperties.Comment + Content;
+          until False;
+        GIF_APPLICATIONEXTENSION:
+          begin
+            // application id and authentication code plus potential application data
+            repeat
+              Increment := FSource^;
+              Inc(FSource);
+              if Increment = 0 then
+                Break;
+              Inc(FSource, Increment);
+            until False;
+          end;
       end;
-    until (Result = GIF_IMAGEDESCRIPTOR) or (Result = GIF_TRAILER);
-  end;
+    end;
+  until (Result = GIF_IMAGEDESCRIPTOR) or (Result = GIF_TRAILER);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TGIFGraphic.LoadFromStream(Stream: TStream);
+procedure TGIFGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
   Header: TGIFHeader;
   ScreenDescriptor: TLogicalScreenDescriptor;
   ImageDescriptor: TImageDescriptor;
   LogPalette: TMaxLogPalette;
-  I: Cardinal;
+  I: Integer;
   BlockID: Byte;
   InitCodeSize: Byte;
   RawData,
@@ -5021,56 +5354,65 @@ var
   TargetRun,
   Line: Pointer;
   Pass,
-  Increment,
-  Marker: Integer;
-  Decoder: TDecoder;
+  Increment: Integer;
+  Marker: Pointer;
 
 begin
-  // release old image
-  Handle := 0;
-  FBasePosition := Stream.Position;
-  FStream := Stream;
-  if ReadImageProperties(Stream, 0) then
+  inherited;
+
+  if ReadImageProperties(Memory, Size, ImageIndex) then
   begin
-    with Stream, FImageProperties do
+    with FImageProperties do
     begin
-      Position := FBasePosition;
+      Transparent := False;
 
       FProgressRect := Rect(0, 0, Width, 1);
       Progress(Self, psStarting, 0, False, FProgressRect, gesPreparing);
 
-      ReadBuffer(Header, SizeOf(Header));
+      FSource := Memory;
+      Move(FSource^, Header, SizeOf(Header));
+      Inc(FSource, SizeOf(Header));
 
       PixelFormat := pf8Bit;
       
-      // general information
-      ReadBuffer(ScreenDescriptor, SizeOf(ScreenDescriptor));
+      // Read general information.
+      Move(FSource^, ScreenDescriptor, SizeOf(ScreenDescriptor));
+      Inc(FSource, SizeOf(ScreenDescriptor));
 
       ZeroMemory(@LogPalette, SizeOf(LogPalette));
       LogPalette.palVersion := $300;
-      // read global color table if given
+      // Read global color table if given.
       if (ScreenDescriptor.PackedFields and GIF_GLOBALCOLORTABLE) <> 0 then
       begin
-        // the global color table immediately follows the screen descriptor
+        // The global color table immediately follows the screen descriptor.
         LogPalette.palNumEntries := 2 shl (ScreenDescriptor.PackedFields and GIF_COLORTABLESIZE);
         for I := 0 to LogPalette.palNumEntries - 1 do
         begin
-          ReadBuffer(LogPalette.palPalEntry[I].peRed, 1);
-          ReadBuffer(LogPalette.palPalEntry[I].peGreen, 1);
-          ReadBuffer(LogPalette.palPalEntry[I].peBlue, 1);
+          LogPalette.palPalEntry[I].peRed := FSource^;   Inc(FSource);
+          LogPalette.palPalEntry[I].peGreen := FSource^; Inc(FSource);
+          LogPalette.palPalEntry[I].peBlue := FSource^;  Inc(FSource);
         end;
-        // finally create palette
+        // Finally create the palette.
         Palette := CreatePalette(PLogPalette(@LogPalette)^);
       end;
 
       BlockID := SkipExtensions;
+
+      // SkipExtensions might have set the transparent property.
+      if Transparent then
+        // If transparent color index is valid then get transparent color.
+        if FTransparentIndex < LogPalette.palNumEntries then
+          with LogPalette.palPalEntry[FTransparentIndex] do
+          TransparentColor := RGB(peRed, peGreen, peBlue);
+
       Progress(Self, psEnding, 0, False, FProgressRect, '');
 
       // image found?
       if BlockID = GIF_IMAGEDESCRIPTOR then
       begin
         Progress(Self, psStarting, 0, False, FProgressRect, gesLoadingData);
-        ReadBuffer(ImageDescriptor, SizeOf(TImageDescriptor));
+        Move(FSource^, ImageDescriptor, SizeOf(TImageDescriptor));
+        Inc(FSource, SizeOf(TImageDescriptor));
         Self.Width := Width;
         Self.Height := Height;
 
@@ -5081,23 +5423,24 @@ begin
           LogPalette.palNumEntries := 2 shl (ImageDescriptor.PackedFields and GIF_COLORTABLESIZE);
           for I := 0 to LogPalette.palNumEntries - 1 do
           begin
-            ReadBuffer(LogPalette.palPalEntry[I].peRed, 1);
-            ReadBuffer(LogPalette.palPalEntry[I].peGreen, 1);
-            ReadBuffer(LogPalette.palPalEntry[I].peBlue, 1);
+            LogPalette.palPalEntry[I].peRed := FSource^;   Inc(FSource);
+            LogPalette.palPalEntry[I].peGreen := FSource^; Inc(FSource);
+            LogPalette.palPalEntry[I].peBlue := FSource^;  Inc(FSource);
           end;
           Palette := CreatePalette(PLogPalette(@LogPalette)^);
         end;
 
-        ReadBuffer(InitCodeSize, 1);
+        InitCodeSize := FSource^;
+        Inc(FSource);
         // decompress data in one step
         // 1) count data
-        Marker := Position;
+        Marker := FSource;
         Pass := 0;
-        Increment := 0;
         repeat
-          if Read(Increment, 1) = 0 then Break;
+          Increment := FSource^;
+          Inc(FSource);
           Inc(Pass, Increment);
-          Seek(Increment, soFromCurrent);
+          Inc(FSource, Increment);
         until Increment = 0;
 
         // 2) allocate enough memory
@@ -5107,13 +5450,14 @@ begin
 
         try
           // 3) read and decode data
-          Position := Marker;
-          Increment := 0;
+          FSource := Marker;
           Run := RawData;
           repeat
-            if Read(Increment, 1) = 0 then Break;
-            Read(Run^, Increment);
+            Increment := FSource^;
+            Inc(FSource);
+            Move(FSource^, Run^, Increment);
             Inc(Run, Increment);
+            Inc(FSource, Increment);
           until Increment = 0;
 
           Decoder := TGIFLZWDecoder.Create(InitCodeSize);
@@ -5121,7 +5465,7 @@ begin
             Run := RawData;
             Decoder.Decode(Pointer(Run), TargetBuffer, Pass, Width * Height);
           finally
-            Decoder.Free;
+            FreeAndNil(Decoder);
           end;
           Progress(Self, psEnding, 0, False, FProgressRect, '');
 
@@ -5186,76 +5530,89 @@ begin
           end;
           Progress(Self, psEnding, 0, False, FProgressRect, '');
         finally
-          if Assigned(TargetBuffer) then FreeMem(TargetBuffer);
-          if Assigned(RawData) then FreeMem(RawData);
+          if Assigned(TargetBuffer) then
+            FreeMem(TargetBuffer);
+          if Assigned(RawData) then
+            FreeMem(RawData);
         end;
       end;
     end;
   end
-  else GraphicExError(gesInvalidImage, ['GIF']);
+  else
+    GraphicExError(gesInvalidImage, ['GIF']);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TGIFGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+function TGIFGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
   Header: TGIFHeader;
   ScreenDescriptor: TLogicalScreenDescriptor;
   ImageDescriptor: TImageDescriptor;
   BlockID: Integer;
-  
+
 begin
-  Result := inherited ReadImageProperties(Stream, ImageIndex);
-  with Stream, FImageProperties do
-  begin
-    ReadBuffer(Header, SizeOf(Header));
-    if UpperCase(Header.Signature) = 'GIF' then
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
+
+  if Result then
+    with FImageProperties do
     begin
-      Version := StrToInt(Copy(Header.Version, 1, 2));
-      ColorScheme := csIndexed;
-      SamplesPerPixel := 1;
-      // might be overwritten
-      BitsPerSample := 8;
-      Compression := ctLZW;
-
-      // general information
-      ReadBuffer(ScreenDescriptor, SizeOf(ScreenDescriptor));
-
-      // skip global color table if given
-      if (ScreenDescriptor.PackedFields and GIF_GLOBALCOLORTABLE) <> 0 then
+      FSource := Memory;
+      Move(FSource^, Header, SizeOf(Header));
+      Inc(FSource, SizeOf(Header));
+      if UpperCase(Header.Signature) = 'GIF' then
       begin
-        BitsPerSample := (ScreenDescriptor.PackedFields and GIF_COLORTABLESIZE) + 1;
-        // the global color table immediately follows the screen descriptor
-        Seek(3 * (1 shl BitsPerSample), soFromCurrent);
-      end;
+        Version := StrToInt(Copy(Header.Version, 1, 2));
+        ColorScheme := csIndexed;
+        SamplesPerPixel := 1;
+        // might be overwritten
+        BitsPerSample := 8;
+        Compression := ctLZW;
 
-      BlockID := SkipExtensions;
+        // general information
+        Move(FSource^, ScreenDescriptor, SizeOf(ScreenDescriptor));
+        Inc(FSource, SizeOf(ScreenDescriptor));
 
-      // image found?
-      if BlockID = GIF_IMAGEDESCRIPTOR then
-      begin
-        ReadBuffer(ImageDescriptor, SizeOf(TImageDescriptor));
-        Width := ImageDescriptor.Width;
-        if Width = 0 then Width := ScreenDescriptor.ScreenWidth;
-        Height := ImageDescriptor.Height;
-        if Height = 0 then Height := ScreenDescriptor.ScreenHeight;
+        // Skip global color table if given.
+        if (ScreenDescriptor.PackedFields and GIF_GLOBALCOLORTABLE) <> 0 then
+        begin
+          BitsPerSample := (ScreenDescriptor.PackedFields and GIF_COLORTABLESIZE) + 1;
+          // The global color table immediately follows the screen descriptor.
+          Inc(FSource, 3 * (1 shl BitsPerSample));
+        end;
 
-        // if there is a local color table then override the already set one
-        LocalColorTable := (ImageDescriptor.PackedFields and GIF_LOCALCOLORTABLE) <> 0;
-        if LocalColorTable then
-          BitsPerSample := (ImageDescriptor.PackedFields and GIF_LOCALCOLORTABLE) + 1;
-        Interlaced := (ImageDescriptor.PackedFields and GIF_INTERLACED) <> 0;
-      end;
+        BlockID := SkipExtensions;
 
-      BitsPerPixel := SamplesPerPixel * BitsPerSample;
+        // Image found?
+        if BlockID = GIF_IMAGEDESCRIPTOR then
+        begin
+          Move(FSource^, ImageDescriptor, SizeOf(TImageDescriptor));
 
-      Result := True;
+          Width := ImageDescriptor.Width;
+          if Width = 0 then
+            Width := ScreenDescriptor.ScreenWidth;
+          Height := ImageDescriptor.Height;
+          if Height = 0 then
+            Height := ScreenDescriptor.ScreenHeight;
+
+          // if there is a local color table then override the already set one
+          LocalColorTable := (ImageDescriptor.PackedFields and GIF_LOCALCOLORTABLE) <> 0;
+          if LocalColorTable then
+            BitsPerSample := (ImageDescriptor.PackedFields and GIF_LOCALCOLORTABLE) + 1;
+          Interlaced := (ImageDescriptor.PackedFields and GIF_INTERLACED) <> 0;
+        end;
+
+        BitsPerPixel := SamplesPerPixel * BitsPerSample;
+
+        Result := True;
+      end
+      else
+        Result := False;
     end;
-  end;
 end;
 
-{$endif} // GIFGraphic
+{$endif GIFGraphic}
 
 //----------------- TRLAGraphic ----------------------------------------------------------------------------------------
 
@@ -5271,6 +5628,7 @@ type
     Top: SmallInt;
   end;
 
+  PRLAHeader = ^TRLAHeader;
   TRLAHeader = packed record
     Window,                            // overall image size
     Active_window: TRLAWindow;         // size of non-zero portion of image (we use this as actual image size)
@@ -5280,61 +5638,48 @@ type
     Num_matte,                         // number of matte channels (usually only 1)
     Num_aux,                           // number of auxiliary channels, usually 0
     Revision: SmallInt;                // always $FFFE
-    Gamma: array[0..15] of AnsiChar;       // gamma single value used when writing the image
-    Red_pri: array[0..23] of AnsiChar;     // used chromaticity for red channel (typical format: "%7.4f %7.4f")
-    Green_pri: array[0..23] of AnsiChar;   // used chromaticity for green channel
-    Blue_pri: array[0..23] of AnsiChar;    // used chromaticity for blue channel
-    White_pt: array[0..23] of AnsiChar;    // used chromaticity for white point
+    Gamma: array[0..15] of Char;       // gamma single value used when writing the image
+    Red_pri: array[0..23] of Char;     // used chromaticity for red channel (typical format: "%7.4f %7.4f")
+    Green_pri: array[0..23] of Char;   // used chromaticity for green channel
+    Blue_pri: array[0..23] of Char;    // used chromaticity for blue channel
+    White_pt: array[0..23] of Char;    // used chromaticity for white point
     Job_num: Integer;                  // rendering speciifc
-    Name: array[0..127] of AnsiChar;       // original file name
-    Desc: array[0..127] of AnsiChar;       // a file description
-    ProgramName: array[0..63] of AnsiChar; // name of program which created the image
-    Machine: array[0..31] of AnsiChar;     // name of computer on which the image was rendered
-    User: array[0..31] of AnsiChar;        // user who ran the creation program of the image
-    Date: array[0..19] of AnsiChar;        // creation data of image (ex: Sep 30 12:29 1993)
-    Aspect: array[0..23] of AnsiChar;      // aspect format of the file (external resource)
-    Aspect_ratio: array[0..7] of AnsiChar; // float number Width /Height
-    Chan: array[0..31] of AnsiChar;        // color space (can be: rgb, xyz, sampled or raw)
+    Name: array[0..127] of Char;       // original file name
+    Desc: array[0..127] of Char;       // a file description
+    ProgramName: array[0..63] of Char; // name of program which created the image
+    Machine: array[0..31] of Char;     // name of computer on which the image was rendered
+    User: array[0..31] of Char;        // user who ran the creation program of the image
+    Date: array[0..19] of Char;        // creation data of image (ex: Sep 30 12:29 1993)
+    Aspect: array[0..23] of Char;      // aspect format of the file (external resource)
+    Aspect_ratio: array[0..7] of Char; // float number Width /Height
+    Chan: array[0..31] of Char;        // color space (can be: rgb, xyz, sampled or raw)
     Field: SmallInt;                   // 0 - non-field rendered data, 1 - field rendered data
-    Time: array[0..11] of AnsiChar;        // time needed to create the image (used when rendering)
-    Filter: array[0..31] of AnsiChar;      // filter name to post-process image data
+    Time: array[0..11] of Char;        // time needed to create the image (used when rendering)
+    Filter: array[0..31] of Char;      // filter name to post-process image data
     Chan_bits,                         // bits per sample
     Matte_type,                        // type of matte channel (see aux_type)
     Matte_bits,                        // precision of a pixel's matte channel (1..32)
     Aux_type,                          // type of aux channel (0 - integer data; 4 - single (float) data
     Aux_bits: SmallInt;                // bits precision of the pixel's aux channel (1..32 bits)
-    Aux: array[0..31] of AnsiChar;         // auxiliary channel as either range or depth
-    Space: array[0..35] of AnsiChar;       // unused
+    Aux: array[0..31] of Char;         // auxiliary channel as either range or depth
+    Space: array[0..35] of Char;       // unused
     Next: Integer;                     // offset for next header if multi-frame image
   end;
   
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TRLAGraphic.CanLoad(Stream: TStream): Boolean;
-
-var
-  Header: TRLAHeader;
-  LastPosition: Cardinal;
+class function TRLAGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
-  with Stream do
-  begin
-    LastPosition := Position;
-    Result := (Size - Position) > SizeOf(Header);
-    if Result then
-    begin
-      ReadBuffer(Header, SizeOf(Header));
-      Result := (Swap(Word(Header.Revision)) = $FFFE) and
-                ((LowerCase(Header.Chan) = 'rgb') or
-                 (LowerCase(Header.Chan) = 'xyz'));
-    end;
-    Position := LastPosition;
-  end;
+  Result := Size > SizeOf(TRLAHeader);
+  if Result then
+    with PRLAHeader(Memory)^ do
+      Result := (Word(Revision) = $FEFF) and ((StrLIComp(Chan, 'rgb', 3) = 0) or (StrLIComp(Chan, 'xyz', 3) = 0));
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TRLAGraphic.LoadFromStream(Stream: TStream);
+procedure TRLAGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); 
 
 var
   Offsets: TCardinalArray;
@@ -5350,14 +5695,17 @@ var
   AlphaBuffer: Pointer;
   Decoder: TRLADecoder;
 
+  Run: PByte;
+
 begin
-  // free previous image data
-  Handle := 0;
-  FBasePosition := Stream.Position;
-  if ReadImageProperties(Stream, 0) then
+  inherited;
+
+  if ReadImageProperties(Memory, Size, ImageIndex) then
   begin
-    with Stream, FImageProperties do
+    with FImageProperties do
     begin
+      Run := Memory;
+      
       FProgressRect := Rect(0, 0, Width, 1);
       Progress(Self, psStarting, 0, False, FProgressRect, gesTransfering);
 
@@ -5367,11 +5715,15 @@ begin
         TargetSamplesPerPixel := SamplesPerPixel;
 
         SourceBitsPerSample := BitsPerSample;
-        if BitsPerSample > 8 then TargetBitsPerSample := 8
-                             else TargetBitsPerSample := BitsPerSample;
+        if BitsPerSample > 8 then
+          TargetBitsPerSample := 8
+        else
+          TargetBitsPerSample := BitsPerSample;
         SourceColorScheme := ColorScheme;
-        if ColorScheme = csRGBA then TargetColorScheme := csBGRA
-                                else TargetColorScheme := csBGR;
+        if ColorScheme = csRGBA then
+          TargetColorScheme := csBGRA
+        else
+          TargetColorScheme := csBGR;
 
         PixelFormat := TargetPixelFormat;
 
@@ -5387,13 +5739,14 @@ begin
       Self.Width := Width;
       Self.Height := Height;
 
-      // each scanline is organized in RLE compressed strips whose location in the stream
-      // is determined by the offsets table
+      // Each scanline is organized in RLE compressed strips whose location in the stream
+      // is determined by the offsets table.
       SetLength(Offsets, Height);
-      ReadBuffer(Offsets[0], Height * SizeOf(Cardinal));
-      SwapLong(@Offsets[0], Height);
+      Move(Run^, Offsets[0], Height * SizeOf(Cardinal));
+      Inc(Run, Height * SizeOf(Cardinal));
+      SwapLong(Pointer(Offsets), Height);
 
-      // setup intermediate storage
+      // Setup intermediate storage.
       Decoder := TRLADecoder.Create;
       RawBuffer := nil;
       RedBuffer := nil;
@@ -5409,27 +5762,32 @@ begin
         // no go for each scanline
         for Y := 0 to Height - 1 do
         begin
-          Stream.Position := FBasePosition + Offsets[Y];
-          if BottomUp then Line := ScanLine[Integer(Height) - Y - 1]
-                      else Line := ScanLine[Y];
+          Run := Pointer(PChar(Memory) + Offsets[Y]);
+          if BottomUp then
+            Line := ScanLine[Height - Y - 1]
+          else
+            Line := ScanLine[Y];
           // read channel data to decode
           // red
-          ReadBuffer(RLELength, SizeOf(RLELength));
+          Move(Run^, RLELength, SizeOf(RLELength));
+          Inc(Run, SizeOf(RLELength));
           RLELength := Swap(RLELength);
-          ReallocMem(RawBuffer, RLELength);
-          ReadBuffer(RawBuffer^, RLELength);
+          RawBuffer := Run;
+          Inc(Run, RLELength);
           Decoder.Decode(RawBuffer, RedBuffer, RLELength, Width);
           // green
-          ReadBuffer(RLELength, SizeOf(RLELength));
+          Move(Run^, RLELength, SizeOf(RLELength));
+          Inc(Run, SizeOf(RLELength));
           RLELength := Swap(RLELength);
-          ReallocMem(RawBuffer, RLELength);
-          ReadBuffer(RawBuffer^, RLELength);
+          RawBuffer := Run;
+          Inc(Run, RLELength);
           Decoder.Decode(RawBuffer, GreenBuffer, RLELength, Width);
           // blue
-          ReadBuffer(RLELength, SizeOf(RLELength));
+          Move(Run^, RLELength, SizeOf(RLELength));
+          Inc(Run, SizeOf(RLELength));
           RLELength := Swap(RLELength);
-          ReallocMem(RawBuffer, RLELength);
-          ReadBuffer(RawBuffer^, RLELength);
+          RawBuffer := Run;
+          Inc(Run, RLELength);
           Decoder.Decode(RawBuffer, BlueBuffer, RLELength, Width);
 
           if ColorManager.TargetColorScheme = csBGR then
@@ -5439,11 +5797,10 @@ begin
           else
           begin
             // alpha
-            ReadBuffer(RLELength, SizeOf(RLELength));
+            Move(Run^, RLELength, SizeOf(RLELength));
+            Inc(Run, SizeOf(RLELength));
             RLELength := Swap(RLELength);
-            ReallocMem(RawBuffer, RLELength);
-            ReadBuffer(RawBuffer^, RLELength);
-            Decoder.Decode(RawBuffer, AlphaBuffer, RLELength, Width);
+            Decoder.Decode(Pointer(Run), AlphaBuffer, RLELength, Width);
 
             ColorManager.ConvertRow([RedBuffer, GreenBuffer, BlueBuffer, AlphaBuffer], Line, Width, $FF);
           end;
@@ -5452,12 +5809,15 @@ begin
           OffsetRect(FProgressRect, 0, 1);
         end;
       finally
-        if Assigned(RawBuffer) then FreeMem(RawBuffer);
-        if Assigned(RedBuffer) then FreeMem(RedBuffer);
-        if Assigned(GreenBuffer) then FreeMem(GreenBuffer);
-        if Assigned(BlueBuffer) then FreeMem(BlueBuffer);
-        if Assigned(AlphaBuffer) then FreeMem(AlphaBuffer);
-        Decoder.Free;
+        if Assigned(RedBuffer) then
+          FreeMem(RedBuffer);
+        if Assigned(GreenBuffer) then
+          FreeMem(GreenBuffer);
+        if Assigned(BlueBuffer) then
+          FreeMem(BlueBuffer);
+        if Assigned(AlphaBuffer) then
+          FreeMem(AlphaBuffer);
+        FreeAndNil(Decoder);
       end;
       Progress(Self, psEnding, 0, False, FProgressRect, '');
     end;
@@ -5466,54 +5826,60 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TRLAGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+function TRLAGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
   Header: TRLAHeader;
-  
+  Run: PByte;
+
 begin
-  Result := inherited ReadImageProperties(Stream, ImageIndex);
-  with Stream, FImageProperties do
-  begin
-    ReadBuffer(Header, SizeOf(Header));
-    // data is always given in big endian order, so swap data which needs this
-    SwapHeader(Header);
-    Options := [ioBigEndian];
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
 
-    SamplesPerPixel := Header.num_chan;
-    if Header.num_matte = 1 then Inc(SamplesPerPixel);
-    BitsPerSample := Header.Chan_bits;
-    BitsPerPixel := SamplesPerPixel * BitsPerSample;
-
-    if LowerCase(Header.Chan) = 'rgb' then
+  if Result then
+    with FImageProperties do
     begin
-      if Header.num_matte > 0 then ColorScheme := csRGBA
-                              else ColorScheme := csRGB;
-    end
-    else
-      if LowerCase(Header.Chan) = 'xyz' then Exit;
+      Run := Memory;
+      Move(Run^, Header, SizeOf(Header));
 
-    try
-      FileGamma := StrToFloat(Header.Gamma);
-    except
+      // data is always given in big endian order, so swap data which needs this
+      SwapHeader(Header);
+      Options := [ioBigEndian];
+
+      SamplesPerPixel := Header.num_chan;
+      if Header.num_matte = 1 then
+        Inc(SamplesPerPixel);
+      BitsPerSample := Header.Chan_bits;
+      BitsPerPixel := SamplesPerPixel * BitsPerSample;
+
+      if LowerCase(Header.Chan) = 'rgb' then
+      begin
+        if Header.num_matte > 0 then
+          ColorScheme := csRGBA
+        else
+          ColorScheme := csRGB;
+      end
+      else
+        // if LowerCase(Header.Chan) = 'xyz' then
+        ColorScheme := csUnknown;
+
+      FileGamma := StrToFloatDef(Header.Gamma, 1);
+
+      Compression := ctRLE;
+
+      // dimension of image, top might be larger than bottom denoting a bottom up image
+      Width := Header.Active_window.Right - Header.Active_window.Left + 1;
+      Height := Abs(Header.Active_window.Bottom - Header.Active_window.Top) + 1;
+      BottomUp := (Header.Active_window.Bottom - Header.Active_window.Top) < 0;
+
+      Result := True;
     end;
-
-    Compression := ctRLE;
-
-    // dimension of image, top might be larger than bottom denoting a bottom up image
-    Width := Header.Active_window.Right - Header.Active_window.Left + 1;
-    Height := Abs(Header.Active_window.Bottom - Header.Active_window.Top) + 1;
-    BottomUp := (Header.Active_window.Bottom - Header.Active_window.Top) < 0;
-
-    Result := True;
-  end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
 procedure TRLAGraphic.SwapHeader(var Header);
 
-// separate swap method to ease reading the main flow of the LoadFromStream method
+// Separate swap method to ease reading the main flow of the LoadFromMemory method.
 
 begin
   with TRLAHeader(Header) do
@@ -5537,7 +5903,7 @@ begin
   end;
 end;
 
-{$endif} // RLAGraphic
+{$endif RLAGraphic}
 
 //----------------- TPSDGraphic ----------------------------------------------------------------------------------------
 
@@ -5557,9 +5923,120 @@ const
   PSD_COMPRESSION_NONE = 0;
   PSD_COMPRESSION_RLE = 1; // RLE compression (same as TIFF packed bits)
 
+  PSDBlendModeMapping: array[TPSDLayerBlendMode] of PAnsiChar = (
+    'norm', // lbmNormal
+    'dark', // lbmDarken
+    'lite', // lbmLighten
+    'hue ', // lbmHue
+    'sat ', // lbmSaturation
+    'colr', // lbmColor
+    'lum ', // lbmLuminosity
+    'mul ', // lbmMultiply
+    'scrn', // lbmScreen
+    'diss', // lbmDissolve
+    'over', // lbmOverlay
+    'hLit', // lbmHardLight
+    'sLit', // lbmSoftLight
+    'diff', // lbmDifference
+    'smud', // lbmExclusion
+    'div ', // lbmColorDodge
+    'idiv'  // lbmColorBur
+  );
+
+  // Resource IDs for records in the resource block.
+  Obsolete1 = $03E8;                        // ObsoleteóPhotoshop 2.0 only. Contains five 2 byte values: number of
+                                            // channels, rows, columns, depth, and mode.
+  MacPrintManInfo = $03E9;                  // Optional. Macintosh print manager print info record.
+  Obsolete2 = $03EB;                        // ObsoleteóPhotoshop 2.0 only. Contains the indexed color table.
+  ResInfo = $03ED;                          // ResolutionInfo structure. See Appendix A in Photoshop SDK Guide.pdf.
+  AlphaChannelNames = $03EE;                // Names of the alpha channels as a series of Pascal strings.
+  DisplayInfo = $03EF;                      // DisplayInfo structure. See Appendix A in Photoshop SDK Guide.pdf.
+  Caption = $03F0;                          // Optional. The caption as a Pascal string.
+  Border = $03F1;                           // Border information. Contains a fixed-number for the border width, and 2
+                                            // bytes for border units (1 = inches, 2 = cm, 3 = points, 4 = picas, 5 = columns).
+  BackgroundColor = $03F2;                  // Background color. See the Colors additional file information.
+  PrintFlags = $03F3;                       // Print flags. A series of one byte boolean values (see Page Setup dialog):
+                                            // labels, crop marks, color bars, registration marks, negative, flip,
+                                            // interpolate, caption.
+  GrayMultichannelHalftoningInfo = $03F4;   // Grayscale and multichannel halftoning information.
+  ColorHalftoningInfo = $03F5;              // Color halftoning information.
+  DuotoneHalftoningInfo = $03F6;            // Duotone halftoning information.
+  GrayMultiChannelTransferInfo = $03F7;     // Grayscale and multichannel transfer function.
+  ColorTransferInfo = $03F8;                // Color transfer functions.
+  DuotoneTransferInfo = $03F9;              // Duotone transfer functions.
+  DuotoneImageInfo = $03FA;                 // Duotone image information.
+  DotRange = $03FB;                         // Two bytes for the effective black and white values for the dot range.
+  Obsolete3 = $03FC;                        // Obsolete.
+  EPSOptions = $03FD;                       // EPS options.
+  QuickMaskInfo = $03FE;                    // Quick Mask information. 2 bytes containing Quick Mask channel ID, 1 byte
+                                            // boolean indicating whether the mask was initially empty.
+  Obsolete4 = $03FF;                        // Obsolete.
+  LayerStateInfo = $0400;                   // Layer state information. 2 bytes containing the index of target layer.
+                                            // 0 = bottom layer.
+  WorkingPath = $0401;                      // Working path (not saved). See path resource in Photoshop File Formats Spec.
+  LayersGroupInfo = $0402;                  // Layers group information. 2 bytes per layer containing a group ID for the
+                                            // dragging groups. Layers in a group have the same group ID.
+  Obsolete5 = $0403;                        // Obsolete.
+  IPTC_NAARecord = $0404;                   // IPTC-NAA record. This contains the File Info... information. See the
+                                            // IIMV4.pdf document.
+  RawImageMode = $0405;                     // Image mode for raw format files.
+  JPEGQuality = $0406;                      // JPEG quality. Private.
+  GridAndGuides = $0408;                    // Grid and guides information. 
+  ThumbnailResource = $0409;                // Thumbnail resource. See thumbnail resource in Photoshop File Formats Spec.
+  CopyrightFlg = $040A;                     // Copyright flag. Boolean indicating whether image is copyrighted. Can be
+                                            // set via Property suite or by user in File Info...
+  URL = $040B;                              // URL. Handle of a text string with uniform resource locator. Can be set
+                                            // via Property suite or by user in File Info...
+  ThumbnailResource2 = $040C;               // Thumbnail resource. See thumbnail resource in Photoshop File Formats Spec.
+  GlobalAngle = $040D;                      // Global Angle. 4 bytes that contain an integer between 0..359 which is the
+                                            // global lighting angle for effects layer. If not present assumes 30.
+  ColorSamplersResource = $040E;            // Color samplers resource. 
+  ICCProfile = $040F;                       // ICC Profile. The raw bytes of an ICC format profile, see the ICC34.pdf
+                                            // and ICC34.h files from the Internation Color Consortium located in the
+                                            // documentation section.
+  Watermark = $0410;                        // One byte for Watermark.
+  ICCUntagged = $0411;                      // ICC Untagged. 1 byte that disables any assumed profile handling when
+                                            // opening the file. 1 = intentionally untagged.
+  EffectsVisible = $0412;                   // Effects visible. 1 byte global flag to show/hide all the effects layer.
+                                            // Only present when they are hidden.
+  SpotHalftone = $0413;                     // Spot Halftone. 4 bytes for version, 4 bytes for length, and the variable
+                                            // length data.
+  DocumentSpecificIDs = $0414;              // Document specific IDs, layer IDs will be generated starting at this base
+                                            // value or a greater value if we find existing IDs to already exceed it.
+                                            // Itís purpose is to avoid the case where we add layers, flatten, save,
+                                            // open, and then add more layers that end up with the same IDs as the first
+                                            // set. 4 bytes.
+  AlphaNames = $0415;                       // Unicode Alpha Names. 4 bytes for length and the string as a unicode string.
+  ColorTableCount = $0416;                  // Indexed Color Table Count. 2 bytes for the number of colors in table that
+                                            // are actually defined
+  TransparentIndex = $0417;                 // New since version 6.0 of Adobe Photoshop: Tansparent Index. 2 bytes for
+                                            // the index of transparent color, if any.
+  GlobalAltitude = $0419;                   // New since version 6.0 of Adobe Photoshop: Global Altitude. 4 byte entry
+                                            // for altitude
+  Slices = $041A;                           // New since version 6.0 of Adobe Photoshop: Slices. See description later
+                                            // in this chapter
+  WorkflowURL = $041B;                      // New since version 6.0 of Adobe Photoshop: Workflow URL. Unicode string,
+                                            // 4 bytes of length followed by unicode string.
+  XPEP = $041C;                             // New since version 6.0 of Adobe Photoshop: Jump To XPEP. 2 bytes major
+                                            // version, 2 bytes minor version, 4 bytes count. Following is repeated for
+                                            // count: 4 bytes block size, 4 bytes key, if key = 'jtDd' then next is a
+                                            // Boolean for the dirty flag otherwise itís a 4 byte entry for the mod date.
+  AlphaIdentifiers = $041D;                 // New since version 6.0 of Adobe Photoshop: Alpha Identifiers. 4 bytes of
+                                            // length, followed by 4 bytes each for every alpha identifier.
+  URLList = $041E;                          // New since version 6.0 of Adobe Photoshop: URL List. 4 byte count of URLs,
+                                            // followed by 4 byte long, 4 byte ID, and unicode string for each count.
+  VersionInfo = $0421;                      // New since version 6.0 of Adobe Photoshop: Version Info. 4 byte version,
+                                            // 1 byte HasRealMergedData, unicode string of writer name, unicode string
+                                            // of reader name, 4 bytes of file version.
+  // $07D0 - $0BB6 Path Information (saved paths). See path resource format in Photoshop File Formats Spec.
+  ClippingPathName = $0BB7;                 // Name of clipping path. See path resource format later in this chapter.
+  PrintFlagsInfo = $2710;                   // Print flags information. 2 bytes version (= 1), 1 byte center crop marks,
+                                            // 1 byte (= 0), 4 bytes bleed width value, 2 bytes bleed width scale.
+
 type
+  PPSDHeader = ^TPSDHeader;
   TPSDHeader = packed record
-    Signature: array[0..3] of AnsiChar; // always '8BPS'
+    Signature: array[0..3] of Char; // always '8BPS'
     Version: Word;                  // always 1
     Reserved: array[0..5] of Byte;  // reserved, always 0
     Channels: Word;                 // 1..24, number of channels in the image (including alpha)
@@ -5569,402 +6046,1575 @@ type
     Mode: Word;                     // color mode (see constants above)
   end;
 
-//----------------------------------------------------------------------------------------------------------------------
+  // Description of a channel in a layer.
+  TPSDChannelLengthInfo = packed record
+    ChannelID: SmallInt;            // 0 = red, 1 = green etc. -1 = transparency mask, -2 = user supplied mask
+    Size: Cardinal;                 // Size of channel data.
+  end;
 
-class function TPSDGraphic.CanLoad(Stream: TStream): Boolean;
+//----------------- TPhotoshopLayer ------------------------------------------------------------------------------------
 
-var
-  Header: TPSDHeader;
-  LastPosition: Cardinal;
+constructor TPhotoshopLayer.Create(Graphic: TPSDGraphic);
 
 begin
-  with Stream do
+  FGraphic := Graphic;
+  FImage := TBitmap.Create;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+destructor TPhotoshopLayer.Destroy;
+
+  //---------------------------------------------------------------------------
+
+  procedure FreeItem(var Data: TPSDItemData);
+
+  // Releases any dynamically allocated memory in the item.
+  // Works also recursive if necessary.
+
+  var
+    I: Integer;
+    
   begin
-    LastPosition := Position;
-    Result := (Size - Position) > SizeOf(Header);
-    if Result then
+    with Data do
     begin
-      ReadBuffer(Header, SizeOf(Header));
-      Result := (UpperCase(Header.Signature) = '8BPS') and
-                (Swap(Header.Version) = 1);
+      // List.
+      if Assigned(List) then
+      begin
+        for I := 0 to High(List^) do
+          FreeItem(List^[I]);
+        Dispose(List);
+      end;
+
+      // Descriptor or global object.
+      if Assigned(Descriptor) then
+      begin
+        for I := 0 to High(Descriptor.Items) do
+          FreeItem(Descriptor.Items[I].Data);
+        Descriptor.Items := nil;
+        Dispose(Descriptor);
+      end;
+
+      // Raw data.
+      if Assigned(Data) then
+        FreeMem(Data);
     end;
-    Position := LastPosition;
+  end;
+
+  //---------------------------------------------------------------------------
+
+var
+  I: Integer;
+
+begin
+  FImage.Free;
+
+  with FTypeToolInfo do
+  begin
+    with TextDescriptor do
+    begin
+      for I := 0 to High(Items) do
+        FreeItem(Items[I].Data);
+      Items := nil;
+    end;
+    with WarpDescriptor do
+    begin
+      for I := 0 to High(Items) do
+        FreeItem(Items[I].Data);
+      Items := nil;
+    end;
+  end;
+
+  inherited;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TPhotoshopLayer.SetImage(const Value: TBitmap);
+
+begin
+  FImage.Assign(Value);
+end;
+
+//----------------- TPhotoshopLayers -----------------------------------------------------------------------------------
+
+constructor TPhotoshopLayers.Create(Graphic: TPSDGraphic);
+
+begin
+  FGraphic := Graphic;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TPhotoshopLayers.Get(Index: Integer): TPhotoshopLayer;
+
+begin
+  Result := TPhotoshopLayer(inherited Get(Index));
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TPhotoshopLayers.Notify(Ptr: Pointer; Action: TListNotification);
+
+begin
+  if (Action = lnDeleted) and Assigned(Ptr) then
+    TPhotoShopLayer(Ptr).Free;
+  inherited;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TPhotoshopLayers.Put(Index: Integer; Layer: TPhotoshopLayer);
+
+begin
+  inherited Put(Index, Layer);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TPhotoshopLayers.Add(Layer: TPhotoshopLayer): Integer;
+
+begin
+  Result := inherited Add(Layer);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TPhotoshopLayers.AddNewLayer: TPhotoshopLayer;
+
+begin
+  Result := TPhotoshopLayer.Create(FGraphic);
+  inherited Add(Result);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TPhotoshopLayers.Extract(Layer: TPhotoshopLayer): TPhotoshopLayer;
+
+begin
+  Result := inherited Extract(Layer);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TPhotoshopLayers.First: TPhotoshopLayer;
+
+begin
+  Result := TPhotoshopLayer(inherited First);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TPhotoshopLayers.IndexOf(Layer: TPhotoshopLayer): Integer;
+
+begin
+  Result := inherited IndexOf(Layer);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TPhotoshopLayers.Insert(Index: Integer; Layer: TPhotoshopLayer);
+
+begin
+  inherited Insert(Index, Layer);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TPhotoshopLayers.Last: TPhotoshopLayer;
+
+begin
+  Result := TPhotoshopLayer(inherited Last);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TPhotoshopLayers.Remove(Layer: TPhotoshopLayer): Integer;
+
+begin
+  Result := inherited Remove(Layer);
+  Layer.Free;
+end;
+
+//----------------- TPSDGraphic ----------------------------------------------------------------------------------------
+
+constructor TPSDGraphic.Create;
+
+begin
+  inherited;
+  FLayers := TPhotoshopLayers.Create(Self);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+destructor TPSDGraphic.Destroy;
+
+begin
+  FLayers.Free;
+  inherited;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TPSDGraphic.CombineChannels(Layer: TPhotoshopLayer);
+
+// Combines all separate channels of the given layer into the layer bitmap.
+// Previously allocated memory is freed here too.
+
+  //---------------------------------------------------------------------------
+
+  function GetChannel(ID: Integer): Pointer;
+
+  // Returns the reference of the channel with the given ID where ID means:
+  // -2 = user data mask
+  // -1 = alpha channel
+  //  0 = red (or gray, or cyan etc.)
+  //  1 = green (or magenta etc.)
+  //  2 = blue (or yellow etc.)
+  //  3 = black (for CMYK images)
+
+  var
+    I: Integer;
+
+  begin
+    Result := nil;
+    I := 0;
+    while I < Length(Layer.FChannels) do
+    begin
+      if Layer.FChannels[I].ChannelID = ID then
+      begin
+        Result := Layer.FChannels[I].Data;
+        Break;
+      end;
+      Inc(I);
+    end;
+  end;
+
+  //---------------------------------------------------------------------------
+
+var
+  RunR, RunG, RunB, RunA: PByte;
+  Y: Integer;
+  ChannelSize: Integer;
+
+begin
+  with Layer.FImage do
+  begin
+    ChannelSize := Width * Height;
+    case PixelFormat of
+      pf8Bit: // Alpha channel for gray scale images is currently ignored.
+        begin
+          RunR := GetChannel(0);
+          for Y := 0 to Height - 1 do
+          begin
+            Move(RunR^, ScanLine[Y]^, Width);
+            Inc(RunR, Width);
+          end;
+        end;
+      pf24Bit: // RGB or Lab
+        begin
+          if FMode = PSD_CMYK then
+          begin
+            // Photoshop CMYK values are given with 0 for maximum values, but the
+            // (general) CMYK conversion works with 255 as maxium value. Hence we must reverse
+            // all entries in the buffer.
+            RunR := GetChannel(0);
+            RunG := GetChannel(1);
+            RunB := GetChannel(2);
+            RunA := GetChannel(3);
+            for Y := 1 to ChannelSize do
+            begin
+              RunR^ := 255 - RunR^;
+              Inc(RunR);
+              RunG^ := 255 - RunG^;
+              Inc(RunG);
+              RunB^ := 255 - RunB^;
+              Inc(RunB);
+              RunA^ := 255 - RunA^;
+              Inc(RunA);
+            end;
+            RunR := GetChannel(0);
+            RunG := GetChannel(1);
+            RunB := GetChannel(2);
+            RunA := GetChannel(3);
+          end
+          else
+          begin
+            RunR := GetChannel(0);
+            RunG := GetChannel(1);
+            RunB := GetChannel(2);
+            RunA := nil;
+          end;
+          for Y := 0 to Height - 1 do
+          begin
+            ColorManager.ConvertRow([RunR, RunG, RunB, RunA], ScanLine[Y], Width, $FF);
+            Inc(RunR, Width);
+            Inc(RunG, Width);
+            Inc(RunB, Width);
+          end;
+        end;
+      pf32Bit:
+        begin
+          if FMode = PSD_CMYK then
+          begin
+            // Photoshop CMYK values are given with 0 for maximum values, but the
+            // (general) CMYK conversion works with 255 as maxium value. Hence we must reverse
+            // all entries in the buffer.
+            RunR := GetChannel(0);
+            RunG := GetChannel(1);
+            RunB := GetChannel(2);
+            RunA := GetChannel(3);
+            for Y := 1 to ChannelSize do
+            begin
+              RunR^ := 255 - RunR^;
+              Inc(RunR);
+              RunG^ := 255 - RunG^;
+              Inc(RunG);
+              RunB^ := 255 - RunB^;
+              Inc(RunB);
+              RunA^ := 255 - RunA^;
+              Inc(RunA);
+            end;
+            RunR := GetChannel(0);
+            RunG := GetChannel(1);
+            RunB := GetChannel(2);
+            RunA := GetChannel(3);
+          end
+          else
+          begin
+            // Either RGBA or Lab with alpha.
+            RunR := GetChannel(0);
+            RunG := GetChannel(1);
+            RunB := GetChannel(2);
+            RunA := GetChannel(-1);
+          end;
+          for Y := 0 to Height - 1 do
+          begin
+            ColorManager.ConvertRow([RunR, RunG, RunB, RunA], ScanLine[Y], Width, $FF);
+            Inc(RunR, Width);
+            Inc(RunG, Width);
+            Inc(RunB, Width);
+            Inc(RunA, Width);
+          end;
+        end;
+    end;
+
+    // Finally free all channel data.
+    for Y := 0 to High(Layer.FChannels) do
+      FreeMem(Layer.FChannels[Y].Data);
+    Layer.FChannels := nil;
   end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPSDGraphic.LoadFromStream(Stream: TStream);
+function TPSDGraphic.ConvertCompression(Value: Word): TCompressionType;
+
+begin
+  case Value of
+    0:
+      Result := ctNone;
+    1:
+      Result := ctPackedBits;
+    2: // not yet supported
+      Result := ctPlainZIP;
+    4: // not yet supported
+      Result := ctPredictedZIP;
+  else
+    Result := ctUnknown;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TPSDGraphic.DetermineColorScheme(ChannelCount: Integer): TColorScheme;
+
+begin
+  case FMode of
+    PSD_DUOTONE, // duo tone should be handled as grayscale
+    PSD_GRAYSCALE:
+      case ChannelCount of
+        1:
+          Result := csG;
+        2:
+          Result := csGA;
+      else
+        Result := csUnknown;
+      end;
+    PSD_BITMAP:  // B&W
+        Result := csG;
+    PSD_INDEXED: // 8 bits only are assumed because 16 bit wouldn't make sense here
+      case ChannelCount of
+        1:
+          Result := csIndexed;
+        2:
+          Result := csIndexedA;
+      else
+        Result := csUnknown;
+      end;
+    PSD_MULTICHANNEL,
+    PSD_RGB:
+      case ChannelCount of
+        3:
+          Result := csRGB;
+        4:
+          Result := csRGBA;
+      else
+        Result := csUnknown;
+      end;
+    PSD_CMYK:
+      if ChannelCount >= 4 then
+        Result := csCMYK
+      else
+        Result := csUnknown;
+    PSD_LAB:
+      if ChannelCount = 3 then
+        Result := csCIELab
+      else
+        Result := csUnknown;
+  else
+    Result := csUnknown;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TPSDGraphic.LoadAdjustmentLayer(var Run: PAnsiChar; Layer: TPhotoshopLayer);
+
+// Reads an adjustment layer whose identification is given by the first 4 bytes pointed to by Run.
+// An adjustment layer is kind of a sub layer for the current layer.
+
+const
+  KeyCount = 36;
+  AdjustmentKey: array[0..KeyCount - 1] of PAnsiChar = (
+    'levl', //  0, Levels
+    'curv', //  1, Curves
+    'brit', //  2, Brightness/Contrast
+    'blnc', //  3, Color balance
+    'hue ', //  4, Old hue/saturation, Photoshop 4.0
+    'hue2', //  5, New hue/saturation, Photoshop 5.0
+    'selc', //  6, Selective color
+    'thrs', //  7, Threshold
+    'nvrt', //  8, Invert
+    'post', //  9, Posterize
+    'lrFX', // 10, Effects layer
+    'tySh', // 11, Type tool info
+    'luni', // 12, Unicode layer name
+    'lyid', // 13, LayerID
+    'lfx2', // 14, Object based effects layer info
+    'Patt', // 15, Patterns
+    'Anno', // 16, Annotations
+    'clbl', // 17, Blend clipping elements
+    'infx', // 18, Blend interior elements
+    'knko', // 19, Knockout settings
+    'lspf', // 20, Protected setting
+    'lclr', // 21, Sheet color setting
+    'fxrp', // 22, Reference point
+    'grdm', // 23, Gradient settings
+    'lsct', // 24, Section divider setting
+    'brst', // 25, Channel blending restriction setting
+    'SoCo', // 26, Solid color sheet setting
+    'PtFl', // 27, Pattern fill setting
+    'GdFl', // 28, Gradient fill setting
+    'vmsk', // 29, Vector mask setting
+    'TySh', // 30, Type tool object setting
+    'ffxi', // 31, Foreign effect ID
+    'lnsr', // 32, Layer name source setting
+    'shpa', // 33, Pattern data
+    'shmd', // 34, Meta data setting
+    'Layr'  // 35, Layer data 
+  );
+
+  // Signatures used in an effects adjustment layer.
+  EffectSignature: array[0..5] of PChar = (
+    'cmnS', // 0, common state
+    'dsdw', // 1, drop shadow
+    'isdw', // 2, inner shadow
+    'oglw', // 3, outer glow
+    'iglw', // 4, inner glow
+    'bevl'  // 5, bevel
+  );
 
 var
-  Header: TPSDHeader;
+  I: Integer;
+  Size: Cardinal;
+  Temp: PAnsiChar;
+  
+begin
+  // Find out which data there is.
+  I := 0;
+  while I < KeyCount do
+  begin
+    if StrLComp(Run, AdjustmentKey[I], 4) = 0 then
+      Break;
+    Inc(I);
+  end;
+  Inc(Run, 4);
+
+  // Prepare read address after the adjustment layer, regardless whether we read the data or not.
+  Size := ReadBigEndianCardinal(Run);
+  Temp := Run + Size;
+  // What type is it?
+  case I of
+    12: // Unicode layer name.
+      Layer.FName := ReadBigEndianString(Run);
+    30: // Type tool object settings (text layer).
+      begin
+        Layer.FType := ltText;
+        // Skip version number (1 = Photoshop 6).
+        Inc(Run, SizeOf(Word));
+        with Layer.FTypeToolInfo do
+        begin
+          Transform.XX := ReadBigEndianDouble(Run);
+          Transform.XY := ReadBigEndianDouble(Run);
+          Transform.YX := ReadBigEndianDouble(Run);
+          Transform.YY := ReadBigEndianDouble(Run);
+          Transform.TX := ReadBigEndianDouble(Run);
+          Transform.TY := ReadBigEndianDouble(Run);
+          
+          // Skip text descriptor version (= 50 for PS 6) and descriptor version (= 16 for PS 6) fields.
+          Inc(Run, 6);
+          // Read text descriptor.
+          ReadDescriptor(Run, TextDescriptor);
+          // Skip warp descriptor version (= 1 for PS 6) and descriptor version (= 16 for PS 6) fields.
+          Inc(Run, 6);
+          // Read warp descriptor.
+          ReadDescriptor(Run, WarpDescriptor);
+
+          // Finally read the warp rectangle. It is supposed to be four double values but
+          // often is some other size. We can compensate for this by the overall size, but the
+          // values might be wrong then.
+          WarpRectangle.Left := ReadBigEndianDouble(Run);
+          WarpRectangle.Top := ReadBigEndianDouble(Run);
+          WarpRectangle.Right := ReadBigEndianDouble(Run);
+          WarpRectangle.Bottom := ReadBigEndianDouble(Run);
+        end;
+      end;
+  end;
+  Run := Temp;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TPSDGraphic.ReadChannelData(var Run: PAnsiChar; var Channel: TPSDChannel; Width, Height: Integer;
+  IsIrrelevant: Boolean);
+
+// Reads and optionally decompresses image data for one channel.
+
+var
+  Y: Integer;
+  Count: Integer;
+  RLELength: array of Word;
+  Compression: TCompressionType;
+  Target: PByte;
+  RemainingSize: Integer;
+
+begin
+  RemainingSize := Channel.Size;
+  if RemainingSize > 0 then
+  begin
+    Compression := ConvertCompression(ReadBigEndianWord(Run));
+    Dec(RemainingSize, 2);
+    if (RemainingSize > 0) and not IsIrrelevant then
+    begin
+      // Allocate temporary storage for the channel data. This memory is freed in CombineChannels.
+      // A channel is always 8 bit per pixel.
+      GetMem(Channel.Data, Width * Height);
+
+      case Compression of
+        ctNone: // Simple case, just move the data to our storage.
+          Move(Run^, Channel.Data^, RemainingSize);
+        ctPackedBits:
+          begin
+            Decoder := TPackbitsRLEDecoder.Create;
+            try
+              SetLength(RLELength, Height);
+              Count := 2 * Height;
+              Move(Run^, Pointer(RLELength)^, Count); // RLE lengths are word values.
+              SwapShort(Pointer(RLELength), Height);
+              Dec(RemainingSize, Count);
+              // Advance the running pointer to after the RLE lenghts.
+              Inc(Run, Count);
+
+              Target := Channel.Data;
+              for Y := 0 to Height - 1 do
+              begin
+                Decoder.Decode(Pointer(Run), Pointer(Target), RLELength[Y], Width);
+                Inc(Run, RLELength[Y]);
+                Inc(Target, Width);
+                Dec(RemainingSize, RLELength[Y]);
+                if RemainingSize <= 0 then
+                  Break;
+              end;
+            finally
+              FreeAndNil(Decoder);
+            end;
+          end;
+      else
+        FreeMem(Channel.Data);
+        GraphicExError(gesUnsupportedFeature, [gesCompressionScheme, 'PSD/PDD']);
+      end;
+    end;
+    Inc(Run, RemainingSize);
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TPSDGraphic.ReadDescriptor(var Run: PAnsiChar; var Descriptor: TPSDDescriptor);
+
+const
+  // Identifiers used in the descriptor structures.
+  KeyCount = 20;
+  OSTypeKey: array[0..KeyCount - 1] of PAnsiChar = (
+    'obj ', // Reference
+    'Objc', // Descriptor
+    'VlLs', // List
+    'doub', // Double
+    'UntF', // Unit float
+    'TEXT', // String
+    'Enmr', // Enumerated
+    'long', // Integer
+    'bool', // Boolean
+    'GlbO', // GlobalObject same as Descriptor
+    'Clss', // Class
+    'GlbC', // Gobal class
+    'alis', // Alias
+
+    // Additional keys for reference type.
+    'prop', // Property
+    'rele', // Offset
+    'Idnt', // Identifier
+    'indx', // Index
+    'name', // Name
+
+    // Other keys not mentioned in the docs.
+    'enum', // enumeration
+    'tdta'  // raw data
+  );
+
+  //--------------- local functions -------------------------------------------
+
+  function ReadUnicodeID: WideString;
+
+  // Reads an ID which is either a Unicode string or a 4 byte ANSI string.
+
+  var
+    I: Cardinal;
+
+  begin
+    I := ReadBigEndianCardinal(Run);
+    if I = 0 then
+    begin
+      SetString(Result, Run, 4);
+      Inc(Run, 4);
+    end
+    else
+      Result := ReadBigEndianString(Run, I);
+  end;
+
+  //---------------------------------------------------------------------------
+
+  function ReadANSIID: string;
+
+  // Reads an ID which is an ANSI string.
+
+  var
+    I: Cardinal;
+
+  begin
+    I := ReadBigEndianCardinal(Run);
+    if I = 0 then
+      I := 4;
+    SetString(Result, Run, I);
+    Inc(Run, I);
+  end;
+
+  //---------------------------------------------------------------------------
+
+  function ReadOSTypeKey: Cardinal;
+
+  begin
+    Result := 0;
+    while (Result < KeyCount) and (StrLComp(Run, OSTypeKey[Result], 4) <> 0) do
+      Inc(Result);
+    Inc(Run, 4);
+  end;
+
+  //---------------------------------------------------------------------------
+
+  procedure ReadItem(var Data: TPSDItemData);
+
+  // Reads a single descriptor item. Since an item might be a list which again contains
+  // descriptor items this code might be called recursively.
+  // Note: There are a few types whose structure are not documented. They are loaded by
+  //       guessing what could be there.
+
+  var
+    RefItemCount: Cardinal;
+    I: Integer;
+
+  begin
+    with Data do
+    begin
+      case ItemType of
+        0, 2: // Reference or List
+          begin
+            RefItemCount := ReadBigEndianCardinal(Run);
+            New(List);
+            SetLength(List^, RefItemCount);
+            for I := 0 to RefItemCount - 1 do
+            begin
+              List^[I].ItemType := ReadOSTypeKey;
+              // Recurse down and read a new PSD data item.
+              ReadItem(List^[I]);
+            end;
+          end;
+        1, 9: // Descriptor or global object
+          begin
+            New(Descriptor);
+            ReadDescriptor(Run, Descriptor^);
+          end;
+        3: // Double
+          Value := ReadBigEndianDouble(Run);
+        4: // Unit float
+          begin
+            Units := ReadBigEndianCardinal(Run);
+            Value := ReadBigEndianDouble(Run);
+          end;
+        5: // String
+          KeyID := ReadBigEndianString(Run);
+        6: // Enumerated
+          begin
+            ClassID := ReadUnicodeID;
+            KeyID := ReadANSIID;
+            TypeID := ReadANSIID;
+            EnumValue := ReadANSIID;
+          end;
+        7: // Integer (undocumented)
+          IntValue := Integer(ReadBigEndianCardinal(Run));
+        8: // Boolean
+          begin
+            BoolValue := Run^ <> #0;
+            Inc(Run);
+          end;
+        10, 11: // Class or global class (undocumented)
+          begin
+            ClassID := ReadUnicodeID;
+            // Skip ANSI form of the string.
+            ReadANSIID;
+          end;
+        12: // Alias
+          begin
+            // Alias data is OS specific. It could contain Macintosh FSSpec data, which cannot be
+            // handled on Windows.
+            // On Windows it might contain a handle to a string of the full path, whatever that means.
+            // There is no further information available, so we skip that data.
+            I := ReadBigEndianCardinal(Run);
+            Inc(Run, I);
+          end;
+        13: // Property
+          begin
+            ClassID := ReadUnicodeID;
+            // Skip ANSI form of the string.
+            ReadANSIID;
+            KeyID := ReadANSIID;
+          end;
+        14: // Offset
+          begin
+            ClassID := ReadUnicodeID;
+            // Skip ANSI form of the string.
+            ReadANSIID;
+            Offset := ReadBigEndianCardinal(Run);
+          end;
+        15, 17: // Identifier (undocumented) or Name (undocumented)
+          Name := ReadBigEndianString(Run);
+        16: // Index (undocumented)
+          IntValue := Integer(ReadBigEndianCardinal(Run));
+        18: // 'enum' (undocumented)
+          begin
+            TypeID := ReadANSIID;
+            EnumValue := ReadANSIID;
+          end;
+        19: // 'tdta' (undocumented)
+          begin
+            DataSize := ReadBigEndianCardinal(Run);
+            GetMem(Data, DataSize);
+            Move(Run^, Data^, DataSize);
+            Inc(Run, DataSize);
+          end;
+      else
+        // There is no error recovery in the file for the case the item key is unknown.
+        // So we cannot skip it and have to throw an exception here to stop processing and to avoid
+        // an exception showing up in a totally wrong place.
+        GraphicExError(gesInvalidPSDLayerData);
+      end;
+    end;
+  end;
+  
+  //--------------- end local functions ---------------------------------------
+
+var
+  I: Cardinal;
+  ItemCount: Cardinal;
+
+begin
+  with Descriptor do
+  begin
+    // Class ID as Unicode string.
+    ClassID := ReadBigEndianString(Run);
+    ClassID2 := ReadANSIID;
+
+    // Now read the items in the descriptor.
+    ItemCount := ReadBigEndianCardinal(Run);
+    SetLength(Descriptor.Items, ItemCount);
+    for I := 0 to ItemCount - 1 do
+    begin
+      Descriptor.Items[I].Key := ReadANSIID;
+      Descriptor.Items[I].Data.ItemType := ReadOSTypeKey;
+      ReadItem(Descriptor.Items[I].Data);
+    end;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TPSDGraphic.ReadMergedImage(var Source: PAnsiChar; Layer: TPhotoshopLayer; Compression: TCompressionType;
+  Channels: Byte);
+
+// Reads the image data of the composite image (if Layer = nil) or the given layer.
+
+var
   Count: Cardinal;
-  Decoder: TDecoder;
   RLELength: array of Word;
 
   Y: Integer;
-  BPS: Cardinal;        // bytes per sample either 1 or 2 for 8 bits per channel and 16 bits per channel respectively 
+  BPS: Integer;         // bytes per sample either 1 or 2 for 8 bits per channel and 16 bits per channel respectively
   ChannelSize: Integer; // size of one channel (taking BPS into account)
   Increment: Integer;   // pointer increment from one line to next
 
   // RLE buffers
   Line,
-  RawBuffer,           // all image data compressed
   Buffer: Pointer;     // all iamge data uncompressed
   Run1,                // running pointer in Buffer 1
   Run2,                // etc.
   Run3,
   Run4: PByte;
-  RawPalette: array[0..767] of Byte;
+
+  W, H: Integer;       // Width and height of the layer or composite image.
 
 begin
-  // free previous image data
-  Handle := 0;
-  FBasePosition := Stream.Position;
-  if ReadImageProperties(Stream, 0) then
+  if Layer = nil then
   begin
-    with Stream, FImageProperties do
-    begin
-      Position := FBasePosition;
+    W := Width;
+    H := Height;
+  end
+  else
+  begin
+    W := Layer.Image.Width;
+    H := Layer.Image.Height;
+  end;
 
-      FProgressRect := Rect(0, 0, Width, 1);
-      Progress(Self, psStarting, 0, False, FProgressRect, gesPreparing);
-
-      ReadBuffer(Header, SizeOf(Header));
-
-      // initialize color manager
-      with ColorManager do
-      begin
-        SourceOptions := [coNeedByteSwap];
-        SourceBitsPerSample := BitsPerSample;
-        if BitsPerSample = 16 then TargetBitsPerSample := 8
-                              else TargetBitsPerSample := BitsPerSample;
-        SourceSamplesPerPixel := SamplesPerPixel;
-        TargetSamplesPerPixel := SamplesPerPixel;
-
-        // color space
-        SourceColorScheme := ColorScheme;
-        case ColorScheme of
-          csG,
-          csIndexed:
-            TargetColorScheme := ColorScheme;
-          csRGB:
-            TargetColorScheme := csBGR;
-          csRGBA:
-            TargetColorScheme := csBGRA;
-          csCMYK:
-            begin
-              TargetColorScheme := csBGR;
-              TargetSamplesPerPixel := 3;
-            end;
-          csCIELab:
-            begin
-              // PSD uses 0..255 for a and b so we need to convert them to -128..127
-              SourceOptions := SourceOptions + [coLabByteRange, coLabChromaOffset];
-              TargetColorScheme := csBGR;
-            end;
-        end;
-      end;
-    
-      PixelFormat := ColorManager.TargetPixelFormat;
-      Self.Width := Width;
-      Self.Height := Height;
-
-      // size of palette
-      ReadBuffer(Count, SizeOf(Count));
-      Count := SwapLong(Count);
-      // setup the palette if necessary, color data immediately follows header
-      case ColorScheme of
-        csG:
-          Palette := ColorManager.CreateGrayscalePalette(ioMinIsWhite in Options);
-        csIndexed:
-          begin
-            ReadBuffer(RawPalette, Count);
-            Count := Count div 3;
-            Palette := ColorManager.CreateColorPalette([@RawPalette, @RawPalette[Count], @RawPalette[2 * Count]],
-                                                       pfPlane8Triple, Count, False);
-          end;
-      end;
-
-      // skip resource and layers section
-      ReadBuffer(Count, SizeOf(Count));
-      Count := SwapLong(Count);
-      Seek(Count, soFromCurrent);
-      ReadBuffer(Count, SizeOf(Count));
-      Count := SwapLong(Count);
-      // +2 in order to skip the following compression value
-      Seek(Count + 2, soFromCurrent);
-
-      // now read out image data
-      RawBuffer := nil;
-
-      if Compression = ctPackedBits then
+  // Reading the merged image takes up the rest of the entire loading process.
+  StartProgressSection(0, gesTransfering);
+  
+  Decoder := nil;
+  case Compression of
+    ctNone: ;
+    ctPackedBits:
       begin
         Decoder := TPackbitsRLEDecoder.Create;
-        SetLength(RLELength, Height * Channels);
-        ReadBuffer(RLELength[0], 2 * Length(RLELength));
-        SwapShort(@RLELength[0], Height * Channels);
-      end
-      else Decoder := nil;
+        Count := H * Channels;
+        // We have to swap the byte order but must not modify the data pointed to by Run (might be a file mapping).
+        // Hence we have to make a copy of the RLE lengths.
+        SetLength(RLELength, Count);
+        Move(Source^, Pointer(RLELength)^, 2 * Count);
+        SwapShort(Pointer(RLELength), Count);
+        // Advance the running pointer to after the RLE lenghts.
+        Inc(Source, 2 * Count);
+      end;
+  else
+    GraphicExError(gesUnsupportedFeature, [gesCompressionScheme, 'PSD/PDD']);
+  end;
 
-      Progress(Self, psEnding, 0, False, FProgressRect, '');
-
-      try
-        case ColorScheme of
-          csG,
-          csIndexed:
+  try
+    case FImageProperties.ColorScheme of
+      csG,
+      csIndexed:
+        begin
+          // Very simple format here, we don't need the color conversion manager.
+          if Assigned(Decoder) then
+          begin
+            for Y := 0 to H - 1 do
             begin
-              Progress(Self, psStarting, 0, False, FProgressRect, gesTransfering);
-              // very simple format here, we don't need the color conversion manager
-              if Assigned(Decoder) then
-              begin
-                // determine whole compressed size
-                Count := 0;
-                for Y := 0 to Height - 1 do Inc(Count, RLELength[Y]);
-                GetMem(RawBuffer, Count);
-                try
-                  ReadBuffer(RawBuffer^, Count);
-                  Run1 := RawBuffer;
-                  for Y := 0 to Height - 1 do
-                  begin
-                    Count := RLELength[Y];
-                    Line := ScanLine[Y];
-                    Decoder.Decode(Pointer(Run1), Line, Count, Width);
-                    Inc(Run1, Count);
+              Count := RLELength[Y];
+              Line := ScanLine[Y];
+              Decoder.Decode(Pointer(Source), Line, Count, W);
+              Inc(Source, Count);
 
-                    Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                    OffsetRect(FProgressRect, 0, 1);
-                  end;
-                finally
-                  if Assigned(RawBuffer) then FreeMem(RawBuffer);
-                end;
-              end
-              else // uncompressed data 
-                for Y := 0 to Height - 1 do
-                begin
-                  ReadBuffer(ScanLine[Y]^, Width);
-
-                  Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                  OffsetRect(FProgressRect, 0, 1);
-                end;
+              AdvanceProgress(100 / H, 0, 1, True);
             end;
-          csRGB,
-          csRGBA,
-          csCMYK,
-          csCIELab:
+          end
+          else // uncompressed data
+            for Y := 0 to H - 1 do
             begin
-              Progress(Self, psStarting, 0, False, FProgressRect, gesLoadingData);
-              // Data is organized in planes. This means first all red rows, then
-              // all green and finally all blue rows. 
-              BPS := BitsPerSample div 8;
-              ChannelSize := BPS * Width * Height;
+              Move(Source^, ScanLine[Y]^, W);
+              Inc(Source, W);
 
-              GetMem(Buffer, Channels * ChannelSize);
-              try
-                // first run: load image data and decompress it if necessary
-                if Assigned(Decoder) then
-                begin
-                  // determine whole compressed size
-                  Count := 0;
-                  for Y := 0 to High(RLELength) do Inc(Count, RLELength[Y]);
-                  Count := Count * Cardinal(BPS);
-                  GetMem(RawBuffer, Count);
-                  try
-                    ReadBuffer(RawBuffer^, Count);
-                    Decoder.Decode(RawBuffer, Buffer, Count, Channels * ChannelSize);
-                  finally
-                    if Assigned(RawBuffer) then FreeMem(RawBuffer);
-                  end;
-                end
-                else
-                  ReadBuffer(Buffer^, Channels * ChannelSize);
-
-                Progress(Self, psEnding, 0, False, FProgressRect, '');
-
-                Progress(Self, psStarting, 0, False, FProgressRect, gesTransfering);
-                Increment := BPS * Width;
-                // second run: put data into image (convert color space if necessary)
-                case ColorScheme of
-                  csRGB:
-                    begin
-                      Run1 := Buffer;
-                      Run2 := Run1; Inc(Run2, ChannelSize);
-                      Run3 := Run2; Inc(Run3, ChannelSize);
-                      for Y := 0 to Height - 1 do
-                      begin
-                        ColorManager.ConvertRow([Run1, Run2, Run3], ScanLine[Y], Width, $FF);
-                        Inc(Run1, Increment);
-                        Inc(Run2, Increment);
-                        Inc(Run3, Increment);
-
-                        Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                        OffsetRect(FProgressRect, 0, 1);
-                      end;
-                    end;
-                  csRGBA:
-                    begin
-                      Run1 := Buffer;
-                      Run2 := Run1; Inc(Run2, ChannelSize);
-                      Run3 := Run2; Inc(Run3, ChannelSize);
-                      Run4 := Run3; Inc(Run4, ChannelSize);
-                      for Y := 0 to Height - 1 do
-                      begin
-                        ColorManager.ConvertRow([Run1, Run2, Run3, Run4], ScanLine[Y], Width, $FF);
-                        Inc(Run1, Increment);
-                        Inc(Run2, Increment);
-                        Inc(Run3, Increment);
-                        Inc(Run4, Increment);
-
-                        Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                        OffsetRect(FProgressRect, 0, 1);
-                      end;
-                    end;
-                  csCMYK:
-                    begin
-                      // Photoshop CMYK values are given with 0 for maximum values, but the
-                      // (general) CMYK conversion works with 255 as maxium value. Hence we must reverse
-                      // all entries in the buffer.
-                      Run1 := Buffer;
-                      for Y := 1 to 4 * ChannelSize do
-                      begin
-                        Run1^ := 255 - Run1^;
-                        Inc(Run1);
-                      end;
-
-                      Run1 := Buffer;
-                      Run2 := Run1; Inc(Run2, ChannelSize);
-                      Run3 := Run2; Inc(Run3, ChannelSize);
-                      Run4 := Run3; Inc(Run4, ChannelSize);
-                      for Y := 0 to Height - 1 do
-                      begin
-                        ColorManager.ConvertRow([Run1, Run2, Run3, Run4], ScanLine[Y], Width, $FF);
-                        Inc(Run1, Increment);
-                        Inc(Run2, Increment);
-                        Inc(Run3, Increment);
-                        Inc(Run4, Increment);
-
-                        Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                        OffsetRect(FProgressRect, 0, 1);
-                      end;
-                    end;
-                  csCIELab:
-                    begin
-                      Run1 := Buffer;
-                      Run2 := Run1; Inc(Run2, ChannelSize);
-                      Run3 := Run2; Inc(Run3, ChannelSize);
-                      for Y := 0 to Height - 1 do
-                      begin
-                        ColorManager.ConvertRow([Run1, Run2, Run3], ScanLine[Y], Width, $FF);
-                        Inc(Run1, Increment);
-                        Inc(Run2, Increment);
-                        Inc(Run3, Increment);
-
-                        Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
-                        OffsetRect(FProgressRect, 0, 1);
-                      end;
-                    end;
-                end;
-              finally
-                if Assigned(Buffer) then FreeMem(Buffer);
-              end;
+              AdvanceProgress(100 / H, 0, 1, True);
             end;
         end;
+      csRGB,
+      csRGBA,
+      csCMYK,
+      csCIELab:
+        begin
+          // Data is organized in planes. This means first all red rows, then
+          // all green and finally all blue rows.
+          BPS := FImageProperties.BitsPerSample div 8;
+          ChannelSize := BPS * W * H;
 
-      finally
-        Decoder.Free;
-        Progress(Self, psEnding, 0, False, FProgressRect, '');
-      end;
+          GetMem(Buffer, Channels * ChannelSize);
+          try
+            // first run: load image data and decompress it if necessary
+            if Assigned(Decoder) then
+            begin
+              // determine whole compressed size
+              Count := 0;
+              for Y := 0 to High(RLELength) do
+                Inc(Count, RLELength[Y]);
+              Decoder.Decode(Pointer(Source), Buffer, Count * Cardinal(BPS), Channels * ChannelSize);
+              Inc(Source, Count * Cardinal(BPS));
+            end
+            else
+            begin
+              Move(Source^, Buffer^, Channels * ChannelSize);
+              Inc(Source, Channels * ChannelSize);
+            end;
+
+            Increment := BPS * W;
+            // second run: put data into image (convert color space if necessary)
+            case FImageProperties.ColorScheme of
+              csRGB:
+                begin
+                  Run1 := Buffer;
+                  Run2 := Run1; Inc(Run2, ChannelSize);
+                  Run3 := Run2; Inc(Run3, ChannelSize);
+                  for Y := 0 to H - 1 do
+                  begin
+                    ColorManager.ConvertRow([Run1, Run2, Run3], ScanLine[Y], W, $FF);
+                    Inc(Run1, Increment);
+                    Inc(Run2, Increment);
+                    Inc(Run3, Increment);
+
+                    AdvanceProgress(100 / H, 0, 1, True);
+                  end;
+                end;
+              csRGBA:
+                begin
+                  Run1 := Buffer;
+                  Run2 := Run1; Inc(Run2, ChannelSize);
+                  Run3 := Run2; Inc(Run3, ChannelSize);
+                  Run4 := Run3; Inc(Run4, ChannelSize);
+                  for Y := 0 to H - 1 do
+                  begin
+                    ColorManager.ConvertRow([Run1, Run2, Run3, Run4], ScanLine[Y], W, $FF);
+                    Inc(Run1, Increment);
+                    Inc(Run2, Increment);
+                    Inc(Run3, Increment);
+                    Inc(Run4, Increment);
+
+                    AdvanceProgress(100 / H, 0, 1, True);
+                  end;
+                end;
+              csCMYK:
+                begin
+                  // Photoshop CMYK values are given with 0 for maximum values, but the
+                  // (general) CMYK conversion works with 255 as maxium value. Hence we must reverse
+                  // all entries in the buffer.
+                  Run1 := Buffer;
+                  for Y := 1 to 4 * ChannelSize do
+                  begin
+                    Run1^ := 255 - Run1^;
+                    Inc(Run1);
+                  end;
+
+                  Run1 := Buffer;
+                  Run2 := Run1; Inc(Run2, ChannelSize);
+                  Run3 := Run2; Inc(Run3, ChannelSize);
+                  Run4 := Run3; Inc(Run4, ChannelSize);
+                  for Y := 0 to H - 1 do
+                  begin
+                    ColorManager.ConvertRow([Run1, Run2, Run3, Run4], ScanLine[Y], W, $FF);
+                    Inc(Run1, Increment);
+                    Inc(Run2, Increment);
+                    Inc(Run3, Increment);
+                    Inc(Run4, Increment);
+
+                    AdvanceProgress(100 / H, 0, 1, True);
+                  end;
+                end;
+              csCIELab:
+                begin
+                  Run1 := Buffer;
+                  Run2 := Run1; Inc(Run2, ChannelSize);
+                  Run3 := Run2; Inc(Run3, ChannelSize);
+                  for Y := 0 to H - 1 do
+                  begin
+                    ColorManager.ConvertRow([Run1, Run2, Run3], ScanLine[Y], W, $FF);
+                    Inc(Run1, Increment);
+                    Inc(Run2, Increment);
+                    Inc(Run3, Increment);
+
+                    AdvanceProgress(100 / H, 0, 1, True);
+                  end;
+                end;
+            end;
+          finally
+            if Assigned(Buffer) then
+              FreeMem(Buffer);
+          end;
+        end;
     end;
-  end                                   
-  else GraphicExError(gesInvalidImage, ['PSD or PDD']);
+    FinishProgressSection(False);
+  finally
+    FreeAndNil(Decoder);
+  end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TPSDGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+procedure TPSDGraphic.ReadLayers(Run: PAnsiChar);
+
+// Recreates the layer structure given in the file. Run points to the layer section size.
+
+  //--------------- local functions -------------------------------------------
+
+  procedure ReadBlendRanges(var Data: TPSDCompositeGrayBlend);
+
+  begin
+    with Data do
+    begin
+      Black1 := Byte(Run^);
+      Inc(Run);
+      Black2 := Byte(Run^);
+      Inc(Run);
+      White1 := Byte(Run^);
+      Inc(Run);
+      White2 := Byte(Run^);
+      Inc(Run);
+    end;
+  end;
+
+  //--------------- end local functions ---------------------------------------
 
 var
-  Header: TPSDHeader;
-  Dummy: Word;
-  Count: Cardinal;
-
+  LayerCount: SmallInt;
+  Layer: TPhotoshopLayer;
+  I, LayerIndex: Integer;
+  R: TRect;
+  Channels: Integer;
+  BlendMode: TPSDLayerBlendMode;
+  Dummy: Byte;
+  BlockSize: Cardinal;
+  S: string;
+  BlockStart: PAnsiChar;
+  MD: TPSDLayerMaskData;
 begin
-  Result := inherited ReadImageProperties(Stream, ImageIndex);
-  with Stream, FImageProperties do
+  // Skip the layer section size. We are going to read the full section.
+  Inc(Run, SizeOf(Cardinal));
+
+  LayerCount := Swap(PSmallInt(Run)^);
+  // If LayerCount is < 0 then it means the first alpha channel contains the transparency data for the
+  // composite image (the merged result). I'm not sure what to do with that info.
+  LayerCount := Abs(LayerCount);
+  Inc(Run, SizeOf(SmallInt));
+
+  // Once we know how many layers to load we can setup a progress section for them.
+  // The size is the layer count relative to itself plus one image (the composite/merged image) less 1% we
+  // already spent for preparation.
+  if LayerCount > 0 then
   begin
-    ReadBuffer(Header, SizeOf(Header));
-    if Header.Signature = '8BPS' then
+    StartProgressSection(100 * LayerCount / (LayerCount + 1) - 1, gesLoadingData);
+
+    // Now retrieve the actual layers.
+    LayerIndex := 0;
+
+    // Start an own progress section for loading the layer info and assign it 5% (difficult to say in advance
+    // how much it really is, since this depends on layer sizes and amount of info).
+    StartProgressSection(5, gesLoadingData);
+
+    while LayerIndex < LayerCount do
     begin
-      with Header do
+      Layer := FLayers.AddNewLayer;
+
+      // bounds rectangle
+      R.Top := Integer(ReadBigEndianCardinal(Run));
+      R.Left := Integer(ReadBigEndianCardinal(Run));
+      R.Bottom := Integer(ReadBigEndianCardinal(Run));
+      R.Right := Integer(ReadBigEndianCardinal(Run));
+      Layer.Bounds := R;
+      Channels := ReadBigEndianWord(Run);
+
+      // Keep the channel data for later pixel data retrieval.
+      SetLength(Layer.FChannels, Channels);
+      for I := 0 to Channels - 1 do
       begin
-        // PSD files are big endian only
-        Channels := Swap(Channels);
-        Rows := SwapLong(Rows);
-        Columns := SwapLong(Columns);
-        Depth := Swap(Depth);
-        Mode := Swap(Mode);
+        with Layer.Channels[I] do
+        begin
+          ChannelID := Swap(PSmallInt(Run)^);
+          Inc(Run, SizeOf(Word));
+          Size := ReadBigEndianCardinal(Run);
+        end;
       end;
 
-      Options := [ioBigEndian];
-      // initialize color manager
-      BitsPerSample := Header.Depth;
-      Channels := Header.Channels;
-      // 1..24 channels are supported in PSD files, we can only use 4.
-      // The documentation states that main image data (rgb(a), cmyk etc.) is always
-      // written as first channels in their component order.
-      if Channels > 4 then SamplesPerPixel := 4
-                      else SamplesPerPixel := Channels;
+      // Next comes the blend mode signature which is always '8BIM'. We can use this for error checking.
+      if StrLIComp(Run, '8BIM', 4) <> 0 then
+        GraphicExError(gesInvalidPSDLayerData);
+      Inc(Run, 4);
+      // Determine the blend mode from the four character ID.
+      for BlendMode := Low(TPSDLayerBlendMode) to High(TPSDLayerBlendMode) do
+        if StrLIComp(Run, PSDBlendModeMapping[BlendMode], 4) = 0 then
+        begin
+          Layer.BlendMode := BlendMode;
+          Break;
+        end;
+      Inc(Run, 4);
+      Layer.Opacity := Byte(Run^);
+      Inc(Run);
+      if Byte(Run^) = 0 then
+        Layer.Clipping := lcBase
+      else
+        Layer.Clipping := lcNonBase;
+      Inc(Run);
+      Dummy := Byte(Run^);
+      Layer.Options := TPSDLayerOptions(Dummy and 3);
+      if Dummy and $18 = $18 then
+        Layer.Options := Layer.Options + [loIrrelevantData];
+      // There is a filler byte after the flags/options.
+      Inc(Run, 2);
 
-      BitsPerPixel := SamplesPerPixel * BitsPerSample;
+      // Skip extra data size value.
+      Inc(Run, SizeOf(Cardinal));
 
-      // color space
-      case Header.Mode of
-        PSD_DUOTONE, // duo tone should be handled as grayscale
-        PSD_GRAYSCALE:
-          ColorScheme := csG;
-        PSD_BITMAP:  // B&W
+      // Read out mask data.
+      // The size is either 36, 20, or 0.
+      BlockSize := ReadBigEndianCardinal(Run);
+      if BlockSize > 0 then
+      begin
+        MD:= Layer.MaskData;
+        with MD do
+        begin
+          with Bounds do
           begin
-            ColorScheme := csG;
-            Include(Options, ioMinIsWhite);
+            Top := ReadBigEndianInteger(Run);
+            Left := ReadBigEndianInteger(Run);
+            Bottom := ReadBigEndianInteger(Run);
+            Right := ReadBigEndianInteger(Run);
           end;
-        PSD_INDEXED: // 8 bits only are assumed because 16 bit wouldn't make sense here
-          ColorScheme := csIndexed;
-        PSD_MULTICHANNEL,
-        PSD_RGB:
-          if Header.Channels = 3 then ColorScheme := csRGB
-                                 else ColorScheme := csRGBA;
-        PSD_CMYK:
-          ColorScheme := csCMYK;
-        PSD_LAB:
-          ColorScheme := csCIELab;
+          DefaultColor := Byte(Run^);
+          Inc(Run);
+          Flags := TPSDLayerMaskFlags(Run^);
+          Inc(Run);
+          // If only 20 bytes mask data is present then we are finished here with it (except 2 padding bytes).
+          // Otherwise read additional data.
+          if BlockSize = 20 then
+            Inc(Run, 2)
+          else
+          begin
+            // Skip "real flags" field, which is just a duplication of the flags.
+            Inc(Run);
+            UserMaskBackground := Byte(Run^);
+            // Advance after the mask background value and skip the copy of the enclosing rectangle too, which follows.
+            Inc(Run, 1 + 4 * SizeOf(Cardinal));
+          end;
+        end;
       end;
 
-      Width := Header.Columns;
-      Height := Header.Rows;
+      // Next are the layer blending ranges. In opposition to the docs the size seems not to depend on the number of
+      // channels in the layer. It is always 10 range entries large, even for gray scale images.
+      BlockSize := ReadBigEndianCardinal(Run);
+      if BlockSize > 0 then
+      begin
+        BlockStart := Run;
+        // Take the first two entries for gray blending.
+        ReadBlendRanges(Layer.FCompositeGrayBlendSource);
+        ReadBlendRanges(Layer.FCompositeGrayBlendDestination);
+        // Read as many entries as there are channels, but not more than 8.
+        for I := 0 to Min(High(Layer.Channels), 4) do
+        begin
+          ReadBlendRanges(Layer.Channels[I].BlendSourceRange);
+          ReadBlendRanges(Layer.Channels[I].BlendTargetRange);
+        end;
+        // Skip whatever left over.
+        Run := BlockStart + BlockSize;
+      end;
+      
+      // Read the pascal style (ANSI) layer name. This might get overwritten by the Unicode name.
+      I := Byte(Run^);
+      SetString(S, Run + 1, I);
+      Layer.Name := S;
+      // The name is padded to a 4 byte boundary.
+      Inc(Run, (I + 4) and not 3);
 
-      // size of palette
-      ReadBuffer(Count, SizeOf(Count));
-      Count := SwapLong(Count);
-      // skip palette (count is always given, might be 0 however, e.g. for RGB)
-      Seek(Count, soFromCurrent);
+      // From Photoshop version 4 on there might be additional data here. This data is organized in blocks
+      // all starting with '8BIM' as tag and is referred to as "adjustment layers" (e.g. Unicode name, effects etc.).
+      while StrLIComp(Run, '8BIM', 4) = 0 do
+      begin
+        Inc(Run, 4);
+        LoadAdjustmentLayer(Run, Layer);
+      end;
 
-      // skip resource and layers section
-      ReadBuffer(Count, SizeOf(Count));
-      Count := SwapLong(Count);
-      Seek(Count, soFromCurrent);
-      ReadBuffer(Count, SizeOf(Count));
-      Count := SwapLong(Count);
-      Seek(Count, soFromCurrent);
-
-      ReadBuffer(Dummy, SizeOf(Dummy));
-      if Swap(Dummy) = 1 then Compression := ctPackedBits
-                         else Compression := ctNone;
-      Result := True;
+      // Advance to next layer.
+      Inc(LayerIndex);
     end;
+    // Finish progress for layer info retrieval.
+    FinishProgressSection(False);
+
+    // Start progress section for the rest of the entire layer loading process.
+    StartProgressSection(0, gesLoadingData);
+    // Here we reached the image data. This block contains all channel data for all layers.
+    for LayerIndex := 0 to FLayers.Count - 1 do
+    begin
+      StartProgressSection(100 / LayerCount, gesLoadingData);
+
+      Layer := FLayers[LayerIndex];
+      // Each channel might have an individual compression scheme.
+      // If the layer contains irrelevant data then tell it the reader method so it skips the data accordingly.
+      for I := 0 to High(Layer.FChannels) do
+        with Layer.Bounds do
+          ReadChannelData(Run, Layer.FChannels[I], Right - Left, Bottom - Top, loIrrelevantData in Layer.Options);
+
+      if not (loIrrelevantData in Layer.Options) then
+      begin
+        // Extra layer channels always follow the actual image data so we can limit the maximum
+        // number of channels to use to 4 without harm.
+        Layer.Image.PixelFormat := SetupColorManager(Min(4, Length(Layer.FChannels)));
+        with Layer, Bounds do
+        begin
+          Image.Width := Right - Left;
+          Image.Height := Bottom - Top;
+          Image.Palette := CopyPalette(Palette);
+        end;
+        CombineChannels(Layer);
+      end;
+
+      FinishProgressSection(True);
+    end;
+    // Finish the decompression and combining process.
+    FinishProgressSection(False);
+    // Finish the layer loading progress. The global layer mask info does not produce progress events.
+    FinishProgressSection(False);
+  end;
+
+  // The last step after all layers have been read is to read the global layer mask info.
+  BlockSize := ReadBigEndianCardinal(Run);
+  if BlockSize > 0 then
+  begin
+    BlockStart := Run;
+
+    FLayers.FOverlayColorSpace := ReadBigEndianWord(Run);
+    for I := 0 to 3 do
+      FLayers.FColorComponents[I] := ReadBigEndianWord(Run);
+    FLayers.FLayerMaskOpacity := ReadBigEndianWord(Run);
+    FLayers.FKind := Byte(Run^);
+
+    Run := BlockStart + BlockSize;
   end;
 end;
 
-{$endif} // PhotoshopGraphic
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TPSDGraphic.ReadResources(Run: PAnsiChar);
+
+var
+  ID: Word;
+  I: Cardinal;
+  Name: string;
+  Size: Cardinal;
+
+begin
+  while StrLIComp(Run, '8BIM', 4) = 0 do
+  begin
+    // Skip signature.
+    Inc(Run, 4);
+    // Resource ID.
+    ID := ReadBigEndianWord(Run);
+    // Resource name (pascal short string style).
+    I := Byte(Run^);
+    Inc(Run);
+    SetString(Name, Run, I);
+    Inc(Run, I);
+    Inc(Run, Integer(Run) and 1); // Padded to even size.
+
+    // Resource size.
+    Size := ReadBigEndianCardinal(Run);
+    case ID of
+      GridAndGuides:
+        with FGridSettings do
+        begin
+          // Skip version number (= 1 for Photoshop 4.0).
+          Inc(Run, 4);
+          // Numbers here are in 16.16 fix point format.
+          HorizontalCycle := ReadBigEndianCardinal(Run) / 32;
+          VerticalCycle := ReadBigEndianCardinal(Run) / 32;
+          // Number of guides.
+          Size := ReadBigEndianCardinal(Run);
+          if Size > 0 then
+          begin
+            SetLength(Guides, Size);
+            for I := 0 to Size - 1 do
+            begin
+              Guides[I].Location := ReadBigEndianCardinal(Run) / 32;
+              Guides[I].IsHorizontal := Boolean(Run^);
+              Inc(Run);
+            end;
+          end;
+        end;
+    else
+      // Simply skip any unknown entries.
+      Inc(Run, Size);
+    end;
+    Inc(Run, Integer(Run) and 1); // Padded to even size.
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TPSDGraphic.SetupColorManager(Channels: Integer): TPixelFormat;
+
+// Determines source and target color schemes and initializes the color manager options for the
+// following load of image data.
+// There are only a couple of scenarios which are allowed in layers in a PSD file:
+//   - only grayscale, RGB, CMYK and Lab
+//   - only 8 bits per sample.
+// Returns the necessary pixel format.
+
+var
+  CurrentColorScheme: TColorScheme;
+  
+begin
+  with FImageProperties, ColorManager do
+  begin
+    SourceOptions := [coNeedByteSwap];
+    SourceBitsPerSample := BitsPerSample;
+    if BitsPerSample = 16 then
+      TargetBitsPerSample := 8
+    else
+      TargetBitsPerSample := BitsPerSample;
+
+    SourceSamplesPerPixel := Channels;
+    TargetSamplesPerPixel := Channels;
+
+    CurrentColorScheme := DetermineColorScheme(Channels);
+    case CurrentColorScheme of
+      csG,
+      csGA,
+      csIndexed:
+        begin
+          SourceColorScheme := CurrentColorScheme;
+          TargetColorScheme := CurrentColorScheme;
+          // For the time being only one channel can be handled.
+          // An eventual alpha channel is ignored.
+          SourceSamplesPerPixel := 1;
+          TargetSamplesPerPixel := 1;
+        end;
+      csRGB:
+        if Channels = 4 then
+        begin
+          SourceColorScheme := csRGBA;
+          TargetColorScheme := csBGRA;
+        end
+        else
+        begin
+          SourceColorScheme := CurrentColorScheme;
+          TargetColorScheme := csBGR;
+        end;
+      csRGBA:
+        begin
+          SourceColorScheme := CurrentColorScheme;
+          TargetColorScheme := csBGRA;
+        end;
+      csCMYK:
+        begin
+          SourceColorScheme := CurrentColorScheme;
+          TargetColorScheme := csBGR;
+          TargetSamplesPerPixel := 3;
+        end;
+      csCIELab:
+        begin
+          SourceColorScheme := CurrentColorScheme;
+          // PSD uses 0..255 for a and b so we need to convert them to -128..127
+          SourceOptions := SourceOptions + [coLabByteRange, coLabChromaOffset];
+          if Channels = 4 then
+            TargetColorScheme := csBGRA
+          else
+            TargetColorScheme := csBGR;
+        end;
+    end;
+    Result := TargetPixelFormat;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+class function TPSDGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
+
+begin
+  Result := Size > SizeOf(TPSDHeader);
+  if Result then
+    with PPSDHeader(Memory)^ do
+      Result := (StrLIComp(Signature, '8BPS', 4) = 0) and (Swap(Version) = 1);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TPSDGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
+
+var
+  Run: PAnsiChar;           // Pointer to the current position in the given memory.
+  Count: Cardinal;
+
+begin
+  inherited;
+
+  FLayers.Clear;
+  Run := Memory;
+
+  if ReadImageProperties(Memory, Size, ImageIndex) then
+  begin
+    with FImageProperties do
+    begin
+      // Initialize outermost progress display.
+      InitProgress(Width, 1);
+      StartProgressSection(0, '');
+
+      // Initialize sub section for image preparation. We give it a (guessed) value of 1%.
+      StartProgressSection(1, gesPreparing);
+
+      // Skip the header, image info is already read.
+      Inc(Run, SizeOf(TPSDHeader));
+
+      PixelFormat := SetupColorManager(SamplesPerPixel);
+      Self.Width := Width;
+      Self.Height := Height;
+
+      // Read color mode data if present.
+      // Size of palette.
+      Count := ReadBigEndianCardinal(Run);
+      // Setup the palette if necessary.
+      case ColorScheme of
+        csG,
+        csGA:
+          Palette := ColorManager.CreateGrayscalePalette(ioMinIsWhite in Options);
+        csIndexed:
+          Palette := ColorManager.CreateColorPalette([Run, Run + Count div 3, Run + 2 * Count div 3], pfPlane8Triple,
+            Count, False);
+      end;
+      Inc(Run, Count);
+
+      // The preparation part is finished. Finish also progress section (which will step the main progress).
+      FinishProgressSection(False);
+
+      // Read resource section.
+      Count := ReadBigEndianCardinal(Run);
+      if Count > 0 then        
+        ReadResources(Run);
+      Inc(Run, Count);
+
+      // Read layers section.
+      Count := ReadBigEndianCardinal(Run);
+      if Count > 0 then
+        ReadLayers(Run);
+
+      // Use +2 in order to skip the following compression value (which we already know).
+      Inc(Run, Count + 2);
+      // Setup the color manager again. It might be changed by the layer loading stuff.
+      if FLayers.Count > 0 then
+        SetupColorManager(SamplesPerPixel);
+      ReadMergedImage(Run, nil, Compression, FChannels);
+
+      FinishProgressSection(False);
+    end;
+  end
+  else
+    GraphicExError(gesInvalidImage, ['PSD or PDD']);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TPSDGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
+
+var
+  Run: PByte;
+  Header: TPSDHeader;
+  Count: Cardinal;
+
+begin
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
+
+  if Result then
+    with FImageProperties do
+    begin
+      Run := Memory;
+      Inc(Run, SizeOf(TPSDHeader));
+
+      Move(Memory^, Header, SizeOf(TPSDHeader));
+      if Header.Signature = '8BPS' then
+      begin
+        with Header do
+        begin
+          // PSD files are big endian only.
+          Channels := Swap(Channels);
+          Rows := SwapLong(Rows);
+          Columns := SwapLong(Columns);
+          Depth := Swap(Depth);
+          Mode := Swap(Mode);
+        end;
+
+        Options := [ioBigEndian];
+        // Initialize color manager.
+        BitsPerSample := Header.Depth;
+        FChannels := Header.Channels;
+        // 1..24 channels are supported in PSD files, we can only use 4.
+        // The documentation states that main image data (rgb(a), cmyk etc.) is always
+        // written with the first channels in their component order.
+        if FChannels > 4 then
+          SamplesPerPixel := 4
+        else
+          SamplesPerPixel := FChannels;
+
+        BitsPerPixel := SamplesPerPixel * BitsPerSample;
+
+        // color space
+        FMode := Header.Mode;
+        ColorScheme := DetermineColorScheme(SamplesPerPixel);
+        if FMode = PSD_BITMAP then
+          Include(Options, ioMinIsWhite);
+
+        Width := Header.Columns;
+        Height := Header.Rows;
+
+        // Read the size of the palette.
+        Count := ReadBigEndianCardinal(PAnsiChar(Run));
+        // Skip palette (count is always given, might be 0 however, e.g. for RGB).
+        Inc(Run, Count);
+
+        // Skip resource and layers section.
+        Count := ReadBigEndianCardinal(PAnsiChar(Run));
+        Inc(Run, Count);
+        Count := ReadBigEndianCardinal(PAnsiChar(Run));
+        Inc(Run, Count);
+
+        Compression := ConvertCompression(ReadBigEndianWord(PAnsiChar(Run)));
+        Result := True;
+      end
+      else
+        Result := False;                                        
+    end;
+end;
+
+{$endif PhotoshopGraphic}
 
 //----------------- TPSPGraphic ----------------------------------------------------------------------------------------
 
@@ -5972,25 +7622,25 @@ end;
 
 const
   // block identifiers
-  PSP_IMAGE_BLOCK = 0;          // General Image Attributes Block (main)
-  PSP_CREATOR_BLOCK = 1;        // Creator Data Block (main)
-  PSP_COLOR_BLOCK = 2;          // Color Palette Block (main and sub)
-  PSP_LAYER_START_BLOCK = 3;    // Layer Bank Block (main)
-    PSP_LAYER_BLOCK = 4;          // Layer Block (sub)
-    PSP_CHANNEL_BLOCK = 5;        // Channel Block (sub)
-  PSP_SELECTION_BLOCK = 6;      // Selection Block (main)
-  PSP_ALPHA_BANK_BLOCK = 7;     // Alpha Bank Block (main)
-    PSP_ALPHA_CHANNEL_BLOCK = 8;  // Alpha Channel Block (sub)
-  PSP_THUMBNAIL_BLOCK = 9;      // Thumbnail Block (main)
-  PSP_EXTENDED_DATA_BLOCK = 10; // Extended Data Block (main)
-  PSP_TUBE_BLOCK = 11;          // Picture Tube Data Block (main)
-    PSP_ADJUSTMENT_EXTENSION_BLOCK = 12; // Adjustment Layer Extension Block (sub)
-    PSP_VECTOR_EXTENSION_BLOCK = 13;     // Vector Layer Extension Block (sub)
-    PSP_SHAPE_BLOCK = 14;                // Vector Shape Block (sub)
-    PSP_PAINTSTYLE_BLOCK = 15;           // Paint Style Block (sub)
-  PSP_COMPOSITE_IMAGE_BANK_BLOCK = 16; // Composite Image Bank (main)
-    PSP_COMPOSITE_ATTRIBUTES_BLOCK = 17; // Composite Image Attributes (sub)
-    PSP_JPEG_BLOCK = 18;                 // JPEG Image Block (sub)
+  PSP_IMAGE_BLOCK = 0;                      // General Image Attributes Block (main)
+  PSP_CREATOR_BLOCK = 1;                    // Creator Data Block (main)
+  PSP_COLOR_BLOCK = 2;                      // Color Palette Block (main and sub)
+  PSP_LAYER_START_BLOCK = 3;                // Layer Bank Block (main)
+    PSP_LAYER_BLOCK = 4;                    // Layer Block (sub)
+    PSP_CHANNEL_BLOCK = 5;                  // Channel Block (sub)
+  PSP_SELECTION_BLOCK = 6;                  // Selection Block (main)
+  PSP_ALPHA_BANK_BLOCK = 7;                 // Alpha Bank Block (main)
+    PSP_ALPHA_CHANNEL_BLOCK = 8;            // Alpha Channel Block (sub)
+  PSP_THUMBNAIL_BLOCK = 9;                  // Thumbnail Block (main)
+  PSP_EXTENDED_DATA_BLOCK = 10;             // Extended Data Block (main)
+  PSP_TUBE_BLOCK = 11;                      // Picture Tube Data Block (main)
+    PSP_ADJUSTMENT_EXTENSION_BLOCK = 12;    // Adjustment Layer Extension Block (sub)
+    PSP_VECTOR_EXTENSION_BLOCK = 13;        // Vector Layer Extension Block (sub)
+    PSP_SHAPE_BLOCK = 14;                   // Vector Shape Block (sub)
+    PSP_PAINTSTYLE_BLOCK = 15;              // Paint Style Block (sub)
+  PSP_COMPOSITE_IMAGE_BANK_BLOCK = 16;      // Composite Image Bank (main)
+    PSP_COMPOSITE_ATTRIBUTES_BLOCK = 17;    // Composite Image Attributes (sub)
+    PSP_JPEG_BLOCK = 18;                    // JPEG Image Block (sub)
 
   // bitmap types
 	PSP_DIB_IMAGE = 0;            // Layer color bitmap
@@ -6061,7 +7711,7 @@ const
   LAYER_BLEND_OVERLAY = 10;
   LAYER_BLEND_HARD_LIGHT = 11;
   LAYER_BLEND_SOFT_LIGHT = 12;
-  LAYER_BLEND_DIFFERENCE = 130;
+  LAYER_BLEND_DIFFERENCE = 13;
   LAYER_BLEND_DODGE = 14;
   LAYER_BLEND_BURN = 15;
   LAYER_BLEND_EXCLUSION = 16;
@@ -6164,14 +7814,14 @@ type
   // These block header structures are here for informational purposes only because the data of those
   // headers is read member by member to generalize code for the different file versions
   TPSPBlockHeader3 = packed record          // block header file version 3
-    HeaderIdentifier: array[0..3] of AnsiChar;  // i.e. "~BK" followed by a zero byte
+    HeaderIdentifier: array[0..3] of Char;  // i.e. "~BK" followed by a zero byte
     BlockIdentifier: Word;                  // one of the block identifiers
     InitialChunkLength,                     // length of the first sub chunk header or similar
     TotalBlockLength: Cardinal;             // length of this block excluding this header
   end;
 
   TPSPBlockHeader4 = packed record          // block header file version 4
-    HeaderIdentifier: array[0..3] of AnsiChar;  // i.e. "~BK" followed by a zero byte
+    HeaderIdentifier: array[0..3] of Char;  // i.e. "~BK" followed by a zero byte
     BlockIdentifier: Word;                  // one of the block identifiers
     TotalBlockLength: Cardinal;             // length of this block excluding this header
   end;
@@ -6192,8 +7842,9 @@ type
   // PSP defines a channel content chunk which is just a bunch of bytes (size is CompressedSize).
   // There is no sense to define this record type here.
 
+  PPSPFileHeader = ^TPSPFileHeader;
   TPSPFileHeader = packed record
-    Signature: array[0..31] of AnsiChar;        // the string "Paint Shop Pro Image File\n\x1a", padded with zeroes
+    Signature: array[0..31] of Char;        // the string "Paint Shop Pro Image File\n\x1a", padded with zeroes
     MajorVersion,
     MinorVersion: Word;                
   end;
@@ -6217,7 +7868,7 @@ type
   end;
 
   TPSPLayerInfoChunk = packed record
-    //LayerName: array[0..255] of AnsiChar;     // Name of layer (in ASCII text). Has been replaced in version 4
+    //LayerName: array[0..255] of Char;     // Name of layer (in ASCII text). Has been replaced in version 4
                                             // by a Delphi like short string (length word and variable length string)
     LayerType: Byte;                        // Type of layer.
     ImageRectangle,                         // Rectangle defining image border.
@@ -6246,56 +7897,40 @@ type
     DestinationBlendRange4,
     SourceBlendRange5,
     DestinationBlendRange5: array[0..3] of Byte;
-    // these fields are obsolete since file version 4 because there's an own chunk for them
+    // These fields are obsolete since file version 4, because there's an own chunk for them.
     // BitmapCount: Word;                      // Number of bitmaps to follow.
     // ChannelCount: Word;                     // Number of channels to follow.
   end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TPSPGraphic.CanLoad(Stream: TStream): Boolean;
-
-var
-  Header: TPSPFileHeader;
-  LastPosition: Cardinal;
+class function TPSPGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
-  with Stream do
-  begin
-    LastPosition := Position;
-    Result := (Size - Position) > SizeOf(Header);
-    if Result then
-    begin
-      ReadBuffer(Header, SizeOf(Header));
-      Result := (StrLIComp(Header.Signature, MagicID, Length(MagicID)) = 0) and
-                (Header.MajorVersion >= 3);
-    end;
-    Position := LastPosition;
-  end;
+  with PPSPFileHeader(Memory)^ do
+    Result := (Size > SizeOf(TPSPFileHeader)) and (StrLIComp(Signature, MagicID, Length(MagicID)) = 0) and
+      (MajorVersion >= 3);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPSPGraphic.LoadFromStream(Stream: TStream);
+procedure TPSPGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
   Header: TPSPFileHeader;
   Image: TPSPImageAttributes;
-  // to use the code below for file 3 and 4 I read the parts of the block header
-  // separately instead as a structure
-  HeaderIdentifier: array[0..3] of AnsiChar;  // i.e. "~BK" followed by a zero byte
+  // To use the code below for file 3 and 4 I read the parts of the block header
+  // separately instead as a structure.
+  HeaderIdentifier: array[0..3] of Char;  // i.e. "~BK" followed by a zero byte
   BlockIdentifier: Word;                  // one of the block identifiers
   InitialChunkLength,                     // length of the first sub chunk header or similar
   TotalBlockLength: Cardinal;             // length of this block excluding this header
 
-  LastPosition,
   ChunkSize: Cardinal;
   LayerInfo: TPSPLayerInfoChunk;
   ChannelInfo: TPSPChannelInfoChunk;
-  LayerName: String;
+  LayerName: string;
   NameLength: Word;
-  NextLayerPosition,
-  NextMainBlock: Integer;
 
   // file version 4 specific data
   BitmapCount,
@@ -6314,24 +7949,35 @@ var
   // other data
   RawPalette: array[0..4 * 256 - 1] of Byte;
 
+  LastPosition,
+  NextMainBlock,
+  NextLayerPosition: PChar; // PChar, because then direct pointer arithmethic is accepted.
+  Run: PByte;
+
   //--------------- local functions -------------------------------------------
 
   function ReadBlockHeader: Boolean;
 
   // Fills in the block header variables according to the file version.
-  // Returns True if a block header could be read otherwise False (stream end). 
+  // Returns True if a block header could be read otherwise False (stream end).
 
   begin
-    with Stream do
+    Result := (PChar(Run) - PChar(Memory)) < Size;
+    if Result then
     begin
-      Result := Position < Size;
-      if Result then
+      Move(Run^, HeaderIdentifier, SizeOf(HeaderIdentifier));
+      Inc(Run, SizeOf(HeaderIdentifier));
+
+      Move(Run^, BlockIdentifier, SizeOf(BlockIdentifier));
+      Inc(Run, SizeOf(BlockIdentifier));
+
+      if Header.MajorVersion = 3 then
       begin
-        ReadBuffer(HeaderIdentifier, SizeOf(HeaderIdentifier));
-        ReadBuffer(BlockIdentifier, SizeOf(BlockIdentifier));
-        if Header.MajorVersion = 3 then ReadBuffer(InitialChunkLength, SizeOf(InitialChunkLength));
-        ReadBuffer(TotalBlockLength, SizeOf(TotalBlockLength));
+        Move(Run^, InitialChunkLength, SizeOf(InitialChunkLength));
+        Inc(Run, SizeOf(InitialChunkLength));
       end;
+      Move(Run^, TotalBlockLength, SizeOf(TotalBlockLength));
+      Inc(Run, SizeOf(TotalBlockLength));
     end;
   end;
 
@@ -6342,17 +7988,12 @@ var
   // reads a stream of data from file stream and decompresses it into Target
 
   var
-    RawBuffer: Pointer;
-    Decoder: TDecoder;
     Source: Pointer;
 
   begin
     Decoder := nil;
-    GetMem(RawBuffer, ChannelInfo.CompressedSize);
     try
-      Stream.ReadBuffer(RawBuffer^, ChannelInfo.CompressedSize);
-      // pointer might be advanced while decoding, so use a copy
-      Source := RawBuffer;
+      Source := Run;
       case Image.Compression of
         PSP_COMP_RLE:
           begin
@@ -6368,10 +8009,10 @@ var
         PSP_COMP_JPEG: // here just for completeness, used only in thumbnails and composite images
           ;
       end;
+      Inc(Run, ChannelInfo.CompressedSize);
       Decoder.DecodeEnd;
     finally
-      if Assigned(RawBuffer) then FreeMem(RawBuffer);
-      Decoder.Free;
+      FreeAndNil(Decoder);
     end;
   end;
 
@@ -6383,70 +8024,98 @@ var
   // Decompression is done by the way.
 
   begin
-    with Stream do
+    ReadBlockHeader;
+    if Header.MajorVersion > 3 then
     begin
-      ReadBlockHeader;
-      if Header.MajorVersion > 3 then ReadBuffer(ChunkSize, SizeOf(ChunkSize));
-      ReadBuffer(ChannelInfo, SizeOf(ChannelInfo));
-      case ChannelInfo.ChannelType of
-        PSP_CHANNEL_COMPOSITE: // single channel bitmap (indexed or transparency mask)
+      Move(Run^, ChunkSize, SizeOf(ChunkSize));
+      Inc(Run, SizeOf(ChunkSize));
+    end;
+    Move(Run^, ChannelInfo, SizeOf(ChannelInfo));
+    Inc(Run, SizeOf(ChannelInfo));
+
+    case ChannelInfo.ChannelType of
+      PSP_CHANNEL_COMPOSITE: // Single channel bitmap (indexed or transparency mask).
+        begin
+          // Damaged files can have more than one composite channel. Make sure we do not
+          // allocate the buffer more than once without freeing it.
+          // Do not use Realloc here as it copies the memory block.
+          if Assigned(CompBuffer) then
+            FreeMem(CompBuffer);
+          GetMem(CompBuffer, ChannelInfo.UncompressedSize);
+          if Image.Compression <> PSP_COMP_NONE then
+            ReadAndDecompress(CompBuffer)
+          else
           begin
-            GetMem(CompBuffer, ChannelInfo.UncompressedSize);
-            if Image.Compression <> PSP_COMP_NONE then ReadAndDecompress(CompBuffer)
-                                                  else ReadBuffer(CompBuffer^, ChannelInfo.CompressedSize);
+            Move(Run^, CompBuffer^, ChannelInfo.CompressedSize);
+            Inc(Run, ChannelInfo.CompressedSize);
           end;
-        PSP_CHANNEL_RED:  // red channel of 24 bit bitmap
+        end;
+      PSP_CHANNEL_RED:  // Red channel of 24 bit bitmap.
+        begin
+          GetMem(RedBuffer, ChannelInfo.UncompressedSize);
+          if Image.Compression <> PSP_COMP_NONE then
+            ReadAndDecompress(RedBuffer)
+          else
           begin
-            GetMem(RedBuffer, ChannelInfo.UncompressedSize);
-            if Image.Compression <> PSP_COMP_NONE then ReadAndDecompress(RedBuffer)
-                                                  else ReadBuffer(RedBuffer^, ChannelInfo.CompressedSize);
+            Move(Run^, RedBuffer^, ChannelInfo.CompressedSize);
+            Inc(Run, ChannelInfo.CompressedSize);
           end;
-        PSP_CHANNEL_GREEN:
+        end;
+      PSP_CHANNEL_GREEN:
+        begin
+          GetMem(GreenBuffer, ChannelInfo.UncompressedSize);
+          if Image.Compression <> PSP_COMP_NONE then
+            ReadAndDecompress(GreenBuffer)
+          else
           begin
-            GetMem(GreenBuffer, ChannelInfo.UncompressedSize);
-            if Image.Compression <> PSP_COMP_NONE then ReadAndDecompress(GreenBuffer)
-                                                  else ReadBuffer(GreenBuffer^, ChannelInfo.CompressedSize);
+            Move(Run^, GreenBuffer^, ChannelInfo.CompressedSize);
+            Inc(Run, ChannelInfo.CompressedSize);
           end;
-        PSP_CHANNEL_BLUE:
+        end;
+      PSP_CHANNEL_BLUE:
+        begin
+          GetMem(BlueBuffer, ChannelInfo.UncompressedSize);
+          if Image.Compression <> PSP_COMP_NONE then
+            ReadAndDecompress(BlueBuffer)
+          else
           begin
-            GetMem(BlueBuffer, ChannelInfo.UncompressedSize);
-            if Image.Compression <> PSP_COMP_NONE then ReadAndDecompress(BlueBuffer)
-                                                  else ReadBuffer(BlueBuffer^, ChannelInfo.CompressedSize);
+            Move(Run^, BlueBuffer^, ChannelInfo.CompressedSize);
+            Inc(Run, ChannelInfo.CompressedSize);
           end;
-      end;
+        end;
     end;
   end;
 
   //--------------- end local functions ---------------------------------------
 
 begin
-  // free previous image data
-  Handle := 0;
-  FBasePosition := Stream.Position;
-  if ReadImageProperties(Stream, 0) then
+  inherited;
+
+  if ReadImageProperties(Memory, Size, ImageIndex) then
   begin
-    Stream.Position := FBasePosition;
+    Run := Memory;
     RedBuffer := nil;
     GreenBuffer := nil;
     BlueBuffer := nil;
-    with Stream, FImageProperties do
+    CompBuffer := nil;
+    with FImageProperties do
     try
       FProgressRect := Rect(0, 0, Width, 1);
       Progress(Self, psStarting, 0, False, FProgressRect, gesPreparing);
 
-      // Note: To be robust with future PSP images any reader must be able to skip data
-      //       which it doesn't know instead of relying on the size of known structures.
-      //       Hence there's some extra work needed with the stream (mainly to keep the
-      //       current position before a chunk is read and advancing the stream using the
-      //       chunk size field).
-      ReadBuffer(Header, SizeOf(Header));
+      Move(Run^, Header, SizeOf(Header));
+      Inc(Run, SizeOf(Header));
 
-      // read general image attribute block
+      // Read general image attribute block.
       ReadBlockHeader;
-      LastPosition := Position;
-      if Version > 3 then ReadBuffer(ChunkSize, SizeOf(ChunkSize));
-      ReadBuffer(Image, SizeOf(Image));
-      Position := LastPosition + TotalBlockLength;
+      LastPosition := PChar(Run);
+      if Version > 3 then
+      begin
+        Move(Run^, ChunkSize, SizeOf(ChunkSize));
+        Inc(Run, SizeOf(ChunkSize));
+      end;
+      Move(Run^, Image, SizeOf(Image));
+      Run := Pointer(LastPosition + TotalBlockLength);
 
       with ColorManager, Image do
       begin
@@ -6456,8 +8125,10 @@ begin
         SourceSamplesPerPixel := SamplesPerPixel;
         TargetSamplesPerPixel := SamplesPerPixel;
         SourceColorScheme := ColorScheme;
-        if ColorScheme = csRGB then TargetColorScheme := csBGR
-                               else TargetColorScheme := ColorScheme;
+        if ColorScheme = csRGB then
+          TargetColorScheme := csBGR
+        else
+          TargetColorScheme := ColorScheme;
 
         PixelFormat := TargetPixelFormat;
       end;
@@ -6481,70 +8152,89 @@ begin
 
       // go through main blocks and read what is needed
       repeat
-        if not ReadBlockHeader then Break;
-        NextMainBlock := Position + Integer(TotalBlockLength);
+        if not ReadBlockHeader then
+          Break;
+        NextMainBlock := Pointer(PChar(Run) + TotalBlockLength);
         // no more blocks?
-        if HeaderIdentifier[0] <> '~' then Break;
+        if HeaderIdentifier[0] <> '~' then
+          Break;
 
         case BlockIdentifier of
-          PSP_COMPOSITE_IMAGE_BANK_BLOCK:
+          {PSP_COMPOSITE_IMAGE_BANK_BLOCK:
             begin
               // composite image block, if present then it must appear before the layer start block
               // and represents a composition of several layers
 
               // do not need to read anything further
-              //Break;
-            end;
+              Break;
+            end;}
           PSP_LAYER_START_BLOCK:
             repeat
-              if not ReadBlockHeader then Break;
+              if not ReadBlockHeader then
+                Break;
 
               Progress(Self, psStarting, 0, False, FProgressRect, gesLoadingData);
 
               // calculate start of next (layer) block in case we need to skip this one
-              NextLayerPosition := Position + Integer(TotalBlockLength);
+              NextLayerPosition := Pointer(PChar(Run) + TotalBlockLength);
               // if all layers have been considered the break loop to continue with other blocks if necessary
-              if BlockIdentifier <> PSP_LAYER_BLOCK then Break;
+              if BlockIdentifier <> PSP_LAYER_BLOCK then
+                Break;
 
               // layer information chunk
               if Version > 3 then
               begin
-                LastPosition := Position;
-                ReadBuffer(ChunkSize, SizeOf(ChunkSize));
-                ReadBuffer(NameLength, SizeOf(NameLength));
+                LastPosition := PChar(Run);
+                Move(Run^, ChunkSize, SizeOf(ChunkSize));
+                Inc(Run, SizeOf(ChunkSize));
+
+                Move(Run^, NameLength, SizeOf(NameLength));
+                Inc(Run, SizeOf(NameLength));
                 SetLength(LayerName, NameLength);
-                if NameLength > 0 then ReadBuffer(LayerName[1], NameLength);
-                ReadBuffer(LayerInfo, SizeOf(LayerInfo));
-                Position := LastPosition + ChunkSize;
+                if NameLength > 0 then
+                begin
+                  Move(Run^, LayerName[1], NameLength);
+                  Inc(Run, NameLength);
+                end;
+                Move(Run^, LayerInfo, SizeOf(LayerInfo));
+                Inc(Run, SizeOf(LayerInfo));
+                Run := Pointer(LastPosition + ChunkSize);
 
                 // continue only with undefined or raster chunks
                 if not (LayerInfo.LayerType in [PSP_LAYER_UNDEFINED, PSP_LAYER_RASTER]) then
                 begin
-                  Position := NextLayerPosition;
+                  Run := Pointer(NextLayerPosition);
                   Continue;
                 end;
 
                 // in file version 4 there's also an additional bitmap chunk which replaces
                 // two fields formerly located in the LayerInfo chunk
-                LastPosition := Position;
-                ReadBuffer(ChunkSize, SizeOf(ChunkSize));
+                LastPosition := PChar(Run);
+                Move(Run^, ChunkSize, SizeOf(ChunkSize));
+                Inc(Run, SizeOf(ChunkSize));
               end
               else
               begin
                 SetLength(LayerName, 256);
-                ReadBuffer(LayerName[1], 256);
-                ReadBuffer(LayerInfo, SizeOf(LayerInfo));
+                Move(Run^, LayerName[1], 256);
+                Inc(Run, 256);
+
+                Move(Run^, LayerInfo, SizeOf(LayerInfo));
+                Inc(Run, SizeOf(LayerInfo));
 
                 // continue only with normal (raster) chunks
                 if LayerInfo.LayerType <> PSP_LAYER_NORMAL then
                 begin
-                  Position := NextLayerPosition;
+                  Run := Pointer(NextLayerPosition);
                   Continue;
                 end;
               end;
 
-              ReadBuffer(BitmapCount, SizeOf(BitmapCount));
-              ReadBuffer(ChannelCount, SizeOf(ChannelCount));
+              Move(Run^, BitmapCount, SizeOf(BitmapCount));
+              Inc(Run, SizeOf(BitmapCount));
+
+              Move(Run^, ChannelCount, SizeOf(ChannelCount));
+              Inc(Run, SizeOf(ChannelCount));
 
               // But now we can reliably say whether we have an alpha channel or not.
               // This kind of information can only be read very late and causes us to
@@ -6557,10 +8247,12 @@ begin
                 PixelFormat := pf32Bit;
               end;
 
-              if Version > 3 then Position := LastPosition + ChunkSize;
+              if Version > 3 then
+                Run := Pointer(LastPosition + ChunkSize);
 
               // allocate memory for all channels and read raw data
-              for X := 0 to ChannelCount - 1 do ReadChannelData;
+              for X := 0 to ChannelCount - 1 do
+                ReadChannelData;
               Progress(Self, psEnding, 0, False, FProgressRect, '');
 
               Progress(Self, psStarting, 0, False, FProgressRect, gesTransfering);
@@ -6602,130 +8294,165 @@ begin
             until False; // layer loop
           PSP_COLOR_BLOCK:  // color palette block (this is also present for gray scale and b&w images)
             begin
-              if Version > 3 then ReadBuffer(ChunkSize, SizeOf(ChunkSize));
-              ReadBuffer(Index, SizeOf(Index));
-              ReadBuffer(RawPalette, Index * SizeOf(TRGBQuad));
+              if Version > 3 then
+              begin
+                Move(Run^, ChunkSize, SizeOf(ChunkSize));
+                Inc(Run, SizeOf(ChunkSize));
+              end;
+              Move(Run^, Index, SizeOf(Index));
+              Inc(Run, SizeOf(Index));
+
+              Move(Run^, RawPalette, Index * SizeOf(TRGBQuad));
+              Inc(Run, Index * SizeOf(TRGBQuad));
               Palette := ColorManager.CreateColorPalette([@RawPalette], pfInterlaced8Quad, Index, True);
             end;
         end;
 
         // explicitly set stream position to next main block as we might have read a block only partially
-        Position := NextMainBlock;
+        Run := Pointer(NextMainBlock);
       until False; // main block loop
     finally
-      if Assigned(RedBuffer) then FreeMem(RedBuffer);
-      if Assigned(GreenBuffer) then FreeMem(GreenBuffer);
-      if Assigned(BlueBuffer) then FreeMem(BlueBuffer);
+      if Assigned(RedBuffer) then
+        FreeMem(RedBuffer);
+      if Assigned(GreenBuffer) then
+        FreeMem(GreenBuffer);
+      if Assigned(BlueBuffer) then
+        FreeMem(BlueBuffer);
+      if Assigned(CompBuffer) then
+        FreeMem(CompBuffer);
     end;
   end
-  else GraphicExError(gesInvalidImage, ['PSP']);
+  else
+    GraphicExError(gesInvalidImage, ['PSP']);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TPSPGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+function TPSPGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
   Header: TPSPFileHeader;
   Image: TPSPImageAttributes;
   // to use the code below for file 3 and 4 I read the parts of the block header
   // separately instead as a structure
-  HeaderIdentifier: array[0..3] of AnsiChar;  // i.e. "~BK" followed by a zero byte
+  HeaderIdentifier: array[0..3] of Char;  // i.e. "~BK" followed by a zero byte
   BlockIdentifier: Word;                  // one of the block identifiers
   InitialChunkLength,                     // length of the first sub chunk header or similar
   TotalBlockLength: Cardinal;             // length of this block excluding this header
 
-  LastPosition,
   ChunkSize: Cardinal;
 
+  LastPosition,
+  Run: PByte;
+  
   //--------------- local functions -------------------------------------------
 
   function ReadBlockHeader: Boolean;
 
   // Fills in the block header variables according to the file version.
-  // Returns True if a block header could be read otherwise False (stream end). 
+  // Returns True if a block header could be read otherwise False (stream end).
 
   begin
-    with Stream do
+    Result := (PChar(Run) - PChar(Memory)) < Size;
+    if Result then
     begin
-      Result := Position < Size;
-      if Result then
+      Move(Run^, HeaderIdentifier, SizeOf(HeaderIdentifier));
+      Inc(Run, SizeOf(HeaderIdentifier));
+
+      Move(Run^, BlockIdentifier, SizeOf(BlockIdentifier));
+      Inc(Run, SizeOf(BlockIdentifier));
+
+      if Header.MajorVersion = 3 then
       begin
-        ReadBuffer(HeaderIdentifier, SizeOf(HeaderIdentifier));
-        ReadBuffer(BlockIdentifier, SizeOf(BlockIdentifier));
-        if Header.MajorVersion = 3 then ReadBuffer(InitialChunkLength, SizeOf(InitialChunkLength));
-        ReadBuffer(TotalBlockLength, SizeOf(TotalBlockLength));
+        Move(Run^, InitialChunkLength, SizeOf(InitialChunkLength));
+        Inc(Run, SizeOf(InitialChunkLength));
       end;
+      Move(Run^, TotalBlockLength, SizeOf(TotalBlockLength));
+      Inc(Run, SizeOf(TotalBlockLength));
     end;
   end;
 
   //--------------- end local functions ---------------------------------------
 
 begin
-  Result := inherited ReadImageProperties(Stream, ImageIndex);
-  with Stream, FImageProperties do
-  begin
-    ReadBuffer(Header, SizeOf(Header));
-    if (StrLIComp(Header.Signature, MagicID, Length(MagicID)) = 0) and
-       (Header.MajorVersion >= 3) then
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
+
+  if Result then
+    with FImageProperties do
     begin
-      Version := Header.MajorVersion;
+      Run := Memory;
+      Move(Run^, Header, SizeOf(Header));
+      Inc(Run, SizeOf(Header));
 
-      // read general image attribute block
-      ReadBlockHeader;
-      LastPosition := Position;
-      if Header.MajorVersion > 3 then ReadBuffer(ChunkSize, SizeOf(ChunkSize));
-      ReadBuffer(Image, SizeOf(Image));
-      Position := LastPosition + TotalBlockLength;
-
-      if Image.BitDepth = 24 then
+      if (StrLIComp(Header.Signature, MagicID, Length(MagicID)) = 0) and
+         (Header.MajorVersion >= 3) then
       begin
-        BitsPerSample := 8;
-        SamplesPerPixel := 3;
-        ColorScheme := csRGB; // an alpha channel might exist, this is determined by the layer's channel count 
+        Version := Header.MajorVersion;
+
+        // read general image attribute block
+        ReadBlockHeader;
+        LastPosition := Run;
+        if Header.MajorVersion > 3 then
+        begin
+          Move(Run^, ChunkSize, SizeOf(ChunkSize));
+          Inc(Run, SizeOf(ChunkSize));
+        end;
+        Move(Run^, Image, SizeOf(Image));
+        Run := Pointer(PChar(LastPosition) + TotalBlockLength);
+
+        if Image.BitDepth = 24 then
+        begin
+          BitsPerSample := 8;
+          SamplesPerPixel := 3;
+          ColorScheme := csRGB; // an alpha channel might exist, this is determined by the layer's channel count 
+        end
+        else
+        begin
+          BitsPerSample := Image.BitDepth;
+          SamplesPerPixel := 1;
+          if Image.GreyscaleFlag then
+            ColorScheme := csG
+          else
+            ColorScheme := csIndexed;
+        end;
+        BitsPerPixel := BitsPerSample * SamplesPerPixel;
+
+        Width := Image.Width;
+        Height := Image.Height;
+
+        case Image.Compression of
+          PSP_COMP_NONE:
+            Compression := ctNone;
+          PSP_COMP_RLE:
+            Compression := ctRLE;
+          PSP_COMP_LZ77:
+            Compression := ctLZ77;
+          PSP_COMP_JPEG:
+            Compression := ctJPEG;
+        else
+          Compression := ctUnknown;
+        end;
+        XResolution := Image.Resolution;
+        if Image.ResolutionMetric = PSP_METRIC_CM then
+          XResolution := XResolution * 2.54;
+        YResolution := XResolution;
+        Result := True;
       end
       else
-      begin
-        BitsPerSample := Image.BitDepth;
-        SamplesPerPixel := 1;
-        if Image.GreyscaleFlag then ColorScheme := csG
-                               else ColorScheme := csIndexed;
-      end;
-      BitsPerPixel := BitsPerSample * SamplesPerPixel;
-
-      Width := Image.Width;
-      Height := Image.Height;
-
-      case Image.Compression of
-        PSP_COMP_NONE:
-          Compression := ctNone;
-        PSP_COMP_RLE:
-          Compression := ctRLE;
-        PSP_COMP_LZ77:
-          Compression := ctLZ77;
-        PSP_COMP_JPEG:
-          Compression := ctJPEG;
-      else
-        Compression := ctUnknown;
-      end;
-      XResolution := Image.Resolution;
-      if Image.ResolutionMetric = PSP_METRIC_CM then XResolution := XResolution * 2.54;
-      YResolution := XResolution;
-      Result := True;
+        Result := False;
     end;
-  end;
 end;
 
-{$endif} // PaintshopProGraphic
+{$endif PaintshopProGraphic}
 
 //----------------- TPNGGraphic ----------------------------------------------------------------------------------------
 
 {$ifdef PortableNetworkGraphic}
 
 const
-  PNGMagic: array[0..7] of Byte = (137, 80, 78, 71, 13, 10, 26, 10);
+  PNGMagic: PChar = #137'PNG'#13#10#26#10;
 
-  // recognized and handled chunk types
+  // Recognized and handled chunk types.
   IHDR = 'IHDR';
   IDAT = 'IDAT';
   IEND = 'IEND';
@@ -6733,6 +8460,7 @@ const
   gAMA = 'gAMA';
   tRNS = 'tRNS';
   bKGD = 'bKGD';
+  tEXt = 'tEXt';
 
   CHUNKMASK = $20; // used to check bit 5 in chunk types
 
@@ -6763,24 +8491,10 @@ type
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TPNGGraphic.CanLoad(Stream: TStream): Boolean;
-
-var
-  Magic: array[0..7] of Byte;
-  LastPosition: Cardinal;
+class function TPNGGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
-  with Stream do
-  begin
-    LastPosition := Position;
-    Result := (Size - Position) > SizeOf(Magic);
-    if Result then
-    begin
-      ReadBuffer(Magic, SizeOf(Magic));
-      Result := CompareMem(@Magic, @PNGMagic, 8);
-    end;
-    Position := LastPosition;
-  end;
+  Result := (Size > SizeOf(PNGMagic) + SizeOf(TIHDRChunk)) and (StrLIComp(PChar(Memory), PNGMagic, 8) = 0);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -6799,13 +8513,15 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TPNGGraphic.LoadAndSwapHeader: Cardinal;
+function TPNGGraphic.LoadAndSwapHeader(var Source: PByte): Cardinal;
 
 // read next chunk header and swap fields to little endian,
 // returns the intial CRC value for following checks
 
 begin
-  FStream.ReadBuffer(FHeader, SizeOf(FHeader));
+  Move(Source^, FHeader, SizeOf(FHeader));
+  Inc(Source, SizeOf(FHeader));
+
   Result := CRC32(0, @FHeader.ChunkType, 4);
   FHeader.Length := SwapLong(FHeader.Length);
 end;
@@ -6824,17 +8540,20 @@ begin
   pb := Abs(p - b);
   pc := Abs(p - c);
   // return nearest of a, b, c, breaking ties in order a, b, c
-  if (pa <= pb) and (pa <= pc) then Result := a
-                               else
-    if pb <= pc then Result := b
-                else Result := c;
+  if (pa <= pb) and (pa <= pc) then
+    Result := a
+  else
+    if pb <= pc then
+      Result := b
+    else
+      Result := c;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
 procedure TPNGGraphic.ApplyFilter(Filter: Byte; Line, PrevLine, Target: PByte; BPP, BytesPerRow: Integer);
 
-// Applies the filter given in Filter to all bytes in Line (eventually using PrevLine).
+// Applies the filter given in Filter to all bytes in Line (potentially using PrevLine).
 // Note: The filter type is assumed to be of filter mode 0, as this is the only one currently
 //       defined in PNG.
 //       In opposition to the PNG documentation different identifiers are used here.
@@ -6952,23 +8671,20 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPNGGraphic.LoadFromStream(Stream: TStream);
+procedure TPNGGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
   Description: TIHDRChunk;
+  Run: PByte;
 
 begin
-  // free previous image data
-  Handle := 0;
+  inherited;
 
-  FBasePosition := Stream.Position;
-  FDecoder := nil;
-  FStream := Stream;
-  if ReadImageProperties(Stream, 0) then
+  if ReadImageProperties(Memory, Size, ImageIndex) then
   begin
-    with Stream, FImageProperties do
+    with FImageProperties do
     begin
-      Position := FBasePosition + 8; // skip magic
+      Run := Pointer(PChar(Memory) + 8); // skip magic
 
       FProgressRect := Rect(0, 0, Width, 1);
       Progress(Self, psStarting, 0, False, FProgressRect, gesPreparing);
@@ -6978,33 +8694,33 @@ begin
       FBackgroundColor := clWhite;
       FTransparentColor := clNone;
 
-      // first chunk must be an IHDR chunk
-      FCurrentCRC := LoadAndSwapHeader;
+      // First chunk must be an IHDR chunk.
+      FCurrentCRC := LoadAndSwapHeader(Run);
 
       FRawBuffer := nil;
       ColorManager.SourceOptions := [coNeedByteSwap];
       try
         // read IHDR chunk
-        ReadDataAndCheckCRC;
+        ReadDataAndCheckCRC(Run);
         Move(FRawBuffer^, Description, SizeOf(Description));
         SwapLong(@Description, 2);
 
         // currently only one compression type is supported by PNG (LZ77)
         if Compression = ctLZ77 then
         begin
-          FDecoder := TLZ77Decoder.Create(Z_PARTIAL_FLUSH, False);
-          FDecoder.DecodeInit;
+          Decoder := TLZ77Decoder.Create(Z_PARTIAL_FLUSH, False);
+          Decoder.DecodeInit;
         end
         else
           GraphicExError(gesUnsupportedFeature, [gesCompressionScheme, 'PNG']);
 
         // setup is done, now go for the chunks
         repeat
-          FCurrentCRC := LoadAndSwapHeader;
+          FCurrentCRC := LoadAndSwapHeader(Run);
           if IsChunk(IDAT) then
           begin
             Progress(Self, psEnding, 0, False, FProgressRect, '');
-            LoadIDAT(Description);
+            LoadIDAT(Run, Description);
             // After reading the image data the next chunk header has already been loaded
             // so continue with code below instead trying to load a new chunk header.
           end
@@ -7012,8 +8728,9 @@ begin
             if IsChunk(PLTE) then
             begin
               // palette chunk
-              if (FHeader.Length mod 3) <> 0 then GraphicExError(gesInvalidPalette, ['PNG']);
-              ReadDataAndCheckCRC;
+              if (FHeader.Length mod 3) <> 0 then
+                GraphicExError(gesInvalidPalette, ['PNG']);
+              ReadDataAndCheckCRC(Run);
               // load palette only if the image is indexed colors
               if Description.ColorType = 3 then
               begin
@@ -7026,8 +8743,8 @@ begin
             else                             
               if IsChunk(gAMA) then
               begin
-                ReadDataAndCheckCRC;
-                // the file gamme given here is a scaled cardinal (e.g. 0.45 is expressed as 45000)
+                ReadDataAndCheckCRC(Run);
+                // The file gamma given here is a scaled cardinal (e.g. 0.45 is expressed as 45000).
                 ColorManager.SetGamma(SwapLong(PCardinal(FRawBuffer)^) / 100000);
                 ColorManager.TargetOptions := ColorManager.TargetOptions + [coApplyGamma];
                 Include(Options, ioUseGamma);
@@ -7036,125 +8753,144 @@ begin
               else
                 if IsChunk(bKGD) then
                 begin
-                  LoadBackgroundColor(Description);
+                  LoadBackgroundColor(Run, Description);
                   Continue;
                 end
                 else
                   if IsChunk(tRNS) then
                   begin
-                    LoadTransparency(Description);
+                    LoadTransparency(Run, Description);
                     Continue;
                   end;
 
           // Skip unknown or unsupported chunks (+4 because of always present CRC).
           // IEND will be skipped as well, but this chunk is empty, so the stream will correctly
           // end on the first byte after the IEND chunk.
-          Seek(FHeader.Length + 4, soFromCurrent);
-          if IsChunk(IEND) then Break;
+          Inc(Run, FHeader.Length + 4);
+          if IsChunk(IEND) then
+            Break;
 
           // Note: According to the specs an unknown, but as critical marked chunk is a fatal error.
-          if (Byte(FHeader.ChunkType[0]) and CHUNKMASK) = 0 then GraphicExError(gesUnknownCriticalChunk);
+          if (Byte(FHeader.ChunkType[0]) and CHUNKMASK) = 0 then
+            GraphicExError(gesUnknownCriticalChunk);
         until False;
       finally
-        if Assigned(FDecoder) then
-        begin
-          FDecoder.DecodeEnd;
-          FDecoder.Free;
-        end;
-        if Assigned(FRawBuffer) then FreeMem(FRawBuffer);
+        if Assigned(Decoder) then
+          Decoder.DecodeEnd;
+        if Assigned(FRawBuffer) then
+          FreeMem(FRawBuffer);
         Progress(Self, psEnding, 0, False, FProgressRect, '');
       end;
     end;
   end
-  else GraphicExError(gesInvalidImage, ['PNG']);
+  else
+    GraphicExError(gesInvalidImage, ['PNG']);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TPNGGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+function TPNGGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
-  Magic: array[0..7] of Byte;
+  Magic: array[0..7] of Char;
   Description: TIHDRChunk;
+  Run: PByte;
 
 begin
-  Result := inherited ReadImageProperties(Stream, ImageIndex);
-  FStream := Stream;
-  with Stream, FImageProperties do
-  begin
-    ReadBuffer(Magic, 8);
-    if CompareMem(@Magic, @PNGMagic, 8) then
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
+
+  if Result then
+    with FImageProperties do
     begin
-      // first chunk must be an IHDR chunk
-      FCurrentCRC := LoadAndSwapHeader;
-      if IsChunk(IHDR) then
+      Run := Memory;
+      Move(Run^, Magic, 8);
+      Inc(Run, 8);
+
+      if StrLComp(Magic, PNGMagic, Length(Magic)) = 0 then
       begin
-        Include(Options, ioBigEndian);
-        // read IHDR chunk
-        ReadDataAndCheckCRC;
-        Move(FRawBuffer^, Description, SizeOf(Description));
-        SwapLong(@Description, 2);
+        // first chunk must be an IHDR chunk
+        FCurrentCRC := LoadAndSwapHeader(Run);
+        if IsChunk(IHDR) then
+        begin
+          Include(Options, ioBigEndian);
+          // read IHDR chunk
+          ReadDataAndCheckCRC(Run);
+          Move(FRawBuffer^, Description, SizeOf(Description));
+          SwapLong(@Description, 2);
 
-        if (Description.Width = 0) or (Description.Height = 0) then Exit;
+          if (Description.Width = 0) or (Description.Height = 0) then
+            Exit;
 
-        Width := Description.Width;
-        Height := Description.Height;
+          Width := Description.Width;
+          Height := Description.Height;
 
-        if Description.Compression = 0 then Compression := ctLZ77
-                                       else Compression := ctUnknown;
+          if Description.Compression = 0 then
+            Compression := ctLZ77
+          else
+            Compression := ctUnknown;
 
-        BitsPerSample := Description.BitDepth;
-        SamplesPerPixel := 1;
-        case Description.ColorType of
-          0:
-            ColorScheme := csG;
-          2:
-            begin
-              ColorScheme := csRGB;
-              SamplesPerPixel := 3;
-            end;
-          3:
-            ColorScheme := csIndexed;
-          4:
-            ColorScheme := csGA;
-          6:
-            begin
-              ColorScheme := csRGBA;
-              SamplesPerPixel := 4;
-            end;
-        else
-          ColorScheme := csUnknown;
-        end;
-
-        BitsPerPixel := SamplesPerPixel * BitsPerSample;
-        FilterMode := Description.Filter;
-        Interlaced := Description.Interlaced <> 0;
-        HasAlpha := ColorScheme in [csGA, csRGBA, csBGRA];
-
-        // find gamma 
-        repeat
-          FCurrentCRC := LoadAndSwapHeader;
-          if IsChunk(gAMA) then
-          begin
-            ReadDataAndCheckCRC;
-            // the file gamme given here is a scaled cardinal (e.g. 0.45 is expressed as 45000)
-            FileGamma := SwapLong(PCardinal(FRawBuffer)^) / 100000;
-            Break;
+          BitsPerSample := Description.BitDepth;
+          SamplesPerPixel := 1;
+          case Description.ColorType of
+            0:
+              ColorScheme := csG;
+            2:
+              begin
+                ColorScheme := csRGB;
+                SamplesPerPixel := 3;
+              end;
+            3:
+              ColorScheme := csIndexed;
+            4:
+              ColorScheme := csGA;
+            6:
+              begin
+                ColorScheme := csRGBA;
+                SamplesPerPixel := 4;
+              end;
+          else
+            ColorScheme := csUnknown;
           end;
 
-          Seek(FHeader.Length + 4, soFromCurrent);
-          if IsChunk(IEND) then Break;
-        until False;
+          BitsPerPixel := SamplesPerPixel * BitsPerSample;
+          FilterMode := Description.Filter;
+          Interlaced := Description.Interlaced <> 0;
+          HasAlpha := ColorScheme in [csGA, csRGBA, csBGRA];
 
-        Result := True;
-      end;
+          // Find gamma and comment.
+          repeat
+            FCurrentCRC := LoadAndSwapHeader(Run);
+            if IsChunk(gAMA) then
+            begin
+              ReadDataAndCheckCRC(Run);
+              // The file gamma given here is a scaled cardinal (e.g. 0.45 is expressed as 45000).
+              FileGamma := SwapLong(PCardinal(FRawBuffer)^) / 100000;
+              Continue;
+            end
+            else
+              if IsChunk(tEXt) then
+              begin
+                LoadText(Run);
+                Continue;
+              end;
+
+            Inc(Run, FHeader.Length + 4);
+            if IsChunk(IEND) then
+              Break;
+          until False;
+
+          Freemem(FRawBuffer);
+          Result := True;
+        end;
+      end
+      else
+        Result := False;
     end;
-  end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPNGGraphic.LoadBackgroundColor(const Description);
+procedure TPNGGraphic.LoadBackgroundColor(var Source: PByte; const Description);
 
 // loads the data from the current chunk (must be a bKGD chunk) and fills the bitmpap with that color
 
@@ -7163,7 +8899,7 @@ var
   R, G, B: Byte;
 
 begin
-  ReadDataAndCheckCRC;
+  ReadDataAndCheckCRC(Source);
   with TIHDRChunk(Description) do
   begin
     case ColorType of
@@ -7203,7 +8939,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPNGGraphic.LoadIDAT(const Description);
+procedure TPNGGraphic.LoadIDAT(var Source: PByte; const Description);
 
 // loads image data from the current position of the stream
 
@@ -7218,7 +8954,7 @@ const
 var
   Row: Integer;
   TargetBPP: Integer;
-  RowBuffer: array[Boolean] of PAnsiChar; // I use PAnsiChar here instead of simple pointer to ease pointer math below
+  RowBuffer: array[Boolean] of PChar; // I use PChar here instead of simple pointer to ease pointer math below
   EvenRow: Boolean; // distincts between the two rows we need to hold for filtering
   Pass: Integer;
   BytesPerRow,
@@ -7234,10 +8970,13 @@ begin
     if PixelFormat = pfDevice then
       FSourceBPP := SetupColorDepth(TIHDRChunk(Description).ColorType, TIHDRChunk(Description).BitDepth);
 
-    if TIHDRChunk(Description).BitDepth = 16 then TargetBPP := FSourceBPP div 2
-                                             else TargetBPP := FSourceBPP;
+    if TIHDRChunk(Description).BitDepth = 16 then
+      TargetBPP := FSourceBPP div 2
+    else
+      TargetBPP := FSourceBPP;
 
-    if FPalette <> 0 then Palette := FPalette;
+    if FPalette <> 0 then
+      Palette := FPalette;
     // after setting the pixel format we can set the dimensions too without
     // initiating color conversions
     Width := TIHDRChunk(Description).Width;
@@ -7274,14 +9013,15 @@ begin
       for Pass := 0 to 6 do
       begin
         // prepare next interlace run
-        if Width <= ColumnStart[Pass] then Continue;
+        if Width <= ColumnStart[Pass] then
+          Continue;
         InterlaceWidth := (Width + ColumnIncrement[Pass] - 1 - ColumnStart[Pass]) div ColumnIncrement[Pass];
         InterlaceRowBytes := TargetBPP * ((InterlaceWidth * TIHDRChunk(Description).BitDepth + 7) div 8) + 1;
 
         Row := RowStart[Pass];
         while Row < Height do
         begin
-          ReadRow(RowBuffer[EvenRow], InterlaceRowBytes);
+          ReadRow(Source, RowBuffer[EvenRow], InterlaceRowBytes);
           ApplyFilter(Byte(RowBuffer[EvenRow]^),
                       Pointer(RowBuffer[EvenRow] + 1),
                       Pointer(RowBuffer[not EvenRow] + 1),
@@ -7307,7 +9047,7 @@ begin
     begin
       for Row := 0 to Height - 1 do
       begin
-        ReadRow(RowBuffer[EvenRow], BytesPerRow);
+        ReadRow(Source, RowBuffer[EvenRow], BytesPerRow);
         ApplyFilter(Byte(RowBuffer[EvenRow]^),
                     Pointer(RowBuffer[EvenRow] + 1),
                     Pointer(RowBuffer[not EvenRow] + 1),
@@ -7326,28 +9066,54 @@ begin
     // in order to improve safe failness we read all remaining but not read IDAT chunks here
     while IsChunk(IDAT) do
     begin
-      ReadDataAndCheckCRC;   
-      FCurrentCRC := LoadAndSwapHeader;
+      ReadDataAndCheckCRC(Source);;
+      FCurrentCRC := LoadAndSwapHeader(Source);
     end;
   finally
-    if Assigned(RowBuffer[True]) then FreeMem(RowBuffer[True]);
-    if Assigned(RowBuffer[False]) then FreeMem(RowBuffer[False]);
+    if Assigned(RowBuffer[True]) then
+      FreeMem(RowBuffer[True]);
+    if Assigned(RowBuffer[False]) then
+      FreeMem(RowBuffer[False]);
   end;
   // ending progress event is issued in main method
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPNGGraphic.LoadTransparency(const Description);
+procedure TPNGGraphic.LoadText(var Source: PByte);
+
+var
+  Keyword: string;
+  Offset: Cardinal;
+  Contents: array of Char;
+  
+begin
+  ReadDataAndCheckCRC(Source);
+  with FImageProperties do
+  begin
+    Keyword := PChar(FRawBuffer); // Keyword is zero terminated in file
+    if Keyword = 'Comment' then   // Only text chunks with the 'Comment' keyword are loaded
+    begin
+      Offset := Length(Keyword) + 1;
+      SetLength(Contents, FHeader.Length - Offset + 1);
+      StrLCopy(PChar(Contents), PChar(FRawBuffer) + Offset, FHeader.Length - Offset);
+      Comment := Comment + PChar(Contents);
+    end;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TPNGGraphic.LoadTransparency(var Source: PByte; const Description);
 
 // reads the data of the current transparency chunk
 
 var
   Run: PWord;
   R, G, B: Byte;
-  
+
 begin
-  ReadDataAndCheckCRC;
+  ReadDataAndCheckCRC(Source);
   with TIHDRChunk(Description) do
   begin
     case ColorType of
@@ -7381,21 +9147,23 @@ begin
           FTransparentColor := RGB(R, G, B);
         end;
       4, 6:
-        // formats with full alpha channel, they shouldn't have a transparent color 
+        // Formats with full alpha channel, they shouldn't have a transparent color.
+        ; 
     else
       // Indexed color scheme (3), with at most 256 alpha values (for each palette entry).
-      SetLength(FTransparency, 255);
+      SetLength(FTransparency, 256);
       // read the values (at most 256)...
-      Move(FRawBuffer^,  FTransparency[0], Max(FHeader.Length, 256));
+      Move(FRawBuffer^,  FTransparency[0], Min(FHeader.Length, 256));
       // ...and set default values (255, fully opaque) for non-supplied values
-      if FHeader.Length < 256 then FillChar(FTransparency[FHeader.Length], 256 - FHeader.Length, $FF);
+      if FHeader.Length < 256 then
+        FillChar(FTransparency[FHeader.Length], 256 - FHeader.Length, $FF);
     end;
   end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPNGGraphic.ReadDataAndCheckCRC;
+procedure TPNGGraphic.ReadDataAndCheckCRC(var Source: PByte);
 
 // Allocates memory in FRawBuffer and reads the next Header.Length bytes from Stream.
 // Furthermore, the CRC value following the data is read as well and compared with
@@ -7406,18 +9174,22 @@ var
 
 begin
   ReallocMem(FRawBuffer, FHeader.Length);
-  FStream.ReadBuffer(FRawBuffer^, FHeader.Length);
-  FStream.ReadBuffer(FileCRC, SizeOf(FileCRC));
+  Move(Source^, FRawBuffer^, FHeader.Length);
+  Inc(Source, FHeader.Length);
+
+  Move(Source^, FileCRC, SizeOf(FileCRC));
+  Inc(Source, SizeOf(FileCRC));
   FileCRC := SwapLong(FileCRC);
   // The type field of a chunk is included in the CRC, this serves as initial value
   // for the calculation here and is determined in LoadAndSwapHeader.
   FCurrentCRC := CRC32(FCurrentCRC, FRawBuffer, FHeader.Length);
-  if FCurrentCRC <> FileCRC then GraphicExError(gesInvalidCRC, ['PNG']);
+  if FCurrentCRC <> FileCRC then
+    GraphicExError(gesInvalidCRC, ['PNG']);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPNGGraphic.ReadRow(RowBuffer: Pointer; BytesPerRow: Integer);
+procedure TPNGGraphic.ReadRow(var Source: PByte; RowBuffer: Pointer; BytesPerRow: Integer);
 
 // reads and decodes one scanline
 
@@ -7430,38 +9202,38 @@ begin
   PendingOutput := BytesPerRow;
   repeat
     // read pending chunk data if available input has dropped to zero
-    if FDecoder.AvailableInput = 0 then
+    if TLZ77Decoder(Decoder).AvailableInput = 0 then
     begin
       FIDATSize := 0;
       // read all following chunks until enough data is available or there is no further IDAT chunk
       while FIDATSize = 0 do
       begin
         // finish if the current chunk is not an IDAT chunk
-        if not IsChunk(IDAT) then Exit;
+        if not IsChunk(IDAT) then
+          Exit;
 
-        ReadDataAndCheckCRC;
+        ReadDataAndCheckCRC(Source);
         FCurrentSource := FRawBuffer;
         FIDATSize := FHeader.Length;
 
         // prepare next chunk (plus CRC)
-        FCurrentCRC := LoadAndSwapHeader;
+        FCurrentCRC := LoadAndSwapHeader(Source);
       end;
     end;
 
     // this decode call will advance Source and Target accordingly
-    FDecoder.Decode(FCurrentSource,
-                    LocalBuffer,
-                    FIDATSize - (Integer(FCurrentSource) - Integer(FRawBuffer)),
-                    PendingOutput);
+    Decoder.Decode(FCurrentSource, LocalBuffer, FIDATSize - (Integer(FCurrentSource) - Integer(FRawBuffer)),
+      PendingOutput);
 
-    if FDecoder.ZLibResult = Z_STREAM_END then
+    if TLZ77Decoder(Decoder).ZLibResult = Z_STREAM_END then
     begin
-       if (FDecoder.AvailableOutput <> 0) or
-          (FDecoder.AvailableInput <> 0) then GraphicExError(gesExtraCompressedData, ['PNG']);
+       if (TLZ77Decoder(Decoder).AvailableOutput <> 0) or (TLZ77Decoder(Decoder).AvailableInput <> 0) then
+         GraphicExError(gesExtraCompressedData, ['PNG']);
       Break;
     end;
 
-    if FDecoder.ZLibResult <> Z_OK then GraphicExError(gesCompression, ['PNG']);
+    if TLZ77Decoder(Decoder).ZLibResult <> Z_OK then
+      GraphicExError(gesCompression, ['PNG']);
 
     PendingOutput := BytesPerRow - (Integer(LocalBuffer) - Integer(RowBuffer));
   until PendingOutput = 0;
@@ -7501,7 +9273,8 @@ begin
         FPalette := CreateGrayscalePalette(False);
         Result := (BitDepth + 7) div 8;
       end
-      else GraphicExError(gesInvalidColorFormat, ['PNG']);
+      else
+        GraphicExError(gesInvalidColorFormat, ['PNG']);
     2: // RGB
       if BitDepth in [8, 16] then
       with ColorManager do
@@ -7515,7 +9288,8 @@ begin
         PixelFormat := pf24Bit;
         Result := BitDepth * 3 div 8;
       end
-      else GraphicExError(gesInvalidColorFormat, ['PNG']);
+      else
+        GraphicExError(gesInvalidColorFormat, ['PNG']);
     3: // palette
       if BitDepth in [1, 2, 4, 8] then
       with ColorManager do
@@ -7526,13 +9300,16 @@ begin
         TargetSamplesPerPixel := 1;
         SourceBitsPerSample := BitDepth;
         // 2 bits values are converted to 4 bits values because DIBs don't know the former variant
-        if BitDepth = 2 then TargetBitsPerSample := 4
-                        else TargetBitsPerSample := BitDepth;
+        if BitDepth = 2 then
+          TargetBitsPerSample := 4
+        else
+          TargetBitsPerSample := BitDepth;
 
         PixelFormat := TargetPixelFormat;
         Result := 1;
       end
-      else GraphicExError(gesInvalidColorFormat, ['PNG']);
+      else
+        GraphicExError(gesInvalidColorFormat, ['PNG']);
     4: // gray scale with alpha,
        // For the moment this format is handled without alpha, but might later be converted
        // to RGBA with gray pixels or use a totally different approach.
@@ -7549,7 +9326,8 @@ begin
         FPalette := CreateGrayScalePalette(False);
         Result := 2 * BitDepth div 8;
       end
-      else GraphicExError(gesInvalidColorFormat, ['PNG']);
+      else
+        GraphicExError(gesInvalidColorFormat, ['PNG']);
     6: // RGB with alpha (8, 16)
       if BitDepth in [8, 16] then
       with ColorManager do
@@ -7564,13 +9342,200 @@ begin
 
         Result := BitDepth * 4 div 8;
       end
-      else GraphicExError(gesInvalidColorFormat, ['PNG']);
+      else
+        GraphicExError(gesInvalidColorFormat, ['PNG']);
   else
     GraphicExError(gesInvalidColorFormat, ['PNG']);
   end;
 end;
 
-{$endif} // PortableNetworkGraphic
+{$endif PortableNetworkGraphic}
+
+{$ifdef ArtsAndLettersGraphic}
+
+//----------------- TGEDGraphic ----------------------------------------------------------------------------------------
+
+const
+  GEDMagic = 'A&L-' + #0 + 'ARTS & LETTERS';
+  GEDEditorVersion40c = 133;
+  GEDVersionHeader = $1F;
+  GEDDibThumbnail = $51;
+  GEDFileDescription = $5F;
+
+class function TGEDGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
+
+var
+  Run: PByte;
+
+begin
+  Result := (Size > Length(GEDMagic)) and (StrLIComp(PChar(Memory), PChar(GEDMagic), Length(GEDMagic)) = 0);
+  if Result then
+  begin
+    Run := Memory;
+    // Seek to the start of the tags and check the version number.
+    Inc(Run, GEDVersionHeader);
+
+    Result := Run^ >= GEDEditorVersion40c;
+    if Result then
+    begin
+      Inc(Run);
+      // The file description is always first.
+      Result := Run^ = GEDFileDescription;
+      if Result then
+      begin
+        // Skip the description tag
+        Inc(Run, Run^);
+
+        // Here we should now find a thumbnail tag.
+        Result := Run^ = GEDDibThumbnail;
+      end;
+    end;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TGEDGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
+
+var
+  WholeThumbnail: Integer;
+  BI: PBitmapInfo;
+  TableSize: Integer;
+  Bits: Pointer;
+  Tag: Word;
+  Bytes: Byte;
+  Run: PByte;
+
+begin
+  inherited;
+
+  if ReadImageProperties(Memory, Size, ImageIndex) then
+  begin
+    Run := Memory;
+    
+    // Skip Arts & Letters ID string.
+    Inc(Run, Length(GEDMagic));
+    // Seek to the start of the tags.
+    Inc(Run, GEDVersionHeader);
+
+    // Get the version number.
+    Move(Run^, Tag, SizeOf(Tag));
+    Inc(Run, SizeOf(Tag));
+
+    // The file description is always first.
+    Move(Run^, Tag, SizeOf(Tag));
+    Inc(Run, SizeOf(Tag));
+
+    // Skip the description tag.
+    Bytes := Run^;
+    Inc(Run, Bytes + 1);
+
+    // Here we should now find a thumbnail tag.
+    Move(Run^, Tag, SizeOf(Tag));
+    Inc(Run, SizeOf(Tag));
+
+    Move(Run^, WholeThumbnail, SizeOf(WholeThumbnail));
+    Inc(Run, SizeOf(WholeThumbnail));
+
+    // Read basic data of the image.
+    BI := Pointer(Run);
+    // Allocate bitmap now...
+    Width := BI.bmiHeader.biWidth;
+    Height := BI.bmiHeader.biHeight;
+
+    // Calculate palette size. The image data directly follows the bitmap info.
+    TableSize := (1 shl BI.bmiHeader.biBitCount) * SizeOf(TRGBQuad);
+    Bits := PChar(BI) + SizeOf(TBitmapInfoHeader) + TableSize;
+    // ... and place them into our bitmap.
+    SetDIBitsToDevice(Canvas.Handle, 0, 0, BI.bmiHeader.biWidth, BI.bmiHeader.biHeight, 0, 0, 0,
+      BI.bmiHeader.biHeight, Bits, BI^, DIB_RGB_COLORS);
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TGEDGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
+
+var
+  Tag: Word;
+  ThumbSize: Cardinal;
+  Bytes: Byte;
+  BI: PBitmapInfoHeader;
+  Run: PByte;
+
+begin
+  Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
+
+  if Result then
+    with FImageProperties do
+    begin
+      Run := Memory;
+    
+      // Skip Arts & Letters ID string.
+      Inc(Run, Length(GEDMagic));
+      // Seek to the start of the tags.
+      Inc(Run, GEDVersionHeader);
+
+      // Get the version number.
+      Move(Run^, Tag, SizeOf(Tag));
+      Inc(Run, SizeOf(Tag));
+      if Tag >= GEDEditorVersion40c then
+      begin
+        // The file description is always first.
+        Move(Run^, Tag, SizeOf(Tag));
+        Inc(Run, SizeOf(Tag));
+        if Tag = GEDFileDescription then
+        begin
+          // Skip the description tag.
+          Bytes := Run^;
+          Inc(Run, Bytes + 1);
+
+          // Here we should now find a thumbnail tag.
+          Move(Run^, Tag, SizeOf(Tag));
+          Inc(Run, SizeOf(Tag));
+          if Tag = GEDDibThumbnail then
+          begin
+            // skip thumbnail size
+            Move(Run^, ThumbSize, SizeOf(ThumbSize));
+            Inc(Run, SizeOf(ThumbSize));
+
+            BI := Pointer(Run);
+
+            Options := [];
+            Width := BI.biWidth;
+            Height := BI.biHeight;
+            BitsPerPixel := BI.biBitCount;
+            if BitsPerPixel > 8 then
+            begin
+              BitsPerSample := BitsPerPixel div 8;
+              SamplesPerPixel := BitsPerPixel mod 8;
+              if SamplesPerPixel = 3 then
+                ColorScheme := csBGR
+              else
+                ColorScheme := csBGRA;
+            end
+            else
+            begin
+              BitsPerSample := BitsPerPixel;
+              SamplesPerPixel := 1;
+              ColorScheme := csIndexed;
+            end;
+
+            if BI.biCompression in [BI_RLE8, BI_RLE4] then
+              Compression := ctRLE
+            else
+              Compression := ctNone;
+
+            Result := True;
+          end;
+        end;
+      end
+      else
+        Result := False;
+    end;
+end;
+
+{$endif ArtsAndLettersGraphic}
 
 //----------------- TFileFormatList ------------------------------------------------------------------------------------
 
@@ -7578,14 +9543,14 @@ type
   PClassEntry = ^TClassEntry;
   TClassEntry = record
     GraphicClass: TGraphicClass;
-    Description: String;
+    Description: string;
     Count: Cardinal;
   end;
 
   PExtensionEntry = ^TExtensionEntry;
   TExtensionEntry = record
     Extension,
-    Description: String;
+    Description: string;
     FormatTypes: TFormatTypes;
     ClassReference: PClassEntry;
   end;
@@ -7630,7 +9595,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TFileFormatList.FindExtension(const Extension: String): Integer;
+function TFileFormatList.FindExtension(const Extension: string): Integer;
 
 // Returns the entry which belongs to the given extension string or -1 if there's nothing in the list for this ext.
 
@@ -7669,7 +9634,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TFileFormatList.GetDescription(Graphic: TGraphicClass): String;
+function TFileFormatList.GetDescription(Graphic: TGraphicClass): string;
 
 // returns the registered description string for the given class
 
@@ -7679,7 +9644,8 @@ var
 begin
   Result := '';
   I := FindGraphicClass(Graphic);
-  if I > -1 then Result := PClassEntry(FClassList[I]).Description;
+  if I > -1 then
+    Result := PClassEntry(FClassList[I]).Description;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -7704,7 +9670,7 @@ end;
 //----------------------------------------------------------------------------------------------------------------------
 
 function TFileFormatList.GetGraphicFilter(Formats: TFormatTypes; SortType: TFilterSortType;
-  Options: TFilterOptions; GraphicClass: TGraphicClass): String;
+  Options: TFilterOptions; GraphicClass: TGraphicClass): string;
 
 // Creates a string which can directly be used in an open or save dialog's filter property.
 // Formats may be used to limit the number of formats to return.
@@ -7722,11 +9688,12 @@ var
   ExtEntry: PExtensionEntry;
   ClassEntry: PClassEntry;
   S,
-  DescriptionFormat: String;
+  DescriptionFormat: string;
 
 begin
   Result := '';
-  if Formats = [] then Formats := [ftAnimation..ftVector];
+  if Formats = [] then
+    Formats := [ftAnimation..ftVector];
   DL := TStringList.Create;
   DL.Sorted := SortType in [fstDescription, fstBoth];
   EL := TStringList.Create;
@@ -7738,7 +9705,8 @@ begin
 
   // using an adjusted format string makes the code below easier for different options
   DescriptionFormat := '%s';
-  if foIncludeExtension in Options then DescriptionFormat := DescriptionFormat + '%s';
+  if foIncludeExtension in Options then
+    DescriptionFormat := DescriptionFormat + '%s';
 
   if foCompact in Options then
   begin
@@ -7758,13 +9726,16 @@ begin
             EL.Add(ExtEntry.Extension);
         end;
 
-        // build the extension list and an description entry
-        if foIncludeAll in Options then All.AddStrings(EL);
+        // Build the extension list and a description entry.
+        if foIncludeAll in Options then
+          All.AddStrings(EL);
         S := '';
-        for J := 0 to EL.Count - 1 do S := S + '*.' + EL[J] + '; ';
+        for J := 0 to EL.Count - 1 do
+          S := S + '*.' + EL[J] + '; ';
         // remove last semicolon and space
         SetLength(S, Length(S) - 2);
-        if S <> '' then DL.AddObject(ClassEntry.Description, Pointer(StrNew(PChar(S))));
+        if S <> '' then
+          DL.AddObject(ClassEntry.Description, Pointer(StrNew(PChar(S))));
       end;
     end;
   end
@@ -7778,20 +9749,23 @@ begin
          ((ExtEntry.FormatTypes * Formats) <> []) then
       begin
         S := ExtEntry.Description;
-        if S = '' then S := ExtEntry.ClassReference.Description;
+        if S = '' then
+          S := ExtEntry.ClassReference.Description;
         DL.AddObject(S, Pointer(StrNew(PChar('*.' + ExtEntry.Extension))));
-        if foIncludeAll in Options then All.Add(ExtEntry.Extension);
+        if foIncludeAll in Options then
+          All.Add(ExtEntry.Extension);
       end;
     end;
   end;
 
-  // build final filter string out of the collected sub strings
+  // Build final filter string out of the collected sub strings.
   if (foIncludeAll in Options) and (All.Count > 0) then
   begin
-    // first include the general entry if wanted (this entry is never taken into sort order
+    // First include the general entry if wanted (this entry is never taken into sort order.
     S := '';
-    for J := 0 to All.Count - 1 do S := S + '*.' + All[J] + '; ';
-    SetLength(S, Length(S) - 2);
+    for J := 0 to All.Count - 1 do
+      S := S + '*.' + All[J] + ';';
+    SetLength(S, Length(S) - 1);
     Result := gesAllImages + '|' + S + '|';
   end;
 
@@ -7802,7 +9776,8 @@ begin
     Result := Result + Format(DescriptionFormat, [DL[I], ' (' + S + ')']) + '|' + S + '|';
   end;
   // remove last separator in string
-  if Length(Result) > 0 then SetLength(Result, Length(Result) - 1);
+  if Length(Result) > 0 then
+    SetLength(Result, Length(Result) - 1);
   All.Free;
   EL.Free;
   DL.Free;
@@ -7810,7 +9785,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TFileFormatList.GraphicFromExtension(S: String): TGraphicClass;
+function TFileFormatList.GraphicFromExtension(S: string): TGraphicClass;
 
 // Returns the class which belongs to the extension given in S or nil if there's non registered.
 // S may contain a regular file name (also UNC is allowed), a string returned from ExtractFileExt (with period) or just
@@ -7821,38 +9796,39 @@ var
 
 begin
   Result := nil;
-  Index := Pos('.', S);
-  if Index > 0 then Delete(S, 1, Index);
-  Index := FindExtension(S);
-  if Index > -1 then Result := PExtensionEntry(FExtensionList[Index]).ClassReference.GraphicClass;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-function TFileFormatList.GraphicFromContent(const FileName: String): TGraphicExGraphicClass;
-
-// description see other overloaded version
-
-var
-  Stream: TFileStream;
-
-begin
-  Stream := TFileStream.Create(FileName, fmOpenRead or fmShareDenyWrite);
-  try
-    Result := GraphicFromContent(Stream);
-  finally
-    Stream.Free;
+  if Pos('.', S) > 0 then
+    S := ExtractFileExt(S);
+  if S <> '' then
+  begin
+    Index := Pos('.', S);
+    if Index > 0 then
+      Delete(S, 1, Index);
+    Index := FindExtension(S);
+    if Index > -1 then
+      Result := PExtensionEntry(FExtensionList[Index]).ClassReference.GraphicClass;
   end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TFileFormatList.GraphicFromContent(Stream: TStream): TGraphicExGraphicClass;
+function TFileFormatList.GraphicFromContent(const FileName: string): TGraphicExGraphicClass;
 
-// Determines the type of image in the stream. This test is only available for TGraphicExGraphic
-// classes (this excludes TBitmap, TIcon, TMetaFile etc.).
-// Note: Not all image types can be found using this code because they are not
-//       uniquely identifyable (e.g. Dr. Halo *.cut images).
+// Tries to determine the type of the image in the file. 
+
+begin
+  with TFileMapping.Create(FileName, fmmReadOnly) do
+  try
+    Result := GraphicFromContent(Memory, Size);
+  finally
+    Free;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TFileFormatList.GraphicFromContent(const Memory: Pointer; Size: Int64): TGraphicExGraphicClass;
+
+// Tries to determine the type of the image in the file. 
 
 var
   I: Integer;
@@ -7865,7 +9841,7 @@ begin
     if PClassEntry(FClassList[I]).GraphicClass.InheritsFrom(TGraphicExGraphic) then
     begin
       T := TGraphicExGraphicClass(PClassEntry(FClassList[I]).GraphicClass);
-      if T.CanLoad(Stream) then
+      if T.CanLoad(Memory, Size) then
       begin
         Result := T;
         Break;
@@ -7876,14 +9852,58 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TFileFormatList.RegisterFileFormat(const Extension, Common, Individual: String; FormatTypes: TFormatTypes;
-  Replace, RegisterDefault: Boolean; GraphicClass: TGraphicClass);
+function TFileFormatList.GraphicFromContent(Stream: TStream): TGraphicExGraphicClass;
+
+// Tries to determine the type of the image in the file. 
+
+var
+  LastPos: Int64;
+
+begin
+  LastPos := Stream.Position;
+
+  if Stream is TCustomMemoryStream then
+  begin
+    // Simple case: memory streams already are in memory.
+    with Stream as TCustomMemoryStream do
+      Result := GraphicFromContent(Memory, Size);
+  end
+  else
+    if (Stream is THandleStream) and (GetFileType(THandleStream(Stream).Handle) = FILE_TYPE_DISK) then
+    begin
+      // File streams can be mapped to access their content directly.
+      with TFileMapping.Create(Stream as THandleStream) do
+      try
+        Result := GraphicFromContent(Memory, Size);
+      finally
+        Free;
+      end;
+    end
+    else
+    begin
+      // Any other stream is converted into a memory stream first.
+      with TMemoryStream.Create do
+      try
+        CopyFrom(Stream, 0);
+        Position := 0;
+        Result := GraphicFromContent(Memory, Size);
+      finally
+        Free;
+      end;
+    end;
+
+  Stream.Position := LastPos;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TFileFormatList.RegisterFileFormat(const Extension, Common, Individual: string; FormatTypes: TFormatTypes;
+  Replace: Boolean; GraphicClass: TGraphicClass);
 
 // Registers the given graphic class with the passed extension string. If there's already a class registered with this
 // extension then either the registration of the older entry is replaced by the new one (Replace = True) or an exception
 // is raised.
-// This method takes also care to register the new extension with TPicture to make the default handling work too
-// if RegisterDefault is True.
+// This method takes also care to register the new extension with TPicture to make the default handling work too.
 // Further parameters are:
 // - Extension: the new extension to be registered (not necessarily with only 3 characters, but without a period).
 // - Common: a description string for all extensions registered with the same class used when several extensions are
@@ -7916,7 +9936,8 @@ var
     else
       ClassEntry := FClassList[ClassIndex];
 
-    if Common <> '' then ClassEntry.Description := Common;
+    if Common <> '' then
+      ClassEntry.Description := Common;
     Inc(ClassEntry.Count);
     ExtEntry.ClassReference := ClassEntry;
   end;
@@ -7924,7 +9945,7 @@ var
   //--------------- end local functions ---------------------------------------
 
 var
-  S: String;
+  S: string;
 
 begin
   if Extension <> '' then
@@ -7953,7 +9974,8 @@ begin
           UpdateClassEntry;
           Dec(OldReference.Count);
           // remove the graphic class entry if no longer used
-          if OldReference.Count = 0 then FClassList.Remove(OldReference);
+          if OldReference.Count = 0 then
+            FClassList.Remove(OldReference);
         end;
           // otherwise do nothing
       end
@@ -7962,14 +9984,15 @@ begin
 
     // finally make TPicture work
     S := Individual;
-    if S = '' then S := ClassEntry.Description;
+    if S = '' then
+      S := ClassEntry.Description;
     TPicture.RegisterFileFormat(Extension, S, GraphicClass);
   end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TFileFormatList.UnregisterFileFormat(const Extension: String; GraphicClass: TGraphicClass);
+procedure TFileFormatList.UnregisterFileFormat(const Extension: string; GraphicClass: TGraphicClass);
 
 // Removes the entry for the given extension from the internal list.
 // If Extension is '' then all associations for the given GraphicClass are removed otherwise the class is ignored and
@@ -8017,7 +10040,8 @@ begin
           Dispose(PExtensionEntry(FExtensionList[ExtIndex]));
           FExtensionList.Delete(ExtIndex);
           // no need to run through further entries if all references are done
-          if ClassEntry.Count = 0 then Break;
+          if ClassEntry.Count = 0 then
+            Break;
         end;
       end;
       Dispose(ClassEntry);
@@ -8033,111 +10057,125 @@ initialization
   FileFormatList := TFileFormatList.Create;
   with FileFormatList do
   begin
-    // internally register Delphi's "built in" formats, these will not be unregistered on exit and
-    // also not registered with TPicture (because they are already or will soon be)
-    RegisterFileFormat('bmp', gesBitmaps, '', [ftRaster], False, False, TBitmap);
-    RegisterFileFormat('ico', gesIcons, '', [ftRaster], False, False, TIcon);
-    RegisterFileFormat('wmf', gesMetaFiles, '', [ftVector], False, False, TMetafile);
-    RegisterFileFormat('emf', gesMetaFiles, gesEnhancedMetaFiles, [ftVector], False, False, TMetafile);
-    RegisterFileFormat('jfif', gesJPGImages, gesJFIFImages, [ftRaster], False, False, TJPEGImage);
-    RegisterFileFormat('jpg', '', gesJPGImages, [ftRaster], False, False, TJPEGImage);
-    RegisterFileFormat('jpe', '', gesJPEImages, [ftRaster], False, False, TJPEGImage);
-    RegisterFileFormat('jpeg', '', gesJPEGImages, [ftRaster], False, False, TJPEGImage);
+    // Since we are going to add these four image types below, we better unregister them first
+    // in order to avoid double entries.
+    // TODO: enable jpeg image
+    //TPicture.UnregisterGraphicClass(TJPEGImage);
+    TPicture.UnregisterGraphicClass(TBitmap);
+    TPicture.UnregisterGraphicClass(TIcon);
+    TPicture.UnregisterGraphicClass(TMetafile);
+
+    RegisterFileFormat('bmp', gesBitmaps, '', [ftRaster], False, TBitmap);
+    RegisterFileFormat('ico', gesIcons, '', [ftRaster], False, TIcon);
+    RegisterFileFormat('wmf', gesMetaFiles, '', [ftVector], False, TMetafile);
+    RegisterFileFormat('emf', gesMetaFiles, gesEnhancedMetaFiles, [ftVector], False, TMetafile);
+    // TODO: enable jpeg image
+    //RegisterFileFormat('jfif', gesJPGImages, gesJFIFImages, [ftRaster], False, TJPEGImage);
+    //RegisterFileFormat('jpg', '', gesJPGImages, [ftRaster], False, TJPEGImage);
+    //RegisterFileFormat('jpe', '', gesJPEImages, [ftRaster], False, TJPEGImage);
+    //RegisterFileFormat('jpeg', '', gesJPEGImages, [ftRaster], False, TJPEGImage);
+
+    // Paintshop pro *.msk files are just grayscale bitmaps.
+    RegisterFileFormat('msk', '', '', [ftRaster], False, TBitmap);
 
     // register our own formats
-    RegisterFileFormat('rle', gesBitmaps, gesRLEBitmaps, [ftRaster], False, True, TBitmap);
-    RegisterFileFormat('dib', '', gesDIBs, [ftRaster], False, True, TBitmap);
+    RegisterFileFormat('rle', gesBitmaps, gesRLEBitmaps, [ftRaster], False, TBitmap);
+    RegisterFileFormat('dib', '', gesDIBs, [ftRaster], False, TBitmap);
 
     {$ifdef TargaGraphic}
-    RegisterFileFormat('win', gesTruevision, '', [ftRaster], False, True, TTargaGraphic);
-    RegisterFileFormat('vst', '', '', [ftRaster], False, True, TTargaGraphic);
-    RegisterFileFormat('vda', '', '', [ftRaster], False, True, TTargaGraphic);
-    RegisterFileFormat('tga', '', '', [ftRaster], False, True, TTargaGraphic);
-    RegisterFileFormat('icb', '', '', [ftRaster], False, True, TTargaGraphic);
-    {$endif}
+      RegisterFileFormat('tga', gesTruevision, '', [ftRaster], False, TTargaGraphic);
+      RegisterFileFormat('vst', '', '', [ftRaster], False, TTargaGraphic);
+      RegisterFileFormat('vda', '', '', [ftRaster], False, TTargaGraphic);
+      RegisterFileFormat('win', '', '', [ftRaster], False, TTargaGraphic);
+      RegisterFileFormat('icb', '', '', [ftRaster], False, TTargaGraphic);
+    {$endif TargaGraphic}
 
     {$ifdef TIFFGraphic}
-    RegisterFileFormat('tiff', gesTIFF, gesMacTIFF, [ftRaster, ftMultiImage], False,
-      True, TTIFFGraphic);
-    RegisterFileFormat('tif', '', gesPCTIF, [ftRaster, ftMultiImage], False, True, TTIFFGraphic);
-    RegisterFileFormat('fax', '', gesGFIFax, [ftRaster, ftMultiImage], False, True, TTIFFGraphic);
+      RegisterFileFormat('tif', gesTIFF, gesPCTIF, [ftRaster, ftMultiImage], False, TTIFFGraphic);
+      RegisterFileFormat('tiff', '', gesMacTIFF, [ftRaster, ftMultiImage], False, TTIFFGraphic);
+      RegisterFileFormat('fax', '', gesGFIFax, [ftRaster, ftMultiImage], False, TTIFFGraphic);
       {$ifdef EPSGraphic}
-      RegisterFileFormat('eps', gesEPS, '', [ftRaster], False, True, TEPSGraphic);
-      {$endif}
-    {$endif}
+        RegisterFileFormat('eps', gesEPS, '', [ftRaster], False, TEPSGraphic);
+      {$endif EPSGraphic}
+    {$endif TIFFGraphic}
 
     {$ifdef PCXGraphic}
-    RegisterFileFormat('pcx', gesZSoft, '', [ftRaster], False, True, TPCXGraphic);
-    RegisterFileFormat('pcc', '', '', [ftRaster], False, True, TPCXGraphic);
-    RegisterFileFormat('scr', '', gesZSoftWord, [ftRaster], False, True, TPCXGraphic);
-    {$endif}
+      RegisterFileFormat('pcx', gesZSoft, '', [ftRaster], False, TPCXGraphic);
+      RegisterFileFormat('pcc', '', '', [ftRaster], False, TPCXGraphic);
+      RegisterFileFormat('scr', '', gesZSoftWord, [ftRaster], False, TPCXGraphic);
+    {$endif PCXGraphic}
 
     {$ifdef RLAGraphic}
-    RegisterFileFormat('rpf', gesAliasWaveFront, '', [ftRaster], False, True, TRLAGraphic);
-    RegisterFileFormat('rla', '', '', [ftRaster], False, True, TRLAGraphic);
-    {$endif}
+      RegisterFileFormat('rpf', gesAliasWaveFront, '', [ftRaster], False, TRLAGraphic);
+      RegisterFileFormat('rla', '', '', [ftRaster], False, TRLAGraphic);
+    {$endif RLAGraphic}
 
     {$ifdef SGIGraphic}
-    RegisterFileFormat('sgi', gesSGI, gesSGITrueColor, [ftRaster], False, True, TSGIGraphic);
-    RegisterFileFormat('rgba', '', gesSGITrueColorAlpha, [ftRaster], False, True, TSGIGraphic);
-    RegisterFileFormat('rgb', '', gesSGITrueColor, [ftRaster], False, True, TSGIGraphic);
-    RegisterFileFormat('bw', '', gesSGIMono, [ftRaster], False, True, TSGIGraphic);
-    {$endif}
+      RegisterFileFormat('sgi', gesSGI, gesSGITrueColor, [ftRaster], False, TSGIGraphic);
+      RegisterFileFormat('rgba', '', gesSGITrueColorAlpha, [ftRaster], False, TSGIGraphic);
+      RegisterFileFormat('rgb', '', gesSGITrueColor, [ftRaster], False, TSGIGraphic);
+      RegisterFileFormat('bw', '', gesSGIMono, [ftRaster], False, TSGIGraphic);
+    {$endif SGIGraphic}
 
     {$ifdef PhotoshopGraphic}
-    RegisterFileFormat('psd', gesPhotoshop, '', [ftRaster, ftLayered], False, True, TPSDGraphic);
-    RegisterFileFormat('pdd', '', '', [ftRaster, ftLayered], False, True, TPSDGraphic);
-    {$endif}
+      RegisterFileFormat('psd', gesPhotoshop, '', [ftRaster, ftLayered], False, TPSDGraphic);
+      RegisterFileFormat('pdd', '', '', [ftRaster, ftLayered], False, TPSDGraphic);
+    {$endif PhotoshopGraphic}
 
     {$ifdef PortableMapGraphic}
-    RegisterFileFormat('ppm', gesPortable, gesPortablePixel, [ftRaster], False, True, TPPMGraphic);
-    RegisterFileFormat('pgm', '', gesPortableGray, [ftRaster], False, True, TPPMGraphic);
-    RegisterFileFormat('pbm', '', gesPortableMono, [ftRaster], False, True, TPPMGraphic);
-    {$endif}
+      RegisterFileFormat('ppm', gesPortable, gesPortablePixel, [ftRaster], False, TPPMGraphic);
+      RegisterFileFormat('pgm', '', gesPortableGray, [ftRaster], False, TPPMGraphic);
+      RegisterFileFormat('pbm', '', gesPortableMono, [ftRaster], False, TPPMGraphic);
+    {$endif PortableMapGraphic}
 
     {$ifdef AutodeskGraphic}
-    RegisterFileFormat('cel', gesAutodesk, '', [ftRaster], False, True, TAutodeskGraphic);
-    RegisterFileFormat('pic', gesAutodesk, '', [ftRaster], False, True, TAutodeskGraphic);
-    {$endif}
+      RegisterFileFormat('cel', gesAutodesk, '', [ftRaster], False, TAutodeskGraphic);
+      RegisterFileFormat('pic', gesAutodesk, '', [ftRaster], False, TAutodeskGraphic);
+    {$endif AutodeskGraphic}
 
     {$ifdef PCDGraphic}
-    RegisterFileFormat('pcd', gesKodakPhotoCD, '', [ftRaster], False, True, TPCDGraphic);
-    {$endif}
+      RegisterFileFormat('pcd', gesKodakPhotoCD, '', [ftRaster], False, TPCDGraphic);
+    {$endif PCDGraphic}
 
     {$ifdef GIFGraphic}
-    RegisterFileFormat('gif', gesCompuserve, '', [ftRaster, ftMultiImage, ftAnimation], False, True, TGIFGraphic);
-    {$endif}
+      RegisterFileFormat('gif', gesCompuserve, '', [ftRaster, ftMultiImage, ftAnimation], False, TGIFGraphic);
+    {$endif GIFGraphic}
 
     {$ifdef CUTGraphic}
-    RegisterFileFormat('cut', gesHalo, '', [ftRaster], False, True, TCUTGraphic);
-    {$endif}
+      RegisterFileFormat('cut', gesHalo, '', [ftRaster], False, TCUTGraphic);
+    {$endif CUTGraphic}
 
     {$ifdef PaintshopProGraphic}
-    RegisterFileFormat('psp', gesPaintshopPro, '', [ftRaster, ftVector], False, True, TPSPGraphic);
-    {$endif}
+      RegisterFileFormat('psp', gesPaintshopPro, '', [ftRaster, ftVector], False, TPSPGraphic);
+      RegisterFileFormat('pfr', '', gesPaintshopProFrames, [ftRaster, ftVector], False, TPSPGraphic);
+      RegisterFileFormat('tub', '', gesPaintshopProTubes, [ftRaster, ftVector], False, TPSPGraphic);
+    {$endif PaintshopProGraphic}
 
     {$ifdef PortableNetworkGraphic}
-    RegisterFileFormat('png', gesPortableNetworkGraphic, '', [ftRaster], False, True, TPNGGraphic);
-    {$endif}
+      RegisterFileFormat('png', gesPortableNetworkGraphic, '', [ftRaster], False, TPNGGraphic);
+    {$endif PortableNetworkGraphic}
+
+    {$ifdef ArtsAndLettersGraphic}
+      RegisterFileFormat('ged', gesArtsAndLettersGraphic, '', [ftRaster], False, TGEDGraphic);
+    {$endif ArtsAndLettersGraphic}
   end;
 finalization
   with FileFormatList do
   begin
-    {$ifdef PaintshopProGraphic} UnregisterFileFormat('', TPSPGraphic); {$endif}
-    {$ifdef PhotoshopGraphic} UnregisterFileFormat('', TPSDGraphic); {$endif}
-    {$ifdef TargaGraphic} UnregisterFileFormat('', TTargaGraphic); {$endif}
-    {$ifdef TIFFGraphic} UnregisterFileFormat('', TTIFFGraphic); {$endif}
-    {$ifdef SGIGraphic} UnregisterFileFormat('', TSGIGraphic); {$endif}
-    {$ifdef PCXGraphic} UnregisterFileFormat('', TPCXGraphic); {$endif}
-    {$ifdef AutodeskGraphic} UnregisterFileFormat('', TAutodeskGraphic); {$endif}
-    {$ifdef PCDGraphic} UnregisterFileFormat('', TPCDGraphic); {$endif}
-    {$ifdef PortableMapGraphic} UnregisterFileFormat('', TPPMGraphic); {$endif}
-    {$ifdef CUTGraphic} UnregisterFileFormat('', TCUTGraphic); {$endif}
-    {$ifdef GIFGraphic} UnregisterFileFormat('', TGIFGraphic); {$endif}
-    {$ifdef RLAGraphic} UnregisterFileFormat('', TRLAGraphic); {$endif}
-    UnregisterFileFormat('rle', TBitmap);
-    UnregisterFileFormat('dib', TBitmap);
-    {$ifdef PortableNetworkGraphic} UnregisterFileFormat('', TPNGGraphic); {$endif}
+    {$ifdef PaintshopProGraphic} UnregisterFileFormat('', TPSPGraphic); {$endif PaintshopProGraphic}
+    {$ifdef PhotoshopGraphic} UnregisterFileFormat('', TPSDGraphic); {$endif PhotoshopGraphic}
+    {$ifdef TargaGraphic} UnregisterFileFormat('', TTargaGraphic); {$endif TargaGraphic}
+    {$ifdef TIFFGraphic} UnregisterFileFormat('', TTIFFGraphic); {$endif TIFFGraphic}
+    {$ifdef SGIGraphic} UnregisterFileFormat('', TSGIGraphic); {$endif SGIGraphic}
+    {$ifdef PCXGraphic} UnregisterFileFormat('', TPCXGraphic); {$endif PCXGraphic}
+    {$ifdef AutodeskGraphic} UnregisterFileFormat('', TAutodeskGraphic); {$endif AutodeskGraphic}
+    {$ifdef PCDGraphic} UnregisterFileFormat('', TPCDGraphic); {$endif PCDGraphic}
+    {$ifdef PortableMapGraphic} UnregisterFileFormat('', TPPMGraphic); {$endif PortableMapGraphic}
+    {$ifdef CUTGraphic} UnregisterFileFormat('', TCUTGraphic); {$endif CUTGraphic}
+    {$ifdef GIFGraphic} UnregisterFileFormat('', TGIFGraphic); {$endif GIFGraphic}
+    {$ifdef RLAGraphic} UnregisterFileFormat('', TRLAGraphic); {$endif RLAGraphic} 
+    {$ifdef PortableNetworkGraphic} UnregisterFileFormat('', TPNGGraphic); {$endif PortableNetworkGraphic}
+    {$ifdef ArtsAndLettersGraphic} UnregisterFileFormat('', TGEDGraphic); {$endif ArtsAndLettersGraphic}
 
     Free;
   end;
