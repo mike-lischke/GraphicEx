@@ -2338,7 +2338,7 @@ procedure TTIFFJPEGDecoder.DecodeInit;
 
 begin
 	// initialize JPEG error handling
-  FState.Error := jpeg_std_error;
+  jpeg_std_error(@FState.Error);
 	FState.General.d.common.err := @FState.Error;
 	FState.Error.output_message := Internaljpeg_output_message;
 
