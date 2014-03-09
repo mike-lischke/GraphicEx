@@ -1,26 +1,15 @@
 unit GraphicStrings;
 
-// The contents of this file are subject to the Mozilla Public License
-// Version 1.1 (the "License"); you may not use this file except in compliance
-// with the License. You may obtain a copy of the License at http://www.mozilla.org/MPL/
+// The original code is GraphicStrings.pas, released November 1, 1999.
 //
-// Software distributed under the License is distributed on an "AS IS" basis,
-// WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for the
-// specific language governing rights and limitations under the License.
+// The initial developer of the original code is Mike Lischke (www.soft-gems.net),
 //
-// The original code is GraphicColor.pas, released November 1, 1999.
-//
-// The initial developer of the original code is Dipl. Ing. Mike Lischke (Pleiﬂa, Germany, www.delphi-gems.com),
-//
-// Portions created by Dipl. Ing. Mike Lischke are Copyright
-// (C) 1999-2003 Dipl. Ing. Mike Lischke. All Rights Reserved.
+// Copyright (C) 1999-2003 Mike Lischke. All Rights Reserved.
 //----------------------------------------------------------------------------------------------------------------------
-// This file is part of the image library GraphicEx.
 //
-// GraphicStrings contains the strings used in GraphicEx which could be localized.
+// GraphicStrings contains the french version of the strings used in GraphicEx, which can be localized.
+//
 // Rename the file to GraphicStrings.pas to use it as your favourite language file.
-//
-// This is the french version of GraphicStrings.
 //
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -66,6 +55,8 @@ resourcestring
   gesCompuserve = 'Images CompuServe';
   gesHalo = 'Images Dr. Halo';
   gesPaintShopPro = 'Images Paintshop Pro';
+  gesPaintshopProFrames = 'Paintshop Pro frames';
+  gesPaintshopProTubes = 'Paintshop Pro tubes';
   gesPortableNetworkGraphic = 'Images Portable network graphic';
 
   // image specific error messages

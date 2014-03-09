@@ -743,47 +743,47 @@ const
 procedure GetJPEGInfo(FileName: string; var Width, Height: Cardinal); overload;
 procedure GetJPEGInfo(Stream: TStream; var Width, Height: Cardinal); overload;
 
-procedure jpeg_CreateDecompress(cinfo: j_decompress_ptr; version: Integer; structsize: Integer);cdecl;
-procedure jpeg_stdio_src(cinfo: j_decompress_ptr; input_file: TStream); cdecl;
-function jpeg_read_header(cinfo: j_decompress_ptr; RequireImage: LongBool): Integer; cdecl;
-procedure jpeg_calc_output_dimensions(cinfo: j_decompress_ptr); cdecl;
-function jpeg_start_decompress(cinfo: j_decompress_ptr): Longbool; cdecl;
-function jpeg_read_scanlines(cinfo: j_decompress_ptr; scanlines: JSAMParray; max_lines: JDIMENSION): JDIMENSION; cdecl;
-function jpeg_read_raw_data(cinfo: j_decompress_ptr; data: JSAMPIMAGE; max_lines: JDIMENSION): JDIMENSION; cdecl;
-function jpeg_finish_decompress(cinfo: j_decompress_ptr): Longbool; cdecl;
-procedure jpeg_destroy_decompress(cinfo: j_decompress_ptr); cdecl;
-function jpeg_has_multiple_scans(cinfo: j_decompress_ptr): Longbool; cdecl;
-function jpeg_consume_input(cinfo: j_decompress_ptr): Integer; cdecl;
-function jpeg_start_output(cinfo: j_decompress_ptr; scan_number: Integer): Longbool; cdecl;
-function jpeg_finish_output(cinfo: j_decompress_ptr): LongBool; cdecl;
-procedure jpeg_abort(cinfo: j_decompress_ptr); cdecl;
-procedure jpeg_destroy(cinfo: j_decompress_ptr); cdecl;
+procedure jpeg_CreateDecompress(cinfo: j_decompress_ptr; version: Integer; structsize: Integer);
+procedure jpeg_stdio_src(cinfo: j_decompress_ptr; input_file: TStream);
+function jpeg_read_header(cinfo: j_decompress_ptr; RequireImage: LongBool): Integer;
+procedure jpeg_calc_output_dimensions(cinfo: j_decompress_ptr); 
+function jpeg_start_decompress(cinfo: j_decompress_ptr): Longbool; 
+function jpeg_read_scanlines(cinfo: j_decompress_ptr; scanlines: JSAMParray; max_lines: JDIMENSION): JDIMENSION;
+function jpeg_read_raw_data(cinfo: j_decompress_ptr; data: JSAMPIMAGE; max_lines: JDIMENSION): JDIMENSION;
+function jpeg_finish_decompress(cinfo: j_decompress_ptr): Longbool;
+procedure jpeg_destroy_decompress(cinfo: j_decompress_ptr);
+function jpeg_has_multiple_scans(cinfo: j_decompress_ptr): Longbool;
+function jpeg_consume_input(cinfo: j_decompress_ptr): Integer;
+function jpeg_start_output(cinfo: j_decompress_ptr; scan_number: Integer): Longbool;
+function jpeg_finish_output(cinfo: j_decompress_ptr): LongBool;
+procedure jpeg_abort(cinfo: j_decompress_ptr);
+procedure jpeg_destroy(cinfo: j_decompress_ptr);
 
-procedure jpeg_CreateCompress(cinfo: j_compress_ptr; version: Integer; structsize: Integer); cdecl;
-procedure jpeg_stdio_dest(cinfo: j_compress_ptr; output_file: TStream); cdecl;
-procedure jpeg_set_defaults(cinfo: j_compress_ptr); cdecl;
-procedure jpeg_set_quality(cinfo: j_compress_ptr; Quality: Integer; Baseline: Longbool); cdecl;
-procedure jpeg_set_colorspace(cinfo: j_compress_ptr; colorspace: J_COLOR_SPACE); cdecl;
-procedure jpeg_simple_progression(cinfo: j_compress_ptr); cdecl;
-procedure jpeg_start_compress(cinfo: j_compress_ptr; WriteAllTables: LongBool); cdecl;
-function jpeg_write_scanlines(cinfo: j_compress_ptr; scanlines: JSAMParray; max_lines: JDIMENSION): JDIMENSION; cdecl;
-procedure jpeg_finish_compress(cinfo: j_compress_ptr); cdecl;
-function jpeg_resync_to_restart(cinfo: j_decompress_ptr; desired: Integer): LongBool; cdecl;
+procedure jpeg_CreateCompress(cinfo: j_compress_ptr; version: Integer; structsize: Integer);
+procedure jpeg_stdio_dest(cinfo: j_compress_ptr; output_file: TStream);
+procedure jpeg_set_defaults(cinfo: j_compress_ptr);
+procedure jpeg_set_quality(cinfo: j_compress_ptr; Quality: Integer; Baseline: Longbool);
+procedure jpeg_set_colorspace(cinfo: j_compress_ptr; colorspace: J_COLOR_SPACE);
+procedure jpeg_simple_progression(cinfo: j_compress_ptr);
+procedure jpeg_start_compress(cinfo: j_compress_ptr; WriteAllTables: LongBool);
+function jpeg_write_scanlines(cinfo: j_compress_ptr; scanlines: JSAMParray; max_lines: JDIMENSION): JDIMENSION;
+procedure jpeg_finish_compress(cinfo: j_compress_ptr);
+function jpeg_resync_to_restart(cinfo: j_decompress_ptr; desired: Integer): LongBool;
 
-procedure jpeg_suppress_tables(cinfo: j_compress_ptr; suppress: BOOL); cdecl;
-procedure jpeg_make_c_derived_tbl(cinfo: j_compress_ptr; isDC: BOOL; tblno: Integer; var pdtbl: c_derived_tbl_ptr); cdecl;
-procedure jpeg_gen_optimal_table(cinfo: j_compress_ptr; htbl: JHUFF_TBL_ptr; freq: TFrequencyarray); cdecl;
-procedure jpeg_make_d_derived_tbl(cinfo: j_decompress_ptr; isDC: BOOL; tblno: Integer; var pdtbl: d_derived_tbl_ptr); cdecl;
-function jpeg_fill_bit_buffer(state: bitread_working_state_ptr; get_buffer: bit_buf_type; bits_left, nbits: Integer): BOOL; cdecl;
+procedure jpeg_suppress_tables(cinfo: j_compress_ptr; suppress: BOOL);
+procedure jpeg_make_c_derived_tbl(cinfo: j_compress_ptr; isDC: BOOL; tblno: Integer; var pdtbl: c_derived_tbl_ptr);
+procedure jpeg_gen_optimal_table(cinfo: j_compress_ptr; htbl: JHUFF_TBL_ptr; freq: TFrequencyarray);
+procedure jpeg_make_d_derived_tbl(cinfo: j_decompress_ptr; isDC: BOOL; tblno: Integer; var pdtbl: d_derived_tbl_ptr);
+function jpeg_fill_bit_buffer(state: bitread_working_state_ptr; get_buffer: bit_buf_type; bits_left, nbits: Integer): BOOL;
 function jpeg_huff_decode(state: bitread_working_state_ptr; get_buffer: bit_buf_type; bits_left: Integer; htbl: d_derived_tbl_ptr;
-  min_bits: Integer): Integer; cdecl;
+  min_bits: Integer): Integer;
 
 // Make some special routines accessible by other libraries (e.g. TIF).
-function jpeg_std_error(err: jpeg_error_mgr_ptr): jpeg_error_mgr_ptr; cdecl
-function jpeg_write_raw_data(cinfo: j_compress_ptr; data: JSAMPIMAGE; num_lines: JDIMENSION): JDIMENSION; cdecl
-procedure jpeg_write_tables(cinfo: j_compress_ptr); cdecl
-function jpeg_alloc_quant_table(cinfo: j_common_ptr): JQUANT_TBL_ptr; cdecl
-function jpeg_alloc_huff_table(cinfo: j_common_ptr): JHUFF_TBL_ptr; cdecl
+function jpeg_std_error(err: jpeg_error_mgr_ptr): jpeg_error_mgr_ptr;
+function jpeg_write_raw_data(cinfo: j_compress_ptr; data: JSAMPIMAGE; num_lines: JDIMENSION): JDIMENSION;
+procedure jpeg_write_tables(cinfo: j_compress_ptr);
+function jpeg_alloc_quant_table(cinfo: j_common_ptr): JQUANT_TBL_ptr;
+function jpeg_alloc_huff_table(cinfo: j_common_ptr): JHUFF_TBL_ptr;
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -1090,50 +1090,50 @@ const
     JWRN_TOO_MUCH_DATA
   );
   
-procedure jpeg_CreateDecompress(cinfo: j_decompress_ptr; version: Integer; structsize: Integer); cdecl; external;
-procedure jpeg_stdio_src(cinfo: j_decompress_ptr; input_file: TStream); cdecl; external;
-function jpeg_read_header(cinfo: j_decompress_ptr; RequireImage: LongBool): Integer; cdecl; external;
-procedure jpeg_calc_output_dimensions(cinfo: j_decompress_ptr); cdecl; external;
-function jpeg_start_decompress(cinfo: j_decompress_ptr): Longbool; cdecl; external;
-function jpeg_read_scanlines(cinfo: j_decompress_ptr; scanlines: JSAMParray; max_lines: JDIMENSION): JDIMENSION; cdecl; external;
-function jpeg_read_raw_data(cinfo: j_decompress_ptr; data: JSAMPIMAGE; max_lines: JDIMENSION): JDIMENSION; cdecl; external;
+procedure jpeg_CreateDecompress(cinfo: j_decompress_ptr; version: Integer; structsize: Integer); external;
+procedure jpeg_stdio_src(cinfo: j_decompress_ptr; input_file: TStream); external;
+function jpeg_read_header(cinfo: j_decompress_ptr; RequireImage: LongBool): Integer; external;
+procedure jpeg_calc_output_dimensions(cinfo: j_decompress_ptr); external;
+function jpeg_start_decompress(cinfo: j_decompress_ptr): Longbool; external;
+function jpeg_read_scanlines(cinfo: j_decompress_ptr; scanlines: JSAMParray; max_lines: JDIMENSION): JDIMENSION; external;
+function jpeg_read_raw_data(cinfo: j_decompress_ptr; data: JSAMPIMAGE; max_lines: JDIMENSION): JDIMENSION; external;
 
-function jpeg_finish_decompress(cinfo: j_decompress_ptr): Longbool; cdecl; external;
-procedure jpeg_destroy_decompress (cinfo: j_decompress_ptr); cdecl; external;
-function jpeg_has_multiple_scans(cinfo: j_decompress_ptr): Longbool; cdecl; external;
-function jpeg_consume_input(cinfo: j_decompress_ptr): Integer; cdecl; external;
-function jpeg_start_output(cinfo: j_decompress_ptr; scan_number: Integer): Longbool; cdecl; external;
-function jpeg_finish_output(cinfo: j_decompress_ptr): LongBool; cdecl; external;
-procedure jpeg_abort(cinfo: j_decompress_ptr); cdecl; external;
-procedure jpeg_destroy(cinfo: j_decompress_ptr); cdecl; external;
+function jpeg_finish_decompress(cinfo: j_decompress_ptr): Longbool; external;
+procedure jpeg_destroy_decompress (cinfo: j_decompress_ptr); external;
+function jpeg_has_multiple_scans(cinfo: j_decompress_ptr): Longbool; external;
+function jpeg_consume_input(cinfo: j_decompress_ptr): Integer; external;
+function jpeg_start_output(cinfo: j_decompress_ptr; scan_number: Integer): Longbool; external;
+function jpeg_finish_output(cinfo: j_decompress_ptr): LongBool; external;
+procedure jpeg_abort(cinfo: j_decompress_ptr); external;
+procedure jpeg_destroy(cinfo: j_decompress_ptr); external;
 
-procedure jpeg_CreateCompress(cinfo: j_compress_ptr; version: Integer; structsize: Integer); cdecl; external;
-procedure jpeg_stdio_dest(cinfo: j_compress_ptr; output_file: TStream); cdecl; external;
-procedure jpeg_set_defaults(cinfo: j_compress_ptr); cdecl; external;
-procedure jpeg_set_quality(cinfo: j_compress_ptr; Quality: Integer; Baseline: Longbool); cdecl; external;
-procedure jpeg_set_colorspace(cinfo: j_compress_ptr; colorspace: J_COLOR_SPACE); cdecl; external;
-procedure jpeg_simple_progression(cinfo: j_compress_ptr); cdecl; external;
-procedure jpeg_start_compress(cinfo: j_compress_ptr; WriteAllTables: LongBool); cdecl; external;
-function jpeg_write_scanlines(cinfo: j_compress_ptr; scanlines: JSAMParray; max_lines: JDIMENSION): JDIMENSION; cdecl; external;
-procedure jpeg_finish_compress(cinfo: j_compress_ptr); cdecl; external;
-function jpeg_resync_to_restart(cinfo: j_decompress_ptr; desired: Integer): LongBool; cdecl; external;
+procedure jpeg_CreateCompress(cinfo: j_compress_ptr; version: Integer; structsize: Integer); external;
+procedure jpeg_stdio_dest(cinfo: j_compress_ptr; output_file: TStream); external;
+procedure jpeg_set_defaults(cinfo: j_compress_ptr); external;
+procedure jpeg_set_quality(cinfo: j_compress_ptr; Quality: Integer; Baseline: Longbool); external;
+procedure jpeg_set_colorspace(cinfo: j_compress_ptr; colorspace: J_COLOR_SPACE); external;
+procedure jpeg_simple_progression(cinfo: j_compress_ptr); external;
+procedure jpeg_start_compress(cinfo: j_compress_ptr; WriteAllTables: LongBool); external;
+function jpeg_write_scanlines(cinfo: j_compress_ptr; scanlines: JSAMParray; max_lines: JDIMENSION): JDIMENSION; external;
+procedure jpeg_finish_compress(cinfo: j_compress_ptr); external;
+function jpeg_resync_to_restart(cinfo: j_decompress_ptr; desired: Integer): LongBool; external;
 
-procedure jpeg_suppress_tables (cinfo: j_compress_ptr; suppress: BOOL); cdecl; external;
-procedure jpeg_make_c_derived_tbl(cinfo: j_compress_ptr; isDC: BOOL; tblno: Integer; var pdtbl: c_derived_tbl_ptr); cdecl; external;
-procedure jpeg_gen_optimal_table(cinfo: j_compress_ptr; htbl: JHUFF_TBL_ptr; freq: TFrequencyarray); cdecl; external;
-procedure jpeg_make_d_derived_tbl(cinfo: j_decompress_ptr; isDC: BOOL; tblno: Integer; var pdtbl: d_derived_tbl_ptr); cdecl; external;
-function jpeg_fill_bit_buffer(state: bitread_working_state_ptr; get_buffer: bit_buf_type; bits_left, nbits: Integer): BOOL; cdecl; external;
+procedure jpeg_suppress_tables (cinfo: j_compress_ptr; suppress: BOOL); external;
+procedure jpeg_make_c_derived_tbl(cinfo: j_compress_ptr; isDC: BOOL; tblno: Integer; var pdtbl: c_derived_tbl_ptr); external;
+procedure jpeg_gen_optimal_table(cinfo: j_compress_ptr; htbl: JHUFF_TBL_ptr; freq: TFrequencyarray); external;
+procedure jpeg_make_d_derived_tbl(cinfo: j_decompress_ptr; isDC: BOOL; tblno: Integer; var pdtbl: d_derived_tbl_ptr); external;
+function jpeg_fill_bit_buffer(state: bitread_working_state_ptr; get_buffer: bit_buf_type; bits_left, nbits: Integer): BOOL; external;
 function jpeg_huff_decode(state: bitread_working_state_ptr; get_buffer: bit_buf_type; bits_left: Integer; htbl: d_derived_tbl_ptr;
-  min_bits: Integer): Integer; cdecl; external;
+  min_bits: Integer): Integer; external;
 
-function jpeg_std_error(err: jpeg_error_mgr_ptr): jpeg_error_mgr_ptr; cdecl; external;
-function jpeg_write_raw_data(cinfo: j_compress_ptr; data: JSAMPIMAGE; num_lines: JDIMENSION): JDIMENSION; cdecl; external;
-procedure jpeg_write_tables(cinfo: j_compress_ptr); cdecl; external;
-function jpeg_alloc_quant_table(cinfo: j_common_ptr): JQUANT_TBL_ptr; cdecl; external;
-function jpeg_alloc_huff_table(cinfo: j_common_ptr): JHUFF_TBL_ptr; cdecl; external;
+function jpeg_std_error(err: jpeg_error_mgr_ptr): jpeg_error_mgr_ptr; external;
+function jpeg_write_raw_data(cinfo: j_compress_ptr; data: JSAMPIMAGE; num_lines: JDIMENSION): JDIMENSION; external;
+procedure jpeg_write_tables(cinfo: j_compress_ptr); external;
+function jpeg_alloc_quant_table(cinfo: j_common_ptr): JQUANT_TBL_ptr; external;
+function jpeg_alloc_huff_table(cinfo: j_common_ptr): JHUFF_TBL_ptr; external;
 
 // Hack required by TIFF Old JPEG support. Read tif_ojpeg.c for reason and further details.
-procedure jpeg_reset_huff_decode(dinfo: j_decompress_ptr); cdecl; external;
+procedure jpeg_reset_huff_decode(dinfo: j_decompress_ptr); external;
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -1145,12 +1145,12 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure JpegError(cinfo: j_common_ptr);
+procedure JpegError(cinfo: j_common_ptr); 
 
-var
+var                                        
   Template: string;
 
-begin
+begin                                                  
   Template := JPGMessages[cinfo^.err^.msg_code];
   // The error can either be a string or up to 8 integers.
   // Search the message template for %s (the string formatter) to decide, which one we have to use.
