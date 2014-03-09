@@ -13,6 +13,7 @@ bin/*
 *.dsk
 *.res
 *.otares
+*.ddp
 
 #Lazarus
 *.rst

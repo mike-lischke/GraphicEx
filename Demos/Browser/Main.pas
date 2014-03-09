@@ -4,7 +4,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
-  Menus, ActnList, ComCtrls, StdCtrls;
+  Menus, ActnList, ComCtrls, StdCtrls, ExtCtrls, Buttons;
 
 type
   TMainForm = class(TForm)
@@ -15,12 +15,16 @@ type
     Exit1: TMenuItem;
     ActionList1: TActionList;
     Action1: TAction;
+    edDir: TEdit;
+    PaintBox: TPaintBox;
+    btnChooseDir: TBitBtn;
     procedure FormCreate(Sender: TObject);
-    procedure FormPaint(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure Exit1Click(Sender: TObject);
     procedure FormResize(Sender: TObject);
     procedure Action1Execute(Sender: TObject);
+    procedure PaintBoxPaint(Sender: TObject);
+    procedure btnChooseDirClick(Sender: TObject);
   private
     FThumbFrame,
     FThumbOffset,
@@ -31,11 +35,12 @@ type
     FThumbHeight,
     FLastIndex: Integer;
     FDirectory: String;
-    procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
     procedure CalculateSize;
     procedure ClearFileList;
     procedure RescaleImage(Source, Target: TBitmap; FastStretch: Boolean);
     procedure CalculateCounts(var XCount, YCount, HeightPerLine, ImageWidth: Integer);
+    procedure ReadIniSettings;
+    procedure WriteIniSettings;
   public
     { Public declarations }
   end;
@@ -50,8 +55,8 @@ implementation
 {$R *.DFM}
 
 uses
-  FileCtrl, GraphicEx,
-  ShlObj, ActiveX; // these both just for the SelectDirectory function
+  GraphicEx,
+  proj_common, IniFiles; // these both just for the SelectDirectory function
 
 type
   PFileEntry = ^TFileEntry;
@@ -59,107 +64,6 @@ type
     Name: String;
     Bitmap: TBitmap;
   end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-function BrowseCallbackProc(hwnd: HWND; uMsg: UINT; lParam, lpData: LPARAM): Integer; stdcall;
-
-// callback function used in SelectDirectory to set the status text and choose an initial dir
-
-var
-  Path: array[0..MAX_PATH] of Char;
-  X, Y: Integer;
-  R: TRect;
-
-begin
-  case uMsg of
-    BFFM_INITIALIZED:
-      begin
-        // Initialization has been done, now set our initial directory which is passed in lpData
-        // (and set btw. the status text too).
-        // Note: There's no need to cast lpData to a PChar since the following call needs a
-        //       LPARAM parameter anyway.
-        SendMessage(hwnd, BFFM_SETSELECTION, 1, lpData);
-        SendMessage(hwnd, BFFM_SETSTATUSTEXT, 0, lpData);
-
-        // place the dialog screen centered
-        GetWindowRect(hwnd, R);
-        X := (Screen.Width - (R.Right - R.Left)) div 2;
-        Y := (Screen.Height - (R.Bottom - R.Top)) div 2;
-        SetWindowPos(hwnd, 0, X, Y, 0, 0, SWP_NOSIZE or SWP_NOZORDER); 
-      end;
-    BFFM_SELCHANGED:
-      begin
-        // Set the status window to the currently selected path.
-        if SHGetPathFromIDList(Pointer(lParam), Path) then SendMessage(hwnd, BFFM_SETSTATUSTEXT, 0, Integer(@Path));
-      end;
-  end;
-  Result := 0;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-function SelectDirectory(const Caption, InitialDir: String; const Root: WideString;
-                         ShowStatus: Boolean; out Directory: String): Boolean;
-
-// Another browse-for-folder function with the ability to select an intial directory
-// (other SelectDirectory functions are in FileCtrl.pas).
-
-var
-  BrowseInfo: TBrowseInfo;
-  Buffer: PChar;
-  RootItemIDList,
-  ItemIDList: PItemIDList;
-  ShellMalloc: IMalloc;
-  IDesktopFolder: IShellFolder;
-  Eaten, Flags: LongWord;
-  Windows: Pointer;
-  Path: String;
-
-begin
-  Result := False;
-  Directory := '';
-  Path := InitialDir;
-  if (Length(Path) > 0) and (Path[Length(Path)] = '\') then Delete(Path, Length(Path), 1);
-  FillChar(BrowseInfo, SizeOf(BrowseInfo), 0);
-  if (ShGetMalloc(ShellMalloc) = S_OK) and (ShellMalloc <> nil) then
-  begin
-    Buffer := ShellMalloc.Alloc(MAX_PATH);
-    try
-      SHGetDesktopFolder(IDesktopFolder);
-      IDesktopFolder.ParseDisplayName(Application.Handle, nil, PWideChar(Root), Eaten, RootItemIDList, Flags);
-      with BrowseInfo do
-      begin
-        hwndOwner := Application.Handle;
-        pidlRoot := RootItemIDList;
-        pszDisplayName := Buffer;
-        lpszTitle := PChar(Caption);
-        ulFlags := BIF_RETURNONLYFSDIRS;
-        if ShowStatus then ulFlags := ulFlags or BIF_STATUSTEXT;
-        lParam := Integer(PChar(Path));
-        lpfn := BrowseCallbackProc;
-      end;
-
-      // make the browser dialog modal
-      Windows := DisableTaskWindows(Application.Handle);
-      try
-        ItemIDList := ShBrowseForFolder(BrowseInfo);
-      finally
-        EnableTaskWindows(Windows);
-      end;
-
-      Result :=  ItemIDList <> nil;
-      if Result then
-      begin
-        ShGetPathFromIDList(ItemIDList, Buffer);
-        ShellMalloc.Free(ItemIDList);
-        Directory := Buffer;
-      end;
-    finally
-      ShellMalloc.Free(Buffer);
-    end;
-  end;
-end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -179,14 +83,7 @@ begin
   FSelectedImage := -1;
   
   FFileList := TList.Create;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure TMainForm.WMEraseBkgnd(var Message: TWMEraseBkgnd);
-
-begin
-  Message.Result := 1;
+  ReadIniSettings;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -196,7 +93,7 @@ procedure TMainForm.CalculateCounts(var XCount, YCount, HeightPerLine, ImageWidt
 begin
   // How many images per line?
   ImageWidth := FThumbWidth + 2 * (FThumbFrame + 1) + FThumbOffset;
-  XCount := Trunc((ClientWidth + FThumbOffset) / ImageWidth);
+  XCount := Trunc((PaintBox.ClientWidth + FThumbOffset) / ImageWidth);
   if XCount = 0 then XCount := 1;
   // How many (entire) images above the client area?
   HeightPerLine := FThumbHeight + 2 * (FThumbFrame + 1) + FThumbOffset + FTextHeight;
@@ -205,7 +102,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TMainForm.FormPaint(Sender: TObject);
+procedure TMainForm.PaintBoxPaint(Sender: TObject);
 
 var
   XPos,
@@ -223,7 +120,7 @@ var
   ImageData: PFileEntry;
 
 begin
-  with Canvas do
+  with PaintBox.Canvas do
   begin
     // calculate and set initial values
     Brush.Color := clBtnHighlight;
@@ -238,31 +135,31 @@ begin
     // from where to start erasing unfilled parts
     EraseTop := 0;
 
-    // now loop until the client area is filled 
-    if Index < FFileList.Count then 
+    // now loop until the client area is filled
+    if Index < FFileList.Count then
     repeat
       XPos := (Index mod XCount) * ImageWidth;
 
       if (FLastIndex = -1) or (Index >= FLastIndex) then
       begin
         // get current image
-        ImageData := FFileList[Index]; 
-       
-        // determine needed display area 
+        ImageData := FFileList[Index];
+
+        // determine needed display area
         R := Rect(XPos, YPos, XPos + FThumbWidth + 2 * (FThumbFrame + 1),
           YPos + FThumbHeight + 2 * (FThumbFrame + 1) + FTextHeight);
 
         S := ExtractFileName(ImageData.Name);
-        TextR := R; 
-        TextR.Top := TextR.Bottom - FTextHeight; 
-        OffsetRect(TextR, 0, -(1 + FThumbFrame)); 
-        InflateRect(TextR, -(1 + FThumbFrame), 0); 
+        TextR := R;
+        TextR.Top := TextR.Bottom - FTextHeight;
+        OffsetRect(TextR, 0, -(1 + FThumbFrame));
+        InflateRect(TextR, -(1 + FThumbFrame), 0);
 
-        // skip images not shown in the client area 
-        if R.Bottom > 0 then 
-        begin 
-          // early out if client area is filled 
-          if R.Top > Height then Break; 
+        // skip images not shown in the client area
+        if R.Bottom > 0 then
+        begin
+          // early out if client area is filled
+          if R.Top > PaintBox.Height then Break;
 
           // fill thumb frame area (frame only to avoid flicker)
           if Index = FSelectedImage then Pen.Color := clBlack
@@ -278,6 +175,7 @@ begin
                          0, 0);
           ImageR.Right := ImageR.Left + ImageData.Bitmap.Width;
           ImageR.Bottom := ImageR.Top + ImageData.Bitmap.Height;
+
           Draw(ImageR.Left, ImageR.Top, ImageData.Bitmap);
 
           with ImageR do
@@ -297,15 +195,12 @@ begin
         end;
       end
       else EraseTop := YPos;
-         
-      Inc(Index); 
-      // go to next line if this one is filled 
-      if (Index mod XCount) = 0 then Inc(YPos, HeightPerLine); 
+
+      Inc(Index);
+      // go to next line if this one is filled
+      if (Index mod XCount) = 0 then Inc(YPos, HeightPerLine);
     until (YPos >= Height) or (Index = FFileList.Count);
   end;
-
-  // erase parts of the screen not covered by image(s)
-  FillRect(Canvas.Handle, Rect(0, EraseTop, Width, Height), COLOR_BTNFACE + 1);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -331,6 +226,7 @@ end;
 procedure TMainForm.FormDestroy(Sender: TObject);
 
 begin
+  WriteIniSettings;
   ClearFileList;
   FFileList.Free;
 end;
@@ -412,7 +308,6 @@ var
   ImageWidth,
   XCount,
   HeightPerLine: Integer;
-
 begin
   // How many images per line?
   ImageWidth := FThumbWidth + 2 * (FThumbFrame + 1) + FThumbOffset;
@@ -420,7 +315,7 @@ begin
   if XCount = 0 then XCount := 1;
   // How many lines are this?
   HeightPerLine := FThumbHeight + 2 * (FThumbFrame + 1) + FThumbOffset + FTextHeight;
-  VertScrollBar.Range := HeightPerLine * (FFileList.Count div XCount);
+  //VertScrollBar.Range := HeightPerLine * (FFileList.Count div XCount);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -443,6 +338,7 @@ var
   R: TRect;
 
 begin
+  FDirectory := edDir.Text;
   Ext := FDirectory;
   // copy current folder to another variable because it is cleared on call of the
   // select function
@@ -525,9 +421,39 @@ begin
     end;
   end
   else FDirectory := Ext;
+  edDir.Text := FDirectory;
 end;
 
-//----------------------------------------------------------------------------------------------------------------------
+procedure TMainForm.btnChooseDirClick(Sender: TObject);
+var
+  Ext: String;
+begin
+  FDirectory := edDir.Text;
+  Ext := FDirectory;
+  if SelectDirectory('Select folder to browse', Ext, '', False, FDirectory) then
+    edDir.Text := FDirectory
+  else FDirectory := Ext;
+end;
+
+procedure TMainForm.ReadIniSettings;
+var
+  IniPath: string;
+  iniFile: TIniFile;
+begin
+  IniPath:=ChangeFileExt(AppPath,'.ini');
+  iniFile := TIniFile.Create(IniPath);
+  edDir.Text:=iniFile.ReadString('Paths','InitDir','');
+end;
+
+procedure TMainForm.WriteIniSettings;
+var
+  IniPath: string;
+  iniFile: TIniFile;
+begin
+  IniPath:=ChangeFileExt(AppPath,'.ini');
+  iniFile := TIniFile.Create(IniPath);
+  iniFile.WriteString('Paths','InitDir', edDir.Text);
+end;
 
 end.
 
