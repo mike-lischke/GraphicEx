@@ -683,7 +683,8 @@ type
     ftLayered,     // format supports multiple layers (like PSP, PSD)
     ftMultiImage,  // format can contain more than one image (like TIF or GIF)
     ftRaster,      // format is contains raster data (this is mainly used)
-    ftVector       // format contains vector data (like DXF or PSP file version 4)
+    ftVector,       // format contains vector data (like DXF or PSP file version 4)
+    ftEnableSaving  //we can save to this format, not only load
   );
   TFormatTypes = set of TFormatType;
 
@@ -750,6 +751,10 @@ procedure Stretch(NewWidth, NewHeight: Cardinal; Filter: TResamplingFilter; Radi
 
 function ReadImageProperties(const FileName: string; var Properties: TImageProperties): Boolean;
 
+// Automatic save to selected extension
+procedure SaveGraphicToFile(source: TGraphic; FileName: string);
+
+
 var
   FileFormatList: TFileFormatList;
   
@@ -763,7 +768,7 @@ uses
 {$ELSE}
   IntfGraphics,
 {$ENDIF}
-  Math, MZLib;
+  Math, MZLib, strUtils;
 
 type
   {$ifndef COMPILER_6_UP}
@@ -10031,23 +10036,75 @@ begin
     begin
       // all entries for the given graphic class must be removed
       ClassIndex := FindGraphicClass(GraphicClass);
-      ClassEntry := FClassList[ClassIndex];
-      for ExtIndex := FExtensionList.Count - 1 downto 0 do
-      begin
-        if PExtensionEntry(FExtensionList[ExtIndex]).ClassReference.GraphicClass = GraphicClass then
+      if ClassIndex>-1 then begin
+        ClassEntry := FClassList[ClassIndex];
+        for ExtIndex := FExtensionList.Count - 1 downto 0 do
         begin
-          Dec(ClassEntry.Count);
-          Dispose(PExtensionEntry(FExtensionList[ExtIndex]));
-          FExtensionList.Delete(ExtIndex);
-          // no need to run through further entries if all references are done
-          if ClassEntry.Count = 0 then
-            Break;
+          if PExtensionEntry(FExtensionList[ExtIndex]).ClassReference.GraphicClass = GraphicClass then
+          begin
+            Dec(ClassEntry.Count);
+            Dispose(PExtensionEntry(FExtensionList[ExtIndex]));
+            FExtensionList.Delete(ExtIndex);
+            // no need to run through further entries if all references are done
+            if ClassEntry.Count = 0 then
+              Break;
+          end;
         end;
+        Dispose(ClassEntry);
+        FClassList.Delete(ClassIndex);
+        TPicture.UnregisterGraphicClass(GraphicClass);
       end;
-      Dispose(ClassEntry);
-      FClassList.Delete(ClassIndex);
-      TPicture.UnregisterGraphicClass(GraphicClass);
     end;
+  end;
+end;
+
+procedure SaveGraphicToFile(source: TGraphic; FileName: string);
+var extension: string;
+    graphicClass: TGraphicClass;
+    temp_graphic: TGraphic;
+    temp_bitmap: TBitmap absolute temp_graphic;
+    temp_metafile: TMetafile absolute temp_graphic;
+    index: Integer;
+    entry: PExtensionEntry;
+begin
+  extension:=ExtractFileExt(FileName);
+  extension:=RightStr(extension,Length(extension)-1);
+  index:=FileFormatList.FindExtension(extension);
+  if index=-1 then Raise Exception.CreateFMT(gesInvalidSaveFormat, [extension]);
+  entry:=FileFormatList.FExtensionList[index];
+  if not (ftEnableSaving in entry.FormatTypes) then Raise Exception.CreateFMT(gesInvalidSaveOnlyLoadFormat,[extension]);
+  //in this point, we support saving to chosen extension
+  graphicClass:=entry.classReference.GraphicClass;
+  if source.ClassType=graphicClass then
+    source.SaveToFile(FileName)
+  else begin
+    temp_graphic:=graphicClass.Create;
+    try
+      if temp_graphic is TBitmap then begin
+        temp_bitmap.Width:=source.Width;
+        temp_bitmap.Height:=source.Height;
+        temp_bitmap.Canvas.Draw(0,0,source);
+        temp_bitmap.SaveToFile(FileName);
+      end
+      else if temp_graphic is TMetaFile then begin
+        temp_metafile.Width:=source.Width;
+        temp_metafile.Height:=source.Height;
+        with TMetafileCanvas.Create(temp_metafile,0) do
+          try
+            Draw(0,0,source);
+          finally
+            Free;
+          end;
+        temp_metafile.SaveToFile(FileName);
+      end
+      else begin
+        temp_graphic.Assign(source); //works for TPngObject in lib PNGImage
+        temp_graphic.SaveToFile(FileName);
+      end;
+    finally
+      temp_graphic.Free;
+    end;
+
   end;
 end;
 
@@ -10065,15 +10122,17 @@ initialization
     TPicture.UnregisterGraphicClass(TIcon);
     TPicture.UnregisterGraphicClass(TMetafile);
 
-    RegisterFileFormat('bmp', gesBitmaps, '', [ftRaster], False, TBitmap);
+    RegisterFileFormat('bmp', gesBitmaps, '', [ftRaster,ftEnableSaving], False, TBitmap);
     RegisterFileFormat('ico', gesIcons, '', [ftRaster], False, TIcon);
-    RegisterFileFormat('wmf', gesMetaFiles, '', [ftVector], False, TMetafile);
-    RegisterFileFormat('emf', gesMetaFiles, gesEnhancedMetaFiles, [ftVector], False, TMetafile);
-    // TODO: enable jpeg image
-    //RegisterFileFormat('jfif', gesJPGImages, gesJFIFImages, [ftRaster], False, TJPEGImage);
-    //RegisterFileFormat('jpg', '', gesJPGImages, [ftRaster], False, TJPEGImage);
-    //RegisterFileFormat('jpe', '', gesJPEImages, [ftRaster], False, TJPEGImage);
-    //RegisterFileFormat('jpeg', '', gesJPEGImages, [ftRaster], False, TJPEGImage);
+
+    RegisterFileFormat('wmf', gesMetaFiles, '', [ftVector,ftEnableSaving], False, TMetafile);
+    RegisterFileFormat('emf', gesMetaFiles, gesEnhancedMetaFiles, [ftVector,ftEnableSaving], False, TMetafile);
+
+//    RegisterFileFormat('jfif', gesJPGImages, gesJFIFImages, [ftRaster,ftEnableSaving], False, TJPEGImage);
+//    RegisterFileFormat('jpg', '', gesJPGImages, [ftRaster,ftEnableSaving], False, TJPEGImage);
+//    RegisterFileFormat('jpe', '', gesJPEImages, [ftRaster,ftEnableSaving], False, TJPEGImage);
+//    RegisterFileFormat('jpeg', '', gesJPEGImages, [ftRaster,ftEnableSaving], False, TJPEGImage);
+
 
     // Paintshop pro *.msk files are just grayscale bitmaps.
     RegisterFileFormat('msk', '', '', [ftRaster], False, TBitmap);
