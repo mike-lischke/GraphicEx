@@ -45,6 +45,7 @@ object Form1: TForm1
     Top = 80
   end
   object SavePictureDialog1: TSavePictureDialog
+    DefaultExt = 'bmp'
     Left = 96
     Top = 80
   end
