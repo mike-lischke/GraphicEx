@@ -66,7 +66,10 @@ uses
 {$ELSE}
   LCLIntf, LCLType, LMessages,
 {$ENDIF}
-  Classes, ExtCtrls, Graphics, SysUtils, Contnrs, JPG, TIFF,
+  Classes, ExtCtrls, Graphics, SysUtils, Contnrs, JPG,
+  {$ifdef TIFFGraphic}
+  TIFF,
+  {$endif TIFFGraphic}
   GraphicCompression, GraphicStrings, GraphicColor;
 
 const
@@ -153,7 +156,7 @@ type
     FilterMode: Byte;
 
     // TIFF
-    Orientation: Word;                 
+    Orientation: Word;
   end;
 
   // This mode is used when creating a file mapping. See TFileMapping.
@@ -207,7 +210,7 @@ type
     destructor Destroy; override;
 
     procedure Assign(Source: TPersistent); override;
-    class function CanLoad(const FileName: string): Boolean; overload; 
+    class function CanLoad(const FileName: string): Boolean; overload;
     class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; overload; virtual;
     class function CanLoad(Stream: TStream): Boolean; overload;
     procedure LoadFromFile(const FileName: string); override;
@@ -226,7 +229,7 @@ type
   end;
 
   TGraphicExGraphicClass = class of TGraphicExGraphic;
-   
+
   {$ifdef AutodeskGraphic}
   // *.cel, *.pic images
   TAutodeskGraphic = class(TGraphicExGraphic)
@@ -768,7 +771,7 @@ uses
 {$ELSE}
   IntfGraphics,
 {$ENDIF}
-  Math, MZLib, strUtils;
+  Math, MZLib, JPEG;
 
 type
   {$ifndef COMPILER_6_UP}
@@ -9980,9 +9983,14 @@ begin
           Dec(OldReference.Count);
           // remove the graphic class entry if no longer used
           if OldReference.Count = 0 then
+            Dispose(OldReference);
             FClassList.Remove(OldReference);
         end;
           // otherwise do nothing
+
+      //formatTypes could change, for example, new GraphicClass supports saving to file
+      ExtEntry.FormatTypes := FormatTypes;
+
       end
       else
         GraphicExError(gesRegistration, [Extension]);
@@ -10036,7 +10044,7 @@ begin
     begin
       // all entries for the given graphic class must be removed
       ClassIndex := FindGraphicClass(GraphicClass);
-      if ClassIndex>-1 then begin
+      if ClassIndex > -1 then begin
         ClassEntry := FClassList[ClassIndex];
         for ExtIndex := FExtensionList.Count - 1 downto 0 do
         begin
@@ -10059,36 +10067,50 @@ begin
 end;
 
 procedure SaveGraphicToFile(source: TGraphic; FileName: string);
+
+// Saves source to file with filetype specified by it extension.
+// Extension must be among registered in FileFormatList and have
+// ftEnableSaving flag in FormatTypes, otherwise exception is raised.
+
 var extension: string;
     graphicClass: TGraphicClass;
     temp_graphic: TGraphic;
     temp_bitmap: TBitmap absolute temp_graphic;
     temp_metafile: TMetafile absolute temp_graphic;
+    transient: TBitmap;
     index: Integer;
     entry: PExtensionEntry;
 begin
-  extension:=ExtractFileExt(FileName);
-  extension:=RightStr(extension,Length(extension)-1);
-  index:=FileFormatList.FindExtension(extension);
-  if index=-1 then Raise Exception.CreateFMT(gesInvalidSaveFormat, [extension]);
-  entry:=FileFormatList.FExtensionList[index];
+  extension := ExtractFileExt(FileName);
+  extension := Copy(extension, 2, Length(extension)-1);
+  index := FileFormatList.FindExtension(extension);
+  if index = -1 then Raise Exception.CreateFMT(gesInvalidSaveFormat, [extension]);
+  entry := FileFormatList.FExtensionList[index];
   if not (ftEnableSaving in entry.FormatTypes) then Raise Exception.CreateFMT(gesInvalidSaveOnlyLoadFormat,[extension]);
   //in this point, we support saving to chosen extension
   graphicClass:=entry.classReference.GraphicClass;
-  if source.ClassType=graphicClass then
+  if source.ClassType = graphicClass then //simplest case
     source.SaveToFile(FileName)
   else begin
-    temp_graphic:=graphicClass.Create;
+    temp_graphic := graphicClass.Create;
+    //temp_graphic, temp_bitmap and temp_metafile map to the same object
+    //(using 'absolute' directive), it's safe to use after checking
+    //that temp_graphic is TBitmap etc.
     try
       if temp_graphic is TBitmap then begin
-        temp_bitmap.Width:=source.Width;
-        temp_bitmap.Height:=source.Height;
+        //TBitmap itself and all GraphicEx graphic types,
+        //they have canvas, so we can draw arbitrary graphic on it
+        //draw procedure is one which is always implemented in TGraphic!
+        temp_bitmap.Width := source.Width;
+        temp_bitmap.Height := source.Height;
         temp_bitmap.Canvas.Draw(0,0,source);
         temp_bitmap.SaveToFile(FileName);
       end
       else if temp_graphic is TMetaFile then begin
-        temp_metafile.Width:=source.Width;
-        temp_metafile.Height:=source.Height;
+        //Special case of Metafile, it has no canvas and its Assign procedure
+        //works only for other metafiles, we need special workaround...
+        temp_metafile.Width := source.Width;
+        temp_metafile.Height := source.Height;
         with TMetafileCanvas.Create(temp_metafile,0) do
           try
             Draw(0,0,source);
@@ -10098,13 +10120,31 @@ begin
         temp_metafile.SaveToFile(FileName);
       end
       else begin
-        temp_graphic.Assign(source); //works for TPngObject in lib PNGImage
+        //3rd party graphic type, not descendant of TBitmap, so we can't use
+        //canvas. The only known interface allowed is Assign procedure
+        //Its realization must support assign from other TGraphic,
+        //not only same type. If it doesn't, some wrapper should be written.
+        if source is TBitmap then
+          temp_graphic.Assign(source)
+        else begin
+        //it's safer to convert to TBitmap and then to graphic_type,
+        //TJPEGImage can't be converted to TPNGImage in 1 step,
+        //and works fine in 2 steps (TJPEGImage->TBtmap->TPNGImage)
+          transient := TBitmap.Create;
+          try
+            transient.Width := source.Width;
+            transient.Height := source.Height;
+            transient.Canvas.Draw(0,0,source);
+            temp_graphic.Assign(transient);
+          finally
+            transient.Free;
+          end;
+        end;
         temp_graphic.SaveToFile(FileName);
       end;
     finally
       temp_graphic.Free;
     end;
-
   end;
 end;
 
@@ -10117,7 +10157,7 @@ initialization
     // Since we are going to add these four image types below, we better unregister them first
     // in order to avoid double entries.
     // TODO: enable jpeg image
-    //TPicture.UnregisterGraphicClass(TJPEGImage);
+    TPicture.UnregisterGraphicClass(TJPEGImage);
     TPicture.UnregisterGraphicClass(TBitmap);
     TPicture.UnregisterGraphicClass(TIcon);
     TPicture.UnregisterGraphicClass(TMetafile);
@@ -10128,10 +10168,10 @@ initialization
     RegisterFileFormat('wmf', gesMetaFiles, '', [ftVector,ftEnableSaving], False, TMetafile);
     RegisterFileFormat('emf', gesMetaFiles, gesEnhancedMetaFiles, [ftVector,ftEnableSaving], False, TMetafile);
 
-//    RegisterFileFormat('jfif', gesJPGImages, gesJFIFImages, [ftRaster,ftEnableSaving], False, TJPEGImage);
-//    RegisterFileFormat('jpg', '', gesJPGImages, [ftRaster,ftEnableSaving], False, TJPEGImage);
-//    RegisterFileFormat('jpe', '', gesJPEImages, [ftRaster,ftEnableSaving], False, TJPEGImage);
-//    RegisterFileFormat('jpeg', '', gesJPEGImages, [ftRaster,ftEnableSaving], False, TJPEGImage);
+    RegisterFileFormat('jfif', gesJPGImages, gesJFIFImages, [ftRaster,ftEnableSaving], False, TJPEGImage);
+    RegisterFileFormat('jpg', '', gesJPGImages, [ftRaster,ftEnableSaving], False, TJPEGImage);
+    RegisterFileFormat('jpe', '', gesJPEImages, [ftRaster,ftEnableSaving], False, TJPEGImage);
+    RegisterFileFormat('jpeg', '', gesJPEGImages, [ftRaster,ftEnableSaving], False, TJPEGImage);
 
 
     // Paintshop pro *.msk files are just grayscale bitmaps.

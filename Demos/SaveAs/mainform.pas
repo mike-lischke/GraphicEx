@@ -1,5 +1,7 @@
 unit mainform;
 
+//{$define UsePNGImage}
+
 interface
 
 uses
@@ -26,8 +28,13 @@ var
   Form1: TForm1;
 
 implementation
+uses GraphicEx,
+{$ifdef UsePNGImage}
+PngImage,
+{$endif UsePNGImage}
+GraphicStrings;
 
-uses GraphicEx;
+
 {$R *.dfm}
 
 procedure TForm1.Button1Click(Sender: TObject);
@@ -45,6 +52,10 @@ end;
 
 procedure TForm1.FormCreate(Sender: TObject);
 begin
+{$ifdef UsePNGImage}
+  FileFormatList.RegisterFileFormat('png', gesPortableNetworkGraphic, '', [ftRaster,ftEnableSaving], True, TPNGObject);
+{$endif UsePNGImage}
+
   SavePictureDialog1.Filter:=FileFormatList.GetGraphicFilter([ftEnableSaving],fstNone,[foIncludeExtension],nil);
 end;
 
