@@ -64,6 +64,8 @@ resourcestring
                                                                              
   // image specific error messages
   gesInvalidImage = 'Cannot load image. Invalid or unexpected %s image format.';
+  gesInvalidSaveFormat = 'Cannot save image. Invalid or unexpected %s image format.';
+  gesInvalidSaveOnlyLoadFormat = 'Cannot save image. Only load is supported for %s image format.';
   gesInvalidColorFormat = 'Invalid color format in %s file.';
   gesStreamReadError = 'Stream read error in %s file.';
   gesUnsupportedImage = 'Cannot load image. Unsupported %s image format.';
