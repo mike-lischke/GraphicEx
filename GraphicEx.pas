@@ -55,9 +55,9 @@ interface
 {$ifdef COMPILER_7_UP}
   // For some things to work we need code, which is classified as being unsafe for .NET.
   // We switch off warnings about that fact. We know it and we accept it.
-  {$warn UNSAFE_TYPE off}
-  {$warn UNSAFE_CAST off}
-  {$warn UNSAFE_CODE off}
+  {-$warn UNSAFE_TYPE off}
+  {-$warn UNSAFE_CAST off}
+  {-$warn UNSAFE_CODE off}
 {$endif COMPILER_7_UP}
 
 uses
@@ -322,11 +322,11 @@ type
   // *.ppm, *.pgm, *.pbm images
   TPPMGraphic = class(TGraphicExGraphic)
   private
-    FSource: PChar;
+    FSource: PAnsiChar;
     FRemainingSize: Int64;
-    function GetChar: Char;
+    function GetChar: AnsiChar;
     function GetNumber: Cardinal;
-    function ReadLine: string;
+    function ReadLine: AnsiString;
   public
     class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
     procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
@@ -886,13 +886,13 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure Upsample(Width, Height, ScaledWidth: Cardinal; Pixels: PChar);
+procedure Upsample(Width, Height, ScaledWidth: Cardinal; Pixels: PAnsiChar);
 
 // Creates a new image that is a integral size greater than an existing one.
 
 var
   X, Y: Cardinal;
-  P, Q, R: PChar;
+  P, Q, R: PAnsiChar;
 
 begin
   for Y := 0 to Height - 1 do
@@ -906,9 +906,9 @@ begin
       Dec(P);
       Dec(Q, 2);
       Q^ := P^;
-      (Q + 1)^ := Char((Word(P^) + Word((P + 1)^) + 1) shr 1);
+      (Q + 1)^ := AnsiChar((Word(P^) + Word((P + 1)^) + 1) shr 1);
     end;
-  end;            
+  end;
 
   for Y := 0 to Height - 2 do
   begin
@@ -917,16 +917,16 @@ begin
     R := Q + ScaledWidth;
     for X := 0 to Width - 2 do
     begin
-      Q^ := Char((Word(P^) + Word(R^) + 1) shr 1);
-      (Q + 1)^ := Char((Word(P^) + Word((P + 2)^) + Word(R^) + Word((R + 2)^) + 2) shr 2);
+      Q^ := AnsiChar((Word(P^) + Word(R^) + 1) shr 1);
+      (Q + 1)^ := AnsiChar((Word(P^) + Word((P + 2)^) + Word(R^) + Word((R + 2)^) + 2) shr 2);
       Inc(Q, 2);
       Inc(P, 2);
       Inc(R, 2);
     end;
-    Q^ := Char((Word(P^) + Word(R^) + 1) shr 1);
+    Q^ := AnsiChar((Word(P^) + Word(R^) + 1) shr 1);
     Inc(P);
     Inc(Q);
-    Q^ := Char((Word(P^) + Word(R^) + 1) shr 1);
+    Q^ := AnsiChar((Word(P^) + Word(R^) + 1) shr 1);
   end;
   P := Pixels + (2 * Height - 2) * ScaledWidth;
   Q := Pixels + (2 * Height - 1) * ScaledWidth;
@@ -2334,7 +2334,7 @@ end;
 procedure TAutodeskGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
-  Run: PChar;
+  Run: PAnsiChar;
   LogPalette: TMaxLogPalette;
   I: Integer;
 
@@ -2342,7 +2342,7 @@ begin
   inherited;
 
   Run := Memory;
-  
+
   if ReadImageProperties(Memory, Size, ImageIndex) then
   begin
     FProgressRect := Rect(0, 0, Width, 1);
@@ -2392,7 +2392,7 @@ end;
 function TAutodeskGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
-  Run: PChar;
+  Run: PAnsiChar;
   Header: PAutodeskHeader;
 
 begin
@@ -2441,7 +2441,7 @@ type
     PixMin,                  // Minimum pixel value
     PixMax: Cardinal;        // Maximum pixel value
     Dummy: Cardinal;         // ignored
-    ImageName: array[0..79] of Char;
+    ImageName: array[0..79] of AnsiChar;
     ColorMap: Integer;       // Colormap ID
                              //  0 - default, almost all images are stored with this flag
                              //  1 - dithered, only one channel of data (pixels are packed), obsolete
@@ -2462,10 +2462,10 @@ begin
  RowWidth := Row * Width * FImageProperties.BitsPerSample div 8;
  PlaneSize := Width * Height * FImageProperties.BitsPerSample div 8;
 
- Red := PChar(Memory) + 512 + RowWidth;
- Green := PChar(Memory) + 512 + RowWidth + PlaneSize;
- Blue := PChar(Memory) + 512 + RowWidth + 2 * PlaneSize;
- Alpha := PChar(Memory) + 512 + RowWidth + 3 * PlaneSize;
+ Red := PAnsiChar(Memory) + 512 + RowWidth;
+ Green := PAnsiChar(Memory) + 512 + RowWidth + PlaneSize;
+ Blue := PAnsiChar(Memory) + 512 + RowWidth + 2 * PlaneSize;
+ Alpha := PAnsiChar(Memory) + 512 + RowWidth + 3 * PlaneSize;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -2474,33 +2474,33 @@ procedure TSGIGraphic.ReadAndDecode(const Memory: Pointer; Red, Green, Blue, Alp
 
 var
   Count: Cardinal;
-  Run: PChar;
+  Run: PAnsiChar;
 
 begin
   if Assigned(Red) then
   begin
-    Run := PChar(Memory) + FRowStart[Row + 0 * Height];
+    Run := PAnsiChar(Memory) + FRowStart[Row + 0 * Height];
     Count := BPC * FRowSize[Row + 0 * Height];
     Decoder.Decode(Pointer(Run), Red, Count, Width);
   end;
 
   if Assigned(Green) then
   begin
-    Run := PChar(Memory) + FRowStart[Row + 1 * Height];
+    Run := PAnsiChar(Memory) + FRowStart[Row + 1 * Height];
     Count := BPC * FRowSize[Row + 1 * Height];
     Decoder.Decode(Pointer(Run), Green, Count, Width);
   end;
 
   if Assigned(Blue) then
   begin
-    Run := PChar(Memory) + FRowStart[Row + 2 * Height];
+    Run := PAnsiChar(Memory) + FRowStart[Row + 2 * Height];
     Count := BPC * FRowSize[Row + 2 * Height];
     Decoder.Decode(Pointer(Run), Blue, Count, Width);
   end;
 
   if Assigned(Alpha) then
   begin
-    Run := PChar(Memory) + FRowStart[Row + 3 * Height];
+    Run := PAnsiChar(Memory) + FRowStart[Row + 3 * Height];
     Count := BPC * FRowSize[Row + 3 * Height];
     Decoder.Decode(Pointer(Run), Alpha, Count, Width);
   end;
@@ -2526,7 +2526,7 @@ end;
 procedure TSGIGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
-  Run: PChar;
+  Run: PAnsiChar;
   Y: Integer;
   RedBuffer,
   GreenBuffer,
@@ -2784,7 +2784,7 @@ function TIFFSeekProc(fd: thandle_t; off: toff_t; whence: Integer): toff_t; cdec
 
 const
   SEEK_SET = 0; // seek to an absolute position
-  SEEK_CUR = 1; // seek relative to current position 
+  SEEK_CUR = 1; // seek relative to current position
   SEEK_END = 2; // seek relative to end of file
 
 var
@@ -2797,11 +2797,11 @@ begin
     SEEK_CUR:
       Inc(Graphic.FCurrentPointer, off);
     SEEK_END:
-      Graphic.FCurrentPointer := Pointer(PChar(Graphic.FMemory) + Graphic.FSize - off);
+      Graphic.FCurrentPointer := Pointer(PAnsiChar(Graphic.FMemory) + Graphic.FSize - off);
   else
-    Graphic.FCurrentPointer := Pointer(PChar(Graphic.FMemory) + off);
+    Graphic.FCurrentPointer := Pointer(PAnsiChar(Graphic.FMemory) + off);
   end;
-  Result := toff_t(PChar(Graphic.FCurrentPointer) - PChar(Graphic.FMemory));
+  Result := toff_t(PAnsiChar(Graphic.FCurrentPointer) - PAnsiChar(Graphic.FMemory));
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -2857,7 +2857,7 @@ var
   RowCount,
   LineSize: Integer;
   RowsPerStrip: Integer;
-  Source: PChar;
+  Source: PAnsiChar;
   Line: Pointer;
   RowInc: Integer;
   LineOffset: Integer;
@@ -2882,7 +2882,7 @@ begin
       RowInc := 1
     else
       RowInc := -1;
-      
+
     Row := 0;
     while Row < Height do
     begin
@@ -2894,7 +2894,7 @@ begin
       TIFFReadEncodedStrip(tif, TIFFComputeStrip(tif, Row, 0), Buffer, (Row mod RowsPerStrip + RowCount) * LineSize);
       Pos := (Row mod RowsPerStrip) * LineSize;
 
-      Source := PChar(Buffer) + Pos;
+      Source := PAnsiChar(Buffer) + Pos;
       Inc(Row, RowCount);
       LineOffset := Ceil(BitsPerPixel * (Width + FromSkew) / 8);
       while RowCount > 0 do
@@ -2925,8 +2925,8 @@ var
   FromSkew: Integer;
   RowCount: Integer;
   PixelCount: Integer;
-  Source: PChar;
-  Line: PChar;
+  Source: PAnsiChar;
+  Line: PAnsiChar;
   RowInc: Integer;
   ColumnOffset: Integer;
 
@@ -2956,7 +2956,7 @@ begin
         TIFFReadTile(tif, Buffer, Column, Row, 0, 0);
         Pos := (Row mod TileHeight) * Integer(TIFFTileRowSize(tif));
 
-        Source := PChar(Buffer) + Pos;
+        Source := PAnsiChar(Buffer) + Pos;
 
         Y := Row;
         if Column + TileWidth > Width then
@@ -3058,7 +3058,7 @@ procedure TTIFFGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageI
 
 var
   TIFFImage: PTIFF;
-  Run: PChar;
+  Run: PAnsiChar;
   Count: Cardinal;
   Pixels: Pointer;
   I: Integer;
@@ -3239,7 +3239,7 @@ var
       Value2: Pointer;
     end;
   {$endif DELPHI_7_UP}
-  
+
 begin
   Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
 
@@ -3295,7 +3295,7 @@ begin
         // Determine whether extra samples must be considered.
         HasAlpha := (ExtraSamples = 1) and
           (SampleInfo^ in [EXTRASAMPLE_ASSOCALPHA, EXTRASAMPLE_UNASSALPHA]);
-        
+
         // Currently all bits per sample values are equal.
         BitsPerPixel := BitsPerSample * SamplesPerPixel;
 
@@ -3343,7 +3343,7 @@ begin
           COMPRESSION_PIXARLOG: // also a LZ77 clone
             Compression := ctPixarLog;
           COMPRESSION_ADOBE_DEFLATE,
-          COMPRESSION_DEFLATE: 
+          COMPRESSION_DEFLATE:
             Compression := ctLZ77;
           COMPRESSION_DCS:
             Compression := ctDCS;
@@ -3431,7 +3431,7 @@ type
     PSStart,          // Offset PostScript-Code
     PSLen,            // length of PostScript-Code
     MetaPos,          // position of a WMF
-    MetaLen,          // length of a WMF 
+    MetaLen,          // length of a WMF
     TiffPos,          // position of TIFF (preview images should be either WMF or TIF but not both)
     TiffLen: Integer; // length of the TIFF
     Checksum: SmallInt;
@@ -3458,7 +3458,7 @@ begin
   with PEPSHeader(Memory)^ do
   begin
     if Code = $C6D3D0C5 then
-      inherited LoadFromMemory(PChar(Memory) + TiffPos, TiffLen)
+      inherited LoadFromMemory(PAnsiChar(Memory) + TiffPos, TiffLen)
     else
       GraphicExError(gesInvalidImage, ['EPS']);
   end;
@@ -3595,7 +3595,7 @@ begin
       Header.ImageDescriptor := Header.ImageDescriptor and $F;
 
       // skip image ID
-      Source := Pointer(PChar(Memory) + SizeOf(Header) + Header.IDLength);
+      Source := Pointer(PAnsiChar(Memory) + SizeOf(Header) + Header.IDLength);
 
       with ColorManager do
       begin
@@ -3993,7 +3993,7 @@ var
         pf8Bit:
           begin
             // 256 colors with 3 components plus one marker byte
-            PaletteData := Pointer(PChar(Memory) + Size - 769);
+            PaletteData := Pointer(PAnsiChar(Memory) + Size - 769);
             if PaletteData^ <> $0C then
             begin
               // palette ID is wrong, perhaps gray scale?
@@ -4123,9 +4123,9 @@ begin
           for I := 0 to Height - 1 do
           begin
             Plane1 := Run;
-            PChar(Plane2) := PChar(Run) + Increment div 4;
-            PChar(Plane3) := PChar(Run) + 2 * (Increment div 4);
-            PChar(Plane4) := PChar(Run) + 3 * (Increment div 4);
+            PAnsiChar(Plane2) := PAnsiChar(Run) + Increment div 4;
+            PAnsiChar(Plane3) := PAnsiChar(Run) + 2 * (Increment div 4);
+            PAnsiChar(Plane4) := PAnsiChar(Run) + 3 * (Increment div 4);
 
             Line := ScanLine[I];
             // number of bytes to write
@@ -4185,8 +4185,8 @@ begin
             begin
               Line := ScanLine[I];
               Plane1 := Run;
-              PChar(Plane2) := PChar(Run) + Increment div 3;
-              PChar(Plane3) := PChar(Run) + 2 * (Increment div 3);
+              PAnsiChar(Plane2) := PAnsiChar(Run) + Increment div 3;
+              PAnsiChar(Plane3) := PAnsiChar(Run) + 2 * (Increment div 3);
               ColorManager.ConvertRow([Plane1, Plane2, Plane3], Line, Width, $FF);
               Inc(Run, Increment);
 
@@ -4280,7 +4280,7 @@ const
 class function TPCDGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 var
-  ID1, ID2 : PChar;
+  ID1, ID2 : PAnsiChar;
 
 begin
   Result := Size > 3 * $800;
@@ -4297,8 +4297,8 @@ end;
 procedure TPCDGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 2);
 
 var
-  C1, C2, YY: PChar;
-  YCbCrData: array[0..2] of PChar;
+  C1, C2, YY: PAnsiChar;
+  YCbCrData: array[0..2] of PAnsiChar;
   {SourceDummy,
   DestDummy: Pointer;}
 
@@ -4499,7 +4499,7 @@ begin
                     Run := LineBuffer;
                     for X := 0 to Width - 1 do
                     begin
-                      PChar(Line) := PChar(ScanLines[Width - X - 1]) + Y * 3;
+                      PAnsiChar(Line) := PAnsiChar(ScanLines[Width - X - 1]) + Y * 3;
                       Line^ := Run^;
                       Inc(Run);
                     end;
@@ -4520,7 +4520,7 @@ begin
                     Run := LineBuffer;
                     for X := 0 to Width - 1 do
                     begin
-                      PChar(Line) := PChar(ScanLines[X]) + (Height - Y - 1) * 3;
+                      PAnsiChar(Line) := PAnsiChar(ScanLines[X]) + (Height - Y - 1) * 3;
                       Line^ := Run^;
                       Inc(Run);
                     end;
@@ -4568,7 +4568,7 @@ end;
 function TPCDGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
-  Header: PChar;
+  Header: PAnsiChar;
   Temp: Cardinal;
 
 begin
@@ -4632,13 +4632,13 @@ begin
   if Result then
   begin
     // These are weak criteria here, but there is nothing more to test for this image format.
-    Result := (PChar(Memory)^ = 'P') and (PChar(Memory)[1] in ['1'..'6']);
+    Result := (PAnsiChar(Memory)^ = 'P') and (PAnsiChar(Memory)[1] in ['1'..'6']);
   end;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TPPMGraphic.GetChar: Char;
+function TPPMGraphic.GetChar: AnsiChar;
 
 begin
   if FRemainingSize = 0 then
@@ -4655,7 +4655,7 @@ function TPPMGraphic.GetNumber: Cardinal;
 // reads the next number from the stream (and skips all characters which are not in 0..9)
 
 var
-  Ch: Char;
+  Ch: AnsiChar;
 
 begin
   // skip all non-numbers
@@ -4679,12 +4679,12 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TPPMGraphic.ReadLine: string;
+function TPPMGraphic.ReadLine: AnsiString;
 
 // reads one text line from stream and skips comments
 
 var
-  Ch: Char;
+  Ch: AnsiChar;
   I: Integer;
 
 begin
@@ -4708,7 +4708,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPPMGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); 
+procedure TPPMGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
   Line24: PBGR;
@@ -5060,7 +5060,7 @@ begin
   begin
     with FImageProperties do
     begin
-      Source := Pointer(PChar(Memory) + 6);
+      Source := Pointer(PAnsiChar(Memory) + 6);
 
       FProgressRect := Rect(0, 0, Width, 0);
       Progress(Self, psStarting, 0, False, FProgressRect, gesTransfering);
@@ -5095,7 +5095,7 @@ function TCUTGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; Ima
 
 var
   Run: PWord;
-  
+
 begin
   Result := inherited ReadImageProperties(Memory, Size, ImageIndex);
 
@@ -5124,7 +5124,7 @@ type
   // image file's header, funny...
   PHaloPaletteHeader = ^THaloPaletteHeader;
   THaloPaletteHeader = packed record
-    ID: array[0..1] of Char;  // should be 'AH'
+    ID: array[0..1] of AnsiChar;  // should be 'AH'
     Version,
     Size: Word;
     FileType,
@@ -5135,7 +5135,7 @@ type
     MaxRed,
     MaxGreen,
     MaxBlue: Word; // colors = MaxIndex + 1
-    Signature: array[0..7] of Char; // 'Dr. Halo'
+    Signature: array[0..7] of AnsiChar; // 'Dr. Halo'
     Filler: array[0..11] of Byte;
   end;
 
@@ -5208,7 +5208,7 @@ const
   // logical screen descriptor packed field masks
   GIF_GLOBALCOLORTABLE = $80;
   GIF_COLORRESOLUTION = $70;
-  GIF_GLOBALCOLORTABLESORTED = $08; 
+  GIF_GLOBALCOLORTABLESORTED = $08;
   GIF_COLORTABLESIZE = $07;
 
   // image flags
@@ -5228,8 +5228,8 @@ const
 type
   PGIFHeader = ^TGIFHeader;
   TGIFHeader = packed record
-    Signature: array[0..2] of Char; // magic ID 'GIF'
-    Version: array[0..2] of Char;   // '87a' or '89a' 
+    Signature: array[0..2] of AnsiChar; // magic ID 'GIF'
+    Version: array[0..2] of AnsiChar;   // '87a' or '89a'
   end;
 
   TLogicalScreenDescriptor = packed record
@@ -5255,7 +5255,7 @@ class function TGIFGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
   Result := (Size > (SizeOf(TGIFHeader) + SizeOf(TLogicalScreenDescriptor) + SizeOf(TImageDescriptor))) and
-    (StrLIComp(PChar(Memory), 'GIF', 3) = 0);
+    (StrLIComp(PAnsiChar(Memory), 'GIF', 3) = 0);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -5267,11 +5267,11 @@ function TGIFGraphic.SkipExtensions: Byte;
 
 var
   Increment: Byte;
-  Content : array[0..255] of Char; // Gif comment sub-block has a maximum size of 255 bytes
+  Content : array[0..255] of AnsiChar; // Gif comment sub-block has a maximum size of 255 bytes
 
 begin
   FImageProperties.Comment := '';
-  
+
   // Iterate through the blocks until first image is found.
   repeat
     Result := FSource^;
@@ -5310,7 +5310,7 @@ begin
               begin
                 // Image is transparent, read index.
                 Transparent := True;
-                FTransparentIndex := Byte((PChar(FSource) + 3)^);
+                FTransparentIndex := Byte((PAnsiChar(FSource) + 3)^);
               end;
               Inc(FSource, Increment);
             end;
@@ -5382,7 +5382,7 @@ begin
       Inc(FSource, SizeOf(Header));
 
       PixelFormat := pf8Bit;
-      
+
       // Read general information.
       Move(FSource^, ScreenDescriptor, SizeOf(ScreenDescriptor));
       Inc(FSource, SizeOf(ScreenDescriptor));
@@ -5770,7 +5770,7 @@ begin
         // no go for each scanline
         for Y := 0 to Height - 1 do
         begin
-          Run := Pointer(PChar(Memory) + Offsets[Y]);
+          Run := Pointer(PAnsiChar(Memory) + Offsets[Y]);
           if BottomUp then
             Line := ScanLine[Height - Y - 1]
           else
@@ -6044,7 +6044,7 @@ const
 type
   PPSDHeader = ^TPSDHeader;
   TPSDHeader = packed record
-    Signature: array[0..3] of Char; // always '8BPS'
+    Signature: array[0..3] of AnsiChar; // always '8BPS'
     Version: Word;                  // always 1
     Reserved: array[0..5] of Byte;  // reserved, always 0
     Channels: Word;                 // 1..24, number of channels in the image (including alpha)
@@ -6082,7 +6082,7 @@ destructor TPhotoshopLayer.Destroy;
 
   var
     I: Integer;
-    
+
   begin
     with Data do
     begin
@@ -6534,7 +6534,7 @@ const
   );
 
   // Signatures used in an effects adjustment layer.
-  EffectSignature: array[0..5] of PChar = (
+  EffectSignature: array[0..5] of PAnsiChar = (
     'cmnS', // 0, common state
     'dsdw', // 1, drop shadow
     'isdw', // 2, inner shadow
@@ -7822,14 +7822,14 @@ type
   // These block header structures are here for informational purposes only because the data of those
   // headers is read member by member to generalize code for the different file versions
   TPSPBlockHeader3 = packed record          // block header file version 3
-    HeaderIdentifier: array[0..3] of Char;  // i.e. "~BK" followed by a zero byte
+    HeaderIdentifier: array[0..3] of AnsiChar;  // i.e. "~BK" followed by a zero byte
     BlockIdentifier: Word;                  // one of the block identifiers
     InitialChunkLength,                     // length of the first sub chunk header or similar
     TotalBlockLength: Cardinal;             // length of this block excluding this header
   end;
 
   TPSPBlockHeader4 = packed record          // block header file version 4
-    HeaderIdentifier: array[0..3] of Char;  // i.e. "~BK" followed by a zero byte
+    HeaderIdentifier: array[0..3] of AnsiChar;  // i.e. "~BK" followed by a zero byte
     BlockIdentifier: Word;                  // one of the block identifiers
     TotalBlockLength: Cardinal;             // length of this block excluding this header
   end;
@@ -7838,7 +7838,7 @@ type
     EntryCount: Cardinal;                   // number of entries in the palette
   end;
 
-  TPSPColorPaletteChunk = array[0..255] of TRGBQuad; // might actually be shorter 
+  TPSPColorPaletteChunk = array[0..255] of TRGBQuad; // might actually be shorter
 
   TPSPChannelInfoChunk = packed record
     CompressedSize,
@@ -7852,9 +7852,9 @@ type
 
   PPSPFileHeader = ^TPSPFileHeader;
   TPSPFileHeader = packed record
-    Signature: array[0..31] of Char;        // the string "Paint Shop Pro Image File\n\x1a", padded with zeroes
+    Signature: array[0..31] of AnsiChar;        // the string "Paint Shop Pro Image File\n\x1a", padded with zeroes
     MajorVersion,
-    MinorVersion: Word;                
+    MinorVersion: Word;
   end;
 
   TPSPImageAttributes = packed record
@@ -7929,7 +7929,7 @@ var
   Image: TPSPImageAttributes;
   // To use the code below for file 3 and 4 I read the parts of the block header
   // separately instead as a structure.
-  HeaderIdentifier: array[0..3] of Char;  // i.e. "~BK" followed by a zero byte
+  HeaderIdentifier: array[0..3] of AnsiChar;  // i.e. "~BK" followed by a zero byte
   BlockIdentifier: Word;                  // one of the block identifiers
   InitialChunkLength,                     // length of the first sub chunk header or similar
   TotalBlockLength: Cardinal;             // length of this block excluding this header
@@ -7952,14 +7952,14 @@ var
   CompBuffer: Pointer;
   X, Y,
   Index,
-  RowSize: Integer; // size in bytes of one scanline 
+  RowSize: Integer; // size in bytes of one scanline
 
   // other data
   RawPalette: array[0..4 * 256 - 1] of Byte;
 
   LastPosition,
   NextMainBlock,
-  NextLayerPosition: PChar; // PChar, because then direct pointer arithmethic is accepted.
+  NextLayerPosition: PAnsiChar; // PAnsiChar, because then direct pointer arithmethic is accepted.
   Run: PByte;
 
   //--------------- local functions -------------------------------------------
@@ -7970,7 +7970,7 @@ var
   // Returns True if a block header could be read otherwise False (stream end).
 
   begin
-    Result := (PChar(Run) - PChar(Memory)) < Size;
+    Result := (PAnsiChar(Run) - PAnsiChar(Memory)) < Size;
     if Result then
     begin
       Move(Run^, HeaderIdentifier, SizeOf(HeaderIdentifier));
@@ -8116,7 +8116,7 @@ begin
 
       // Read general image attribute block.
       ReadBlockHeader;
-      LastPosition := PChar(Run);
+      LastPosition := PAnsiChar(Run);
       if Version > 3 then
       begin
         Move(Run^, ChunkSize, SizeOf(ChunkSize));
@@ -8162,7 +8162,7 @@ begin
       repeat
         if not ReadBlockHeader then
           Break;
-        NextMainBlock := Pointer(PChar(Run) + TotalBlockLength);
+        NextMainBlock := Pointer(PAnsiChar(Run) + TotalBlockLength);
         // no more blocks?
         if HeaderIdentifier[0] <> '~' then
           Break;
@@ -8184,7 +8184,7 @@ begin
               Progress(Self, psStarting, 0, False, FProgressRect, gesLoadingData);
 
               // calculate start of next (layer) block in case we need to skip this one
-              NextLayerPosition := Pointer(PChar(Run) + TotalBlockLength);
+              NextLayerPosition := Pointer(PAnsiChar(Run) + TotalBlockLength);
               // if all layers have been considered the break loop to continue with other blocks if necessary
               if BlockIdentifier <> PSP_LAYER_BLOCK then
                 Break;
@@ -8192,7 +8192,7 @@ begin
               // layer information chunk
               if Version > 3 then
               begin
-                LastPosition := PChar(Run);
+                LastPosition := PAnsiChar(Run);
                 Move(Run^, ChunkSize, SizeOf(ChunkSize));
                 Inc(Run, SizeOf(ChunkSize));
 
@@ -8217,7 +8217,7 @@ begin
 
                 // in file version 4 there's also an additional bitmap chunk which replaces
                 // two fields formerly located in the LayerInfo chunk
-                LastPosition := PChar(Run);
+                LastPosition := PAnsiChar(Run);
                 Move(Run^, ChunkSize, SizeOf(ChunkSize));
                 Inc(Run, SizeOf(ChunkSize));
               end
@@ -8343,7 +8343,7 @@ var
   Image: TPSPImageAttributes;
   // to use the code below for file 3 and 4 I read the parts of the block header
   // separately instead as a structure
-  HeaderIdentifier: array[0..3] of Char;  // i.e. "~BK" followed by a zero byte
+  HeaderIdentifier: array[0..3] of AnsiChar;  // i.e. "~BK" followed by a zero byte
   BlockIdentifier: Word;                  // one of the block identifiers
   InitialChunkLength,                     // length of the first sub chunk header or similar
   TotalBlockLength: Cardinal;             // length of this block excluding this header
@@ -8361,7 +8361,7 @@ var
   // Returns True if a block header could be read otherwise False (stream end).
 
   begin
-    Result := (PChar(Run) - PChar(Memory)) < Size;
+    Result := (PAnsiChar(Run) - PAnsiChar(Memory)) < Size;
     if Result then
     begin
       Move(Run^, HeaderIdentifier, SizeOf(HeaderIdentifier));
@@ -8406,13 +8406,13 @@ begin
           Inc(Run, SizeOf(ChunkSize));
         end;
         Move(Run^, Image, SizeOf(Image));
-        Run := Pointer(PChar(LastPosition) + TotalBlockLength);
+        Run := Pointer(PAnsiChar(LastPosition) + TotalBlockLength);
 
         if Image.BitDepth = 24 then
         begin
           BitsPerSample := 8;
           SamplesPerPixel := 3;
-          ColorScheme := csRGB; // an alpha channel might exist, this is determined by the layer's channel count 
+          ColorScheme := csRGB; // an alpha channel might exist, this is determined by the layer's channel count
         end
         else
         begin
@@ -8458,7 +8458,7 @@ end;
 {$ifdef PortableNetworkGraphic}
 
 const
-  PNGMagic: PChar = #137'PNG'#13#10#26#10;
+  PNGMagic: PAnsiChar = #137'PNG'#13#10#26#10;
 
   // Recognized and handled chunk types.
   IHDR = 'IHDR';
@@ -8502,7 +8502,7 @@ type
 class function TPNGGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
-  Result := (Size > SizeOf(PNGMagic) + SizeOf(TIHDRChunk)) and (StrLIComp(PChar(Memory), PNGMagic, 8) = 0);
+  Result := (Size > SizeOf(PNGMagic) + SizeOf(TIHDRChunk)) and (StrLIComp(PAnsiChar(Memory), PNGMagic, 8) = 0);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -8568,7 +8568,7 @@ procedure TPNGGraphic.ApplyFilter(Filter: Byte; Line, PrevLine, Target: PByte; B
 //       Raw refers to the current, not yet decoded value. Decoded refers to the current, already
 //       decoded value (this one is called "raw" in the docs) and Prior is the current value in the
 //       previous line. For the Paeth prediction scheme a fourth pointer is used (PriorDecoded) to describe
-//       the value in the previous line but less the BPP value (Prior[x - BPP]).      
+//       the value in the previous line but less the BPP value (Prior[x - BPP]).
 
 var
   I: Integer;
@@ -8692,7 +8692,7 @@ begin
   begin
     with FImageProperties do
     begin
-      Run := Pointer(PChar(Memory) + 8); // skip magic
+      Run := Pointer(PAnsiChar(Memory) + 8); // skip magic
 
       FProgressRect := Rect(0, 0, Width, 1);
       Progress(Self, psStarting, 0, False, FProgressRect, gesPreparing);
@@ -8748,7 +8748,7 @@ begin
               end;
               Continue;
             end
-            else                             
+            else
               if IsChunk(gAMA) then
               begin
                 ReadDataAndCheckCRC(Run);
@@ -8800,7 +8800,7 @@ end;
 function TPNGGraphic.ReadImageProperties(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal): Boolean;
 
 var
-  Magic: array[0..7] of Char;
+  Magic: array[0..7] of AnsiChar;
   Description: TIHDRChunk;
   Run: PByte;
 
@@ -8883,8 +8883,14 @@ begin
               end;
 
             Inc(Run, FHeader.Length + 4);
+            if (PAnsiChar(Run)>PAnsiChar(Memory)+Size) then //we have no IEND
+            //or got some trash instead of chunk size
+              Break;
+            //we could raise error here, too
             if IsChunk(IEND) then
               Break;
+
+
           until False;
 
           Freemem(FRawBuffer);
@@ -8929,7 +8935,7 @@ begin
           begin
             R := MulDiv16(Swap(Run^), 255, 65535); Inc(Run);
             G := MulDiv16(Swap(Run^), 255, 65535); Inc(Run);
-            B := MulDiv16(Swap(Run^), 255, 65535); 
+            B := MulDiv16(Swap(Run^), 255, 65535);
           end
           else
           begin
@@ -8962,7 +8968,7 @@ const
 var
   Row: Integer;
   TargetBPP: Integer;
-  RowBuffer: array[Boolean] of PChar; // I use PChar here instead of simple pointer to ease pointer math below
+  RowBuffer: array[Boolean] of PAnsiChar; // I use PChar here instead of simple pointer to ease pointer math below
   EvenRow: Boolean; // distincts between the two rows we need to hold for filtering
   Pass: Integer;
   BytesPerRow,
@@ -9093,19 +9099,19 @@ procedure TPNGGraphic.LoadText(var Source: PByte);
 var
   Keyword: string;
   Offset: Cardinal;
-  Contents: array of Char;
-  
+  Contents: array of AnsiChar;
+
 begin
   ReadDataAndCheckCRC(Source);
   with FImageProperties do
   begin
-    Keyword := PChar(FRawBuffer); // Keyword is zero terminated in file
+    Keyword := PAnsiChar(FRawBuffer); // Keyword is zero terminated in file
     if Keyword = 'Comment' then   // Only text chunks with the 'Comment' keyword are loaded
     begin
       Offset := Length(Keyword) + 1;
       SetLength(Contents, FHeader.Length - Offset + 1);
-      StrLCopy(PChar(Contents), PChar(FRawBuffer) + Offset, FHeader.Length - Offset);
-      Comment := Comment + PChar(Contents);
+      StrLCopy(PAnsiChar(Contents), PAnsiChar(FRawBuffer) + Offset, FHeader.Length - Offset);
+      Comment := Comment + PAnsiChar(Contents);
     end;
   end;
 end;

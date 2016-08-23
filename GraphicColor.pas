@@ -779,10 +779,17 @@ end;
 //        pixel must be packed.
 //        Windows DIBs are always byte aligned, so we don't need checks for byte alignments (in target).
 
+procedure PurePascalROR(var value: Byte);  //workaround for x64 version
+//not universal ROR at all: works only for our task where only one bit is set every time
+begin
+  if value=1 then
+    value:=$80
+  else
+    value:=value shr 1;
+end;
+
 procedure TColorManager.RowConvertBGR2BGR(Source: array of Pointer; Target: Pointer; Count: Cardinal; Mask: Byte);
-
 // same as ConvertBGR2RGB but for BGR target schemes
-
 var
   SourceR16,
   SourceG16,
@@ -879,7 +886,11 @@ begin
                     Inc(SourceR8, SourceIncrement);
                     Inc(SourceA8, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                     PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(TargetRunA8);
                 end;
@@ -899,7 +910,11 @@ begin
                     Inc(SourceG8, SourceIncrement);
                     Inc(SourceR8, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(PByte(TargetRun8), TargetIncrement);
                 end;
@@ -950,7 +965,11 @@ begin
                     Inc(SourceR8, SourceIncrement);
                     Inc(SourceA8, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                     PurePascalROR(BitRun);
+                  {$ELSE}
+                      asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(TargetRunA16);
                 end;
@@ -970,7 +989,11 @@ begin
                     Inc(SourceG8, SourceIncrement);
                     Inc(SourceR8, SourceIncrement);
                   end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
                   asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(PWord(TargetRun16), TargetIncrement);
                 end;
@@ -1038,7 +1061,11 @@ begin
                     Inc(SourceR16, SourceIncrement);
                     Inc(SourceA16, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(TargetRunA8);
                 end;
@@ -1058,7 +1085,11 @@ begin
                     Inc(SourceG16, SourceIncrement);
                     Inc(SourceR16, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(PByte(TargetRun8), TargetIncrement);
                 end;
@@ -1107,7 +1138,11 @@ begin
                     Inc(SourceR16, SourceIncrement);
                     Inc(SourceA16, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(TargetRunA16);
                 end;
@@ -1127,7 +1162,11 @@ begin
                     Inc(SourceG16, SourceIncrement);
                     Inc(SourceR16, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(PWord(TargetRun16), TargetIncrement);
                 end;
@@ -1241,7 +1280,11 @@ begin
                     Inc(SourceR8, SourceIncrement);
                     Inc(SourceA8, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(TargetRunA8);
                 end;
@@ -1261,7 +1304,11 @@ begin
                     Inc(SourceG8, SourceIncrement);
                     Inc(SourceR8, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(PByte(TargetRun8), TargetIncrement);
                 end;
@@ -1312,7 +1359,11 @@ begin
                     Inc(SourceR8, SourceIncrement);
                     Inc(SourceA8, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(TargetRunA16);
                 end;
@@ -1332,7 +1383,11 @@ begin
                     Inc(SourceG8, SourceIncrement);
                     Inc(SourceR8, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(PWord(TargetRun16), TargetIncrement);
                 end;
@@ -1400,7 +1455,11 @@ begin
                     Inc(SourceR16, SourceIncrement);
                     Inc(SourceA16, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(TargetRunA8);
                 end;
@@ -1420,7 +1479,11 @@ begin
                     Inc(SourceG16, SourceIncrement);
                     Inc(SourceR16, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(PByte(TargetRun8), TargetIncrement);
                 end;
@@ -1469,7 +1532,11 @@ begin
                     Inc(SourceR16, SourceIncrement);
                     Inc(SourceA16, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(TargetRunA16);
                 end;
@@ -1489,7 +1556,11 @@ begin
                     Inc(SourceG16, SourceIncrement);
                     Inc(SourceR16, SourceIncrement);
                   end;
-                  asm ROR BYTE PTR [BitRun], 1 end;
+                  {$IFDEF WIN64}
+                    PurePascalROR(BitRun);
+                  {$ELSE}
+                    asm ROR BYTE PTR [BitRun], 1 end;
+                  {$ENDIF}
                   Dec(Count);
                   Inc(PWord(TargetRun16), TargetIncrement);
                 end;
@@ -1604,7 +1675,11 @@ begin
                 end
                 else
                   Inc(Target8, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -1663,7 +1738,11 @@ begin
                 end
                 else
                   Inc(Target16, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end
             end;
@@ -1743,7 +1822,11 @@ begin
                 end
                 else
                   Inc(Target8, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -1802,7 +1885,11 @@ begin
                 end
                 else
                   Inc(Target16, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -1913,7 +2000,11 @@ begin
                 end
                 else
                   Inc(Target8, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -1972,7 +2063,11 @@ begin
                 end
                 else
                   Inc(Target16, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end
             end;
@@ -2051,7 +2146,11 @@ begin
                 end
                 else
                   Inc(Target8, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -2110,7 +2209,11 @@ begin
                 end
                 else
                   Inc(Target16, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -2185,7 +2288,11 @@ begin
                 end
                 else
                   Inc(Target8, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -2213,7 +2320,11 @@ begin
                 end
                 else
                   Inc(Target16, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -2265,7 +2376,11 @@ begin
                 end
                 else
                   Inc(Target8, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -2293,7 +2408,11 @@ begin
                 end
                 else
                   Inc(Target16, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -2368,7 +2487,11 @@ begin
                 end
                 else
                   Inc(Target8, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -2396,7 +2519,11 @@ begin
                 end
                 else
                   Inc(Target16, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -2448,7 +2575,11 @@ begin
                 end
                 else
                   Inc(Target8, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -2476,7 +2607,11 @@ begin
                 end
                 else
                   Inc(Target16, 3 + AlphaSkip);
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
               end;
             end;
@@ -2521,7 +2656,11 @@ begin
                 Target8^ := Source8^;
                 Inc(Source8, 1 + AlphaSkip);
               end;
-              asm ROR BYTE PTR [BitRun], 1 end;
+              {$IFDEF WIN64}
+                PurePascalROR(BitRun);
+              {$ELSE}
+                asm ROR BYTE PTR [BitRun], 1 end;
+              {$ENDIF}
               Dec(Count);
               Inc(Target8);
             end;
@@ -2537,7 +2676,11 @@ begin
                 Target16^ := MulDiv16(Source8^, 65535, 255);
                 Inc(Source8, 1 + AlphaSkip);
               end;
-              asm ROR BYTE PTR [BitRun], 1 end;
+              {$IFDEF WIN64}
+                PurePascalROR(BitRun);
+              {$ELSE}
+                asm ROR BYTE PTR [BitRun], 1 end;
+              {$ENDIF}
               Dec(Count);
               Inc(Target16);
             end;
@@ -2561,7 +2704,11 @@ begin
                 Target8^ := Convert16(Source16^);
                 Inc(Source16, 1 + AlphaSkip);
               end;
-              asm ROR BYTE PTR [BitRun], 1 end;
+              {$IFDEF WIN64}
+                PurePascalROR(BitRun);
+              {$ELSE}
+                asm ROR BYTE PTR [BitRun], 1 end;
+              {$ENDIF}
               Dec(Count);
               Inc(Target8);
             end;
@@ -2580,7 +2727,11 @@ begin
                   Target16^ := Swap(Source16^);
                   Inc(Source16, 1 + AlphaSkip);
                 end;
+              {$IFDEF WIN64}
+                PurePascalROR(BitRun);
+              {$ELSE}
                 asm ROR BYTE PTR [BitRun], 1 end;
+              {$ENDIF}
                 Dec(Count);
                 Inc(Target16);
               end;
@@ -2594,7 +2745,11 @@ begin
                   Target16^ := Source16^;
                   Inc(Source16, 1 + AlphaSkip);
                 end;
-                asm ROR BYTE PTR [BitRun], 1 end;
+                {$IFDEF WIN64}
+                  PurePascalROR(BitRun);
+                {$ELSE}
+                  asm ROR BYTE PTR [BitRun], 1 end;
+                {$ENDIF}
                 Dec(Count);
                 Inc(Target16);
               end;

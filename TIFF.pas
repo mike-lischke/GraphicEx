@@ -496,7 +496,7 @@ function TIFFIsTiled(tif: PTIFF): LONGBOOL; cdecl;
 implementation
 
 uses
-  SysUtils, GraphicEx, LibStub, JPG, zLibEx;
+  zLibExAPI,SysUtils, GraphicEx, LibStub, JPG, zLibEx;
 
 procedure _TIFFBuiltinCODECS; external;    // Not really a procedure but a structure.
 procedure tiffDataWidth; external;         // Not really a procedure but a structure.
@@ -610,7 +610,7 @@ procedure TIFFError(const S: PChar); varargs; cdecl; external;
 {$L inflate.obj}
 {$L inffast.obj}
 {$L inftrees.obj}
-{$L zutil.obj}
+{-$L zutil.obj}
 {$L deflate.obj}
 {$L crc32.obj}
 {$L trees.obj}
@@ -621,8 +621,15 @@ procedure GraphicExTIFFError(Module: PChar; const Format: PChar; Params: va_list
 
 var
   Buffer: array[0..1000] of Char;
-
+//  Param1, Param2: PAnsiChar;
+//  wtf: AnsiString;
 begin
+//try to find out what's wrong with Params
+//  Param1:=Params^;
+//  Param2:=Param1+1;
+//  wtf:=Param1;
+//  GraphicExError(SysUtils.Format(Format,[Param1, Param2]));
+//  Param2:=PAnsiChar((Params+1)^);
   wvsprintf(Buffer, Format, Params);
   GraphicExError(Buffer);
 end;
@@ -630,16 +637,32 @@ end;
 //----------------------------------------------------------------------------------------------------------------------
 
 procedure GraphicExTIFFWarning(Module: PChar; const Format: PChar; Params: va_list); cdecl;
-
 var
   Buffer: array[0..1000] of Char;
-
 begin
   wvsprintf(Buffer, Format, Params);
   OutputDebugString(Buffer);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
+
+function zcalloc(opaque: Pointer; items, size: Integer): Pointer;
+begin
+  GetMem(result,items * size);
+end;
+
+procedure zcfree(opaque, block: Pointer);
+begin
+  FreeMem(block);
+end;
+
+
+{$ifndef WIN64}
+procedure _llmod;
+asm
+  jmp System.@_llmod;
+end;
+{$endif}
 
 initialization
   TIFFSetWarningHandler(@GraphicExTIFFWarning);
