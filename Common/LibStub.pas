@@ -153,6 +153,7 @@ procedure qsort(base: Pointer; nelem, width: Cardinal; fcmp: cmp_callback); cdec
 function setjmp(const __jmpb): Integer; cdecl;
 function sin(Value: Double): Double; cdecl;
 procedure sprintf(Buffer, Format: PChar; Arguments: array of TVarRec);
+//procedure sprintf(Buffer, Format: PChar); cdecl;  //var arg at the end, but we don't care...
 function sqrt(Value: Double): Double; cdecl;
 function strcat(dest, src: PChar): PChar; cdecl;
 function strchr(s: PChar; c: Integer): PChar; cdecl;
@@ -185,7 +186,7 @@ procedure fputs; cdecl;
 implementation
 
 uses
-  Scanf,
+  //Scanf,
   SysUtils, DateUtils;
 
 {$ifndef COMPILER_6_UP}
@@ -1101,6 +1102,13 @@ begin
     FreeMem(arg);
   end;
 end;
+
+(*
+procedure sprintf(Buffer, Format: PChar); cdecl;
+asm
+  jmp wvsprintf;
+end;
+*)
 
 //----------------------------------------------------------------------------------------------------------------------
 
