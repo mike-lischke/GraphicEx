@@ -1827,6 +1827,7 @@ procedure TCCITTFax3Decoder.Decode(var Source, Dest: Pointer; PackedSize, Unpack
 var
   RunLength: Integer;
   EOLCount: Integer;
+{$IFDEF ResortToPurePascal}i: Integer;{$ENDIF}
 
   //--------------- local functions -------------------------------------------
 
@@ -1888,6 +1889,10 @@ begin
 
   // swap all bits here, in order to avoid frequent tests in the main loop
   if FSwapBits then
+  {$IFDEF ResortToPurePascal}
+    for i := PackedSize-1 downto 0 do
+      PByteArray(Source)^[i]:=ReverseTable[PByteArray(Source)^[i]];
+  {$ELSE}
   asm
          PUSH EBX
          LEA EBX, ReverseTable
@@ -1907,6 +1912,7 @@ begin
          JNZ @@1
          POP EBX
   end;
+  {$ENDIF}
 
   // setup initial states
   // a row always starts with a (possibly zero-length) white run
@@ -1924,26 +1930,34 @@ begin
   repeat
     // synchronize to start of next line
     SynchBOL;
-    // a line always starts with a white run
-    FIsWhite := True;
-    // decode one line
-    repeat
-      if FIsWhite then
-        RunLength := FindWhiteCode
-      else
-        RunLength := FindBlackCode;
-      if RunLength >= 0 then
-      begin
-        if FillRun(RunLength) then
-          Break;
-        FIsWhite := not FIsWhite;
-      end
-      else
-        if RunLength = G3_EOL then
-          Inc(EOLCount)
+    if ((FOptions and 1)<>0) and (not NextBit) then begin
+      //begin 2-dimension decoding here
+//      raise exception.Create('sorry, 2-dimensional fax3 decoding not fully implemented!');
+
+
+    end
+    else begin
+      // a line always starts with a white run
+      FIsWhite := True;
+      // decode one line
+      repeat
+        if FIsWhite then
+          RunLength := FindWhiteCode
         else
-          Break;
-    until (RunLength = G3_EOL) or (FPackedSize = 0);
+          RunLength := FindBlackCode;
+        if RunLength >= 0 then
+        begin
+          if FillRun(RunLength) then
+            Break;
+          FIsWhite := not FIsWhite;
+        end
+        else
+          if RunLength = G3_EOL then
+            Inc(EOLCount)
+          else
+            Break;
+      until (RunLength = G3_EOL) or (FPackedSize = 0);
+    end;
     AdjustEOL;
   until (FPackedSize = 0) or (FTarget - PChar(Dest) >= UnpackedSize);
 end;
@@ -2850,7 +2864,7 @@ end;
 // This routine is invoked only for warning messages, since error_exit does its own thing
 // and trace_level is never set > 0.
 
-procedure Internaljpeg_output_message(cinfo: j_common_ptr);
+procedure Internaljpeg_output_message(cinfo: j_common_ptr); cdecl;
 
 var
   Buffer: array[0..JMSG_LENGTH_MAX] of Char;
