@@ -318,10 +318,8 @@ type
       procedure SwapIFD;
     public
       class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
-      procedure LoadFromStream(Stream: TStream); override;  //main code here
-      procedure LoadFromFileByIndex(const FileName: string; ImageIndex: Cardinal = 0); override; //creates TFileStream
-      procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override; //creates TMemoryStream
-
+      procedure LoadFromStream(Stream: TStream); override;
+      procedure LoadFromFileByIndex(const FileName: string; ImageIndex: Cardinal = 0); override;
       procedure SaveToStream(Stream: TStream); override;
       function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
     end;
@@ -332,7 +330,6 @@ type
     public
       class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
       procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
-      procedure LoadFromStream(Stream: TStream); override;
       function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
     end;
  {$endif EPSGraphic}
@@ -3992,18 +3989,6 @@ begin
   end;
 end;
 
-procedure TTIFFGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
-var ms: TStream;
-begin
-  ms:=TMemoryStream.Create;
-  try
-    ms.Write(PByte(Memory)^,Size);
-    LoadFromStream(ms);
-  finally
-    ms.Free;
-  end;
-end;
-
 procedure TTIFFGraphic.LoadFromStream(Stream: TStream);
 
 var
@@ -4285,26 +4270,22 @@ function TTIFFGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal)
 // Returns True if the image ImageIndex could be read, otherwise False.
 
 const
-  PhotometricToColorScheme: array[PHOTOMETRIC_MINISWHITE..PHOTOMETRIC_ITULAB] of TColorScheme = (
-    csG,        //Min is white
-    csG,        //Min is black
-    csRGBA,     //RGB
-    csIndexed,  //PALETTE
-    csUnknown,  //MASK
-    csCMYK,     //SEPARATED
-    csYCbCr,    //YCbCr
-    csUnknown,  //7 is absent
-    csCIELab,    //CIELab
-    csUnknown,  //9 is absent
-    csITULab   //ITULab
+  PhotometricToColorScheme: array[PHOTOMETRIC_MINISWHITE..PHOTOMETRIC_CIELAB] of TColorScheme = (
+    csG,
+    csG,
+    csRGBA,
+    csIndexed,
+    csUnknown,
+    csCMYK,
+    csYCbCr,
+    csUnknown,
+    csCIELab
   );
-  //We remember about LOGL and LOGLUV but their indices are 32844, 32845, too much
-  //table we'd have here... Will check manually...
 
 var
   IFDCount: Word;
   ExtraSamples: TCardinalArray;
-  PhotometricInterpretation: Word;
+  PhotometricInterpretation: Byte;
   TIFCompression: Word;
   Index: Cardinal;
 
@@ -4455,7 +4436,7 @@ begin
         Compression := ctUnknown;
       end;
 
-      if PhotometricInterpretation in [PHOTOMETRIC_MINISWHITE..PHOTOMETRIC_ITULAB] then
+      if PhotometricInterpretation in [PHOTOMETRIC_MINISWHITE..PHOTOMETRIC_CIELAB] then
       begin
         ColorScheme := PhotometricToColorScheme[PhotometricInterpretation];
         if (PhotometricInterpretation = PHOTOMETRIC_RGB) and (SamplesPerPixel < 4) then ColorScheme := csRGB;
@@ -4478,7 +4459,7 @@ begin
 
           if FindTag(TIFFTAG_YCBCRCOEFFICIENTS, Index)
             then GetValueList(Stream, TIFFTAG_YCBCRCOEFFICIENTS, FYCbCrCoefficients)
-          else
+            else
             begin
               // defaults are from CCIR recommendation 601-1
               SetLength(FYCbCrCoefficients, 3);
@@ -4488,12 +4469,7 @@ begin
             end;
         end;
       end
-      else if PhotometricInterpretation = PHOTOMETRIC_LOGL then
-        ColorScheme := csCIELog2L
-      else if PhotometricInterpretation = PHOTOMETRIC_LOGLUV then
-        ColorScheme := csCIELog2Luv
-      else
-       ColorScheme := csUnknown;
+      else ColorScheme := csUnknown;
 
       JPEGColorMode := GetValue(TIFFTAG_JPEGCOLORMODE, JPEGCOLORMODE_RAW);
       JPEGTablesMode := GetValue(TIFFTAG_JPEGTABLESMODE, JPEGTABLESMODE_QUANT or JPEGTABLESMODE_HUFF);
@@ -4576,18 +4552,6 @@ begin
     else
       GraphicExError(gesInvalidImage, ['EPS']);
   end;
-end;
-
-procedure TEPSGraphic.LoadFromStream(Stream: TStream);
-var EPSHeader: TEPSHeader;
-begin
-  Stream.Read(EPSHeader,SizeOf(EPSHeader));
-  if EPSHeader.Code=$C6D3D0C5 then begin
-    Stream.Position:=EPSHeader.TiffPos;
-    inherited LoadFromStream(Stream);
-  end
-  else
-    GraphicExError(gesInvalidImage, ['EPS']);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
