@@ -510,4 +510,10 @@
 
 {$endif}
 
+{$IFDEF WIN64}
+  {$DEFINE ResortToPurePascal}  //pretty handy to have pure pascal version,
+  //maybe will write fast x64 asm (though it can't mix pascal and asm code in one procedure)
+  //but then pure pascal can be useful for apple or android, who knows...
+{$ENDIF}
+
 //----------------------------------------------------------------------------------------------------------------------

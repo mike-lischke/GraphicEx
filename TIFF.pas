@@ -12,8 +12,10 @@ unit TIFF;
 // This file is part of the image library GraphicEx.
 
 {$Include Compilers.inc}
+{$Include GraphicConfiguration.inc}
 
-{$Z4}      // enum size = dword
+    {$Z4}      // enum size = dword
+
 
 // Align record structures to 8 byte boundaries.
 {$ifdef COMPILER_7_UP}
@@ -167,7 +169,9 @@ const
   TIFFTAG_DATETIME              = 306;           // creation date and time
   TIFFTAG_ARTIST                = 315;           // creator of image
   TIFFTAG_HOSTCOMPUTER          = 316;           // machine where created
-  TIFFTAG_PREDICTOR             = 317;           // prediction scheme w/ LZW
+  TIFFTAG_PREDICTOR = 317;                       // prediction scheme w/ LZW
+    PREDICTION_NONE = 1;                         // no prediction scheme used before coding
+    PREDICTION_HORZ_DIFFERENCING = 2;            // horizontal differencing prediction scheme used
   TIFFTAG_WHITEPOINT            = 318;           // image white point
   TIFFTAG_PRIMARYCHROMATICITIES = 319;           // !primary chromaticities
   TIFFTAG_COLORMAP              = 320;           // RGB map for pallette image
@@ -347,327 +351,327 @@ const
   TIFFTAG_SGILOGENCODE          = 65561;         // SGILog data encoding control
     SGILOGENCODE_NODITHER       = 0;             // do not dither encoded values
     SGILOGENCODE_RANDITHER      = 1;             // randomly dither encd values
-
-type
-  {$ifndef COMPILER_6_UP}
-    PPointer = ^Pointer;
-  {$endif COMPILER_6_UP}
-  
-  // TIFF is an opague record only known to the lib itself.
-  PTIFF = ^TTIFF;
-  TTIFF = record
-  end;                                                  
-
-  // For TIFFReassignTagToIgnore                             
-  TTIFFIgnoreSense = (// IGNORE tag table
-    TIS_STORE,
-    TIS_EXTRACT,
-    TIS_EMPTY                                
-  );
-
-  TTIFFHeader = record
-    tiff_magic: Word;      // magic number (defines byte order)
-    tiff_version: Word;    // TIFF version number
-    tiff_diroff: Cardinal; // byte offset to first directory
-  end;
-
-  // TIFF Image File Directories are comprised of a table of field descriptors of the form shown
-  // below.  The table is sorted in ascending order by tag.  The values associated with each entry
-  // are disjoint and may appear anywhere in the file (so long as they are placed on a word boundary).
-  //
-  // If the value is 4 bytes or less, then it is placed in the offset field to save space.  If the value
-  // is less than 4 bytes, it is left-justified in the offset field.
-
-  TTIFFDirEntry = record
-    tdir_tag: Word;        // see below
-    tdir_type: Word;       // data type; see below
-    tdir_count: Cardinal;  // number of items; length in spec
-    tdir_offset: Cardinal; // byte offset to field data
-  end;
-
   // Tag data type information.
   // Note: RATIONALs are the ratio of two 32-bit integer values.
-  TTIFFDataType = (
-    TIFF_NOTYPE,    // 0, placeholder
-    TIFF_BYTE,      // 1, 8-bit unsigned integer
-    TIFF_ASCII,     // 2, 8-bit bytes w/ last byte null
-    TIFF_SHORT,     // 3, 16-bit unsigned integer
-    TIFF_LONG,      // 4, 32-bit unsigned integer
-    TIFF_RATIONAL,  // 5, 64-bit unsigned fraction
-    TIFF_SBYTE,     // 6, !8-bit signed integer
-    TIFF_UNDEFINED, // 7, !8-bit untyped data
-    TIFF_SSHORT,    // 8, !16-bit signed integer
-    TIFF_SLONG,     // 9. !32-bit signed integer
-    TIFF_SRATIONAL, // 10, !64-bit signed fraction
-    TIFF_FLOAT,     // 11, !32-bit IEEE floating point
-    TIFF_DOUBLE     // 12, !64-bit IEEE floating point
-  );
+  type
 
-  tsample_t = Word;
-  thandle_t = THandle;
-  tsize_t = Cardinal;
-  tdata_t = Pointer;
-  toff_t = Cardinal;
-  ttag_t = Cardinal;
-  tdir_t = Word;       // directory index
-  tstrip_t = Cardinal; // strip number
-  uint16 = Word;
+    TTIFFDataType = (
+      TIFF_NOTYPE,    // 0, placeholder
+      TIFF_BYTE,      // 1, 8-bit unsigned integer
+      TIFF_ASCII,     // 2, 8-bit bytes w/ last byte null
+      TIFF_SHORT,     // 3, 16-bit unsigned integer
+      TIFF_LONG,      // 4, 32-bit unsigned integer
+      TIFF_RATIONAL,  // 5, 64-bit unsigned fraction
+      TIFF_SBYTE,     // 6, !8-bit signed integer
+      TIFF_UNDEFINED, // 7, !8-bit untyped data
+      TIFF_SSHORT,    // 8, !16-bit signed integer
+      TIFF_SLONG,     // 9. !32-bit signed integer
+      TIFF_SRATIONAL, // 10, !64-bit signed fraction
+      TIFF_FLOAT,     // 11, !32-bit IEEE floating point
+      TIFF_DOUBLE     // 12, !64-bit IEEE floating point
+    );
 
-  PTIFFFieldInfo = ^TTIFFFieldInfo;
-  TTIFFFieldInfo = record
-    field_tag: ttag_t;                 // field's tag
-    field_readcount: SmallInt;         // read count/TIFF_VARIABLE/TIFF_SPP
-    field_writecount: SmallInt;        // write count/TIFF_VARIABLE
-    field_type: TTIFFDataType;         // type of associated data
-    field_bit: Word;                   // bit in fieldsset bit vector
-    field_oktochange: Byte;            // if true, can change while writing
-    field_passcount: Byte;             // if true, pass dir count on set
-    field_name: PChar;                 // ASCII name
-  end;
+  {$ifdef NewTIFFGraphic}
 
-  TTIFFTagValue = record
-    info: PTIFFFieldInfo;
-    count: Integer;
-    value: Pointer;
-  end;
+    {$ifndef COMPILER_6_UP}
+      PPointer = ^Pointer;
+    {$endif COMPILER_6_UP}
 
-  // No need to know more about this structures. Used internally.
-  // If you really want to see what's behind them then look up the included C source code.
-  PTIFFCIELabToRGB = Pointer;
-  PTIFFDisplay = Pointer;
-  PTIFFYCbCrToRGB = Pointer;
+    // TIFF is an opague record only known to the lib itself.
+    PTIFF = ^TTIFF;
+    TTIFF = record
+    end;
 
-  TTIFFReadWriteProc = function(fd: thandle_t; buf: tdata_t; size: tsize_t): tsize_t; cdecl;
-  TTIFFSeekProc = function(fd: thandle_t; off: toff_t; whence: Integer): toff_t; cdecl;
-  TTIFFCloseProc = function(fd: thandle_t): Integer; cdecl;
-  TTIFFSizeProc = function(fd: thandle_t): toff_t; cdecl;
-  TTIFFMapFileProc = function(fd: thandle_t; var pbase: tdata_t; var psize: toff_t): Integer; cdecl;
-  TTIFFUnmapFileProc = procedure(fd: thandle_t; base: tdata_t; size: toff_t); cdecl;
+    // For TIFFReassignTagToIgnore
+    TTIFFIgnoreSense = (// IGNORE tag table
+      TIS_STORE,
+      TIS_EXTRACT,
+      TIS_EMPTY
+    );
 
-  TIFFErrorHandler = procedure(Module: PChar; const Format: PChar; Params: va_list); cdecl;
+    TTIFFHeader = record
+      tiff_magic: Word;      // magic number (defines byte order)
+      tiff_version: Word;    // TIFF version number
+      tiff_diroff: Cardinal; // byte offset to first directory
+    end;
 
-function TIFFClientOpen(name, mode: PChar; clientdata: thandle_t; readproc: TTIFFReadWriteProc;
-  writeproc: TTIFFReadWriteProc; seekproc: TTIFFSeekProc; closeproc: TTIFFCloseProc; sizeproc: TTIFFSizeProc;
-  mapproc: TTIFFMapFileProc; unmapproc: TTIFFUnmapFileProc): PTIFF; cdecl;
-procedure TIFFClose(tif: PTIFF); cdecl;
-procedure TIFFCleanup(tif: PTIFF); cdecl; // called also from TIFFClose
-function TIFFCreateDirectory(tif: PTIFF): Integer; cdecl;
-function TIFFDefaultDirectory(tif: PTIFF): Integer; cdecl;
-function TIFFFlushData(tif: PTIFF): Integer; cdecl;
-function TIFFOpen(name, mode: PChar): PTIFF; cdecl;
-function TIFFReadRGBAImage(tif: PTIFF; rwidth, rheight: Cardinal; raster: Pointer; stop: LONGBOOL): BOOL; cdecl;
-function TIFFReassignTagToIgnore(task: TTIFFIgnoreSense; TIFFtagID: Integer): Integer; cdecl;
-function TIFFSetCompressionScheme(tif: PTIFF; scheme: Integer): Integer; cdecl;
-function TIFFWriteDirectory(tif: PTIFF): Integer; cdecl;
-function TIFFNumberOfDirectories(tif: PTIFF): tdir_t; cdecl;
-function TIFFSetDirectory(tif: PTIFF; dirn: tdir_t): Integer; cdecl;
-function TIFFReadTile(tif: PTIFF; buf: tdata_t; x, y, z: Cardinal; s: tsample_t): tsize_t; cdecl;
-function TIFFReadEncodedStrip(tif: PTIFF; strip: tstrip_t; buf: tdata_t; size: tsize_t): tsize_t; cdecl;
-function TIFFTileSize(tif: PTIFF): tsize_t; cdecl;
-function TIFFTileRowSize(tif: PTIFF): tsize_t; cdecl;
-function TIFFStripSize(tif: PTIFF): tsize_t; cdecl;
-function TIFFScanlineSize(tif: PTIFF): tsize_t; cdecl;
-function TIFFComputeStrip(tif: PTIFF; row: Cardinal; sample: tsample_t): tstrip_t; cdecl;
+    // TIFF Image File Directories are comprised of a table of field descriptors of the form shown
+    // below.  The table is sorted in ascending order by tag.  The values associated with each entry
+    // are disjoint and may appear anywhere in the file (so long as they are placed on a word boundary).
+    //
+    // If the value is 4 bytes or less, then it is placed in the offset field to save space.  If the value
+    // is less than 4 bytes, it is left-justified in the offset field.
 
-// Variable argument list functions. Must be used carefully.
-function TIFFVGetField(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl;
-function TIFFVSetField(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl;
-function TIFFVGetFieldDefaulted(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl;
+    TTIFFDirEntry = record
+      tdir_tag: Word;        // see below
+      tdir_type: Word;       // data type; see below
+      tdir_count: Cardinal;  // number of items; length in spec
+      tdir_offset: Cardinal; // byte offset to field data
+    end;
 
-{$ifdef DELPHI_7_UP}
-  function TIFFGetField(tif: PTIFF; tag: ttag_t): Integer; cdecl; varargs;
-{$else}
-  function TIFFGetField(tif: PTIFF; tag: ttag_t; Value: Pointer): Integer; cdecl;
-{$endif DELPHI_7_UP}
-function TIFFSetField(tif: PTIFF; tag: ttag_t; Value: Pointer): Integer; cdecl;
-{$ifdef DELPHI_7_UP}
-  function TIFFGetFieldDefaulted(tif: PTIFF; tag: ttag_t): Integer; cdecl; varargs;
-{$else}
-  function TIFFGetFieldDefaulted(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl;
-{$endif DELPHI_7_UP}
+    tsample_t = Word;
+    thandle_t = THandle;
+    tsize_t = Cardinal;
+    tdata_t = Pointer;
+    toff_t = Cardinal;
+    ttag_t = Cardinal;
+    tdir_t = Word;       // directory index
+    tstrip_t = Cardinal; // strip number
+    uint16 = Word;
 
-function TIFFSetWarningHandler(Handler: TIFFErrorHandler): TIFFErrorHandler; cdecl;
-function TIFFSetErrorHandler(Handler: TIFFErrorHandler): TIFFErrorHandler; cdecl;
+    PTIFFFieldInfo = ^TTIFFFieldInfo;
+    TTIFFFieldInfo = record
+      field_tag: ttag_t;                 // field's tag
+      field_readcount: SmallInt;         // read count/TIFF_VARIABLE/TIFF_SPP
+      field_writecount: SmallInt;        // write count/TIFF_VARIABLE
+      field_type: TTIFFDataType;         // type of associated data
+      field_bit: Word;                   // bit in fieldsset bit vector
+      field_oktochange: Byte;            // if true, can change while writing
+      field_passcount: Byte;             // if true, pass dir count on set
+      field_name: PChar;                 // ASCII name
+    end;
 
-function TIFFIsTiled(tif: PTIFF): LONGBOOL; cdecl;
+    TTIFFTagValue = record
+      info: PTIFFFieldInfo;
+      count: Integer;
+      value: Pointer;
+    end;
 
+    // No need to know more about this structures. Used internally.
+    // If you really want to see what's behind them then look up the included C source code.
+    PTIFFCIELabToRGB = Pointer;
+    PTIFFDisplay = Pointer;
+    PTIFFYCbCrToRGB = Pointer;
+
+    TTIFFReadWriteProc = function(fd: thandle_t; buf: tdata_t; size: tsize_t): tsize_t; cdecl;
+    TTIFFSeekProc = function(fd: thandle_t; off: toff_t; whence: Integer): toff_t; cdecl;
+    TTIFFCloseProc = function(fd: thandle_t): Integer; cdecl;
+    TTIFFSizeProc = function(fd: thandle_t): toff_t; cdecl;
+    TTIFFMapFileProc = function(fd: thandle_t; var pbase: tdata_t; var psize: toff_t): Integer; cdecl;
+    TTIFFUnmapFileProc = procedure(fd: thandle_t; base: tdata_t; size: toff_t); cdecl;
+
+    TIFFErrorHandler = procedure(Module: PChar; const Format: PChar; Params: va_list); cdecl;
+
+  function TIFFClientOpen(name, mode: PChar; clientdata: thandle_t; readproc: TTIFFReadWriteProc;
+    writeproc: TTIFFReadWriteProc; seekproc: TTIFFSeekProc; closeproc: TTIFFCloseProc; sizeproc: TTIFFSizeProc;
+    mapproc: TTIFFMapFileProc; unmapproc: TTIFFUnmapFileProc): PTIFF; cdecl;
+  procedure TIFFClose(tif: PTIFF); cdecl;
+  procedure TIFFCleanup(tif: PTIFF); cdecl; // called also from TIFFClose
+  function TIFFCreateDirectory(tif: PTIFF): Integer; cdecl;
+  function TIFFDefaultDirectory(tif: PTIFF): Integer; cdecl;
+  function TIFFFlushData(tif: PTIFF): Integer; cdecl;
+  function TIFFOpen(name, mode: PChar): PTIFF; cdecl;
+  function TIFFReadRGBAImage(tif: PTIFF; rwidth, rheight: Cardinal; raster: Pointer; stop: LONGBOOL): BOOL; cdecl;
+  function TIFFReassignTagToIgnore(task: TTIFFIgnoreSense; TIFFtagID: Integer): Integer; cdecl;
+  function TIFFSetCompressionScheme(tif: PTIFF; scheme: Integer): Integer; cdecl;
+  function TIFFWriteDirectory(tif: PTIFF): Integer; cdecl;
+  function TIFFNumberOfDirectories(tif: PTIFF): tdir_t; cdecl;
+  function TIFFSetDirectory(tif: PTIFF; dirn: tdir_t): Integer; cdecl;
+  function TIFFReadTile(tif: PTIFF; buf: tdata_t; x, y, z: Cardinal; s: tsample_t): tsize_t; cdecl;
+  function TIFFReadEncodedStrip(tif: PTIFF; strip: tstrip_t; buf: tdata_t; size: tsize_t): tsize_t; cdecl;
+  function TIFFTileSize(tif: PTIFF): tsize_t; cdecl;
+  function TIFFTileRowSize(tif: PTIFF): tsize_t; cdecl;
+  function TIFFStripSize(tif: PTIFF): tsize_t; cdecl;
+  function TIFFScanlineSize(tif: PTIFF): tsize_t; cdecl;
+  function TIFFComputeStrip(tif: PTIFF; row: Cardinal; sample: tsample_t): tstrip_t; cdecl;
+
+  // Variable argument list functions. Must be used carefully.
+  function TIFFVGetField(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl;
+  function TIFFVSetField(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl;
+  function TIFFVGetFieldDefaulted(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl;
+
+  {$ifdef DELPHI_7_UP}
+    function TIFFGetField(tif: PTIFF; tag: ttag_t): Integer; cdecl; varargs;
+  {$else}
+    function TIFFGetField(tif: PTIFF; tag: ttag_t; Value: Pointer): Integer; cdecl;
+  {$endif DELPHI_7_UP}
+  function TIFFSetField(tif: PTIFF; tag: ttag_t; Value: Pointer): Integer; cdecl;
+  {$ifdef DELPHI_7_UP}
+    function TIFFGetFieldDefaulted(tif: PTIFF; tag: ttag_t): Integer; cdecl; varargs;
+  {$else}
+    function TIFFGetFieldDefaulted(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl;
+  {$endif DELPHI_7_UP}
+
+  function TIFFSetWarningHandler(Handler: TIFFErrorHandler): TIFFErrorHandler; cdecl;
+  function TIFFSetErrorHandler(Handler: TIFFErrorHandler): TIFFErrorHandler; cdecl;
+
+  function TIFFIsTiled(tif: PTIFF): LONGBOOL; cdecl;
+
+{$endif NewTIFFGraphic}
 //----------------------------------------------------------------------------------------------------------------------
 
 implementation
 
-uses
-  zLibExAPI,SysUtils, GraphicEx, LibStub, JPG, zLibEx;
+{$ifdef NewTIFFGraphic}
 
-procedure _TIFFBuiltinCODECS; external;    // Not really a procedure but a structure.
-procedure tiffDataWidth; external;         // Not really a procedure but a structure.
-procedure TIFFFaxMainTable; external;      // Not really a procedure but a structure.
-procedure TIFFFaxWhiteTable; external;     // Not really a procedure but a structure.
-procedure TIFFFaxBlackTable; external;     // Not really a procedure but a structure.
+  uses
+    zLibExAPI,SysUtils, GraphicEx, LibStub, JPG, zLibEx;
 
-function TIFFgetMode(mode, module: PChar): Integer; external;
-procedure TIFFMergeFieldInfo(tif: PTIFF; const info; n: Integer); external;
+  procedure _TIFFBuiltinCODECS; external;    // Not really a procedure but a structure.
+  procedure tiffDataWidth; external;         // Not really a procedure but a structure.
+  procedure TIFFFaxMainTable; external;      // Not really a procedure but a structure.
+  procedure TIFFFaxWhiteTable; external;     // Not really a procedure but a structure.
+  procedure TIFFFaxBlackTable; external;     // Not really a procedure but a structure.
 
-function TIFFClientOpen(name, mode: PChar; clientdata: thandle_t; readproc: TTIFFReadWriteProc;
-  writeproc: TTIFFReadWriteProc; seekproc: TTIFFSeekProc; closeproc: TTIFFCloseProc; sizeproc: TTIFFSizeProc;
-  mapproc: TTIFFMapFileProc; unmapproc: TTIFFUnmapFileProc): PTIFF; cdecl; external;
-procedure TIFFClose(tif: PTIFF); cdecl; external;
-procedure TIFFCleanup(tif: PTIFF); cdecl; external;
-function TIFFCreateDirectory(tif: PTIFF): Integer; cdecl; external;
-function TIFFDefaultDirectory(tif: PTIFF): Integer; cdecl; external;
-function TIFFFlushData(tif: PTIFF): Integer; cdecl; external;
-function TIFFOpen(name, mode: PChar): PTIFF; cdecl; external;
-function TIFFReadRGBAImage(tif: PTIFF; rwidth, rheight: Cardinal; raster: Pointer; stop: LONGBOOL): BOOL; cdecl; external;
-function TIFFReassignTagToIgnore(task: TTIFFIgnoreSense; TIFFtagID: Integer): Integer; cdecl; external;
-function TIFFSetCompressionScheme(tif: PTIFF; scheme: Integer): Integer; cdecl; external;
-function TIFFWriteDirectory(tif: PTIFF): Integer; cdecl; external;
-function TIFFNumberOfDirectories(tif: PTIFF): tdir_t; cdecl; external;
-function TIFFSetDirectory(tif: PTIFF; dirn: tdir_t): Integer; cdecl; external;
-function TIFFReadTile(tif: PTIFF; buf: tdata_t; x, y, z: Cardinal; s: tsample_t): tsize_t; cdecl; external;
-function TIFFReadEncodedStrip(tif: PTIFF; strip: tstrip_t; buf: tdata_t; size: tsize_t): tsize_t; cdecl; external;
-function TIFFTileSize(tif: PTIFF): tsize_t; cdecl; external;
-function TIFFTileRowSize(tif: PTIFF): tsize_t; cdecl; external;
-function TIFFStripSize(tif: PTIFF): tsize_t; cdecl; external;
-function TIFFScanlineSize(tif: PTIFF): tsize_t; cdecl; external;
-function TIFFComputeStrip(tif: PTIFF; row: Cardinal; sample: tsample_t): tstrip_t; cdecl; external;
+  function TIFFgetMode(mode, module: PChar): Integer; external;
+  procedure TIFFMergeFieldInfo(tif: PTIFF; const info; n: Integer); external;
 
-function TIFFVGetField(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl; external;
-function TIFFVSetField(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl; external;
-function TIFFVGetFieldDefaulted(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl; external;
+  function TIFFClientOpen(name, mode: PChar; clientdata: thandle_t; readproc: TTIFFReadWriteProc;
+    writeproc: TTIFFReadWriteProc; seekproc: TTIFFSeekProc; closeproc: TTIFFCloseProc; sizeproc: TTIFFSizeProc;
+    mapproc: TTIFFMapFileProc; unmapproc: TTIFFUnmapFileProc): PTIFF; cdecl; external;
+  procedure TIFFClose(tif: PTIFF); cdecl; external;
+  procedure TIFFCleanup(tif: PTIFF); cdecl; external;
+  function TIFFCreateDirectory(tif: PTIFF): Integer; cdecl; external;
+  function TIFFDefaultDirectory(tif: PTIFF): Integer; cdecl; external;
+  function TIFFFlushData(tif: PTIFF): Integer; cdecl; external;
+  function TIFFOpen(name, mode: PChar): PTIFF; cdecl; external;
+  function TIFFReadRGBAImage(tif: PTIFF; rwidth, rheight: Cardinal; raster: Pointer; stop: LONGBOOL): BOOL; cdecl; external;
+  function TIFFReassignTagToIgnore(task: TTIFFIgnoreSense; TIFFtagID: Integer): Integer; cdecl; external;
+  function TIFFSetCompressionScheme(tif: PTIFF; scheme: Integer): Integer; cdecl; external;
+  function TIFFWriteDirectory(tif: PTIFF): Integer; cdecl; external;
+  function TIFFNumberOfDirectories(tif: PTIFF): tdir_t; cdecl; external;
+  function TIFFSetDirectory(tif: PTIFF; dirn: tdir_t): Integer; cdecl; external;
+  function TIFFReadTile(tif: PTIFF; buf: tdata_t; x, y, z: Cardinal; s: tsample_t): tsize_t; cdecl; external;
+  function TIFFReadEncodedStrip(tif: PTIFF; strip: tstrip_t; buf: tdata_t; size: tsize_t): tsize_t; cdecl; external;
+  function TIFFTileSize(tif: PTIFF): tsize_t; cdecl; external;
+  function TIFFTileRowSize(tif: PTIFF): tsize_t; cdecl; external;
+  function TIFFStripSize(tif: PTIFF): tsize_t; cdecl; external;
+  function TIFFScanlineSize(tif: PTIFF): tsize_t; cdecl; external;
+  function TIFFComputeStrip(tif: PTIFF; row: Cardinal; sample: tsample_t): tstrip_t; cdecl; external;
 
-{$ifdef DELPHI_7_UP}
-  function TIFFGetField(tif: PTIFF; tag: ttag_t): Integer; cdecl; external;
-{$else}
-  function TIFFGetField(tif: PTIFF; tag: ttag_t; Value: Pointer): Integer; cdecl; external;
-{$endif DELPHI_7_UP}
-function TIFFSetField(tif: PTIFF; tag: ttag_t; Value: Pointer): Integer; cdecl; external;
-{$ifdef DELPHI_7_UP}
-  function TIFFGetFieldDefaulted(tif: PTIFF; tag: ttag_t): Integer; cdecl; external;
-{$else}
-  function TIFFGetFieldDefaulted(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl; external;
-{$endif DELPHI_7_UP}
+  function TIFFVGetField(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl; external;
+  function TIFFVSetField(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl; external;
+  function TIFFVGetFieldDefaulted(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl; external;
 
-function TIFFSetWarningHandler(Handler: TIFFErrorHandler): TIFFErrorHandler; cdecl; external;
-function TIFFSetErrorHandler(Handler: TIFFErrorHandler): TIFFErrorHandler; cdecl; external;
+  {$ifdef DELPHI_7_UP}
+    function TIFFGetField(tif: PTIFF; tag: ttag_t): Integer; cdecl; external;
+  {$else}
+    function TIFFGetField(tif: PTIFF; tag: ttag_t; Value: Pointer): Integer; cdecl; external;
+  {$endif DELPHI_7_UP}
+  function TIFFSetField(tif: PTIFF; tag: ttag_t; Value: Pointer): Integer; cdecl; external;
+  {$ifdef DELPHI_7_UP}
+    function TIFFGetFieldDefaulted(tif: PTIFF; tag: ttag_t): Integer; cdecl; external;
+  {$else}
+    function TIFFGetFieldDefaulted(tif: PTIFF; tag: ttag_t; Values: va_list): Integer; cdecl; external;
+  {$endif DELPHI_7_UP}
 
-function TIFFIsTiled(tif: PTIFF): LONGBOOL; cdecl; external;
+  function TIFFSetWarningHandler(Handler: TIFFErrorHandler): TIFFErrorHandler; cdecl; external;
+  function TIFFSetErrorHandler(Handler: TIFFErrorHandler): TIFFErrorHandler; cdecl; external;
 
-function TIFFIsCODECConfigured(scheme: uint16): Integer; cdecl; external;
-function _TIFFCheckMalloc(tif: PTIFF; nmemb, elem_size: size_t; const what: PChar): tdata_t; cdecl; external;
-function _TIFFCreateAnonFieldInfo(tif: PTIFF; tag: ttag_t; field_type: TTIFFDataType): PTIFFFieldInfo; cdecl; external;
-function _TIFFGetExifFieldInfo(var size: size_t): PTIFFFieldInfo; cdecl; external;
-function _TIFFSampleToTagType(tif: PTIFF): TTIFFDataType; cdecl; external;
-procedure _TIFFSetDefaultCompressionState(tif: PTIFF); cdecl; external;
-procedure _TIFFsetString(cpp: PPChar; cp: PChar); cdecl; external;
+  function TIFFIsTiled(tif: PTIFF): LONGBOOL; cdecl; external;
 
-function TIFFCIELabToRGBInit(cielab: PTIFFCIELabToRGB; display: PTIFFDisplay; refWhite: PSingle): Integer; cdecl; external;
-function TIFFYCbCrToRGBInit(ycbcr: PTIFFYCbCrToRGB; luma, refBlackWhite: PSingle): Integer; cdecl; external;
-procedure TIFFCIELabToXYZ(cielab: PTIFFCIELabToRGB; l: Cardinal; a, b: Integer; var X, Y, Z: Single); cdecl; external;
-procedure TIFFXYZToRGB(cielab: PTIFFCIELabToRGB; X, Y, Z: Single; var r, g, b: Cardinal); cdecl; external;
-procedure TIFFYCbCrtoRGB(ycbcr: PTIFFYCbCrToRGB; Y: Cardinal; Cb, Cr: Integer; var r, g, b: Cardinal); cdecl; external;
+  function TIFFIsCODECConfigured(scheme: uint16): Integer; cdecl; external;
+  function _TIFFCheckMalloc(tif: PTIFF; nmemb, elem_size: size_t; const what: PChar): tdata_t; cdecl; external;
+  function _TIFFCreateAnonFieldInfo(tif: PTIFF; tag: ttag_t; field_type: TTIFFDataType): PTIFFFieldInfo; cdecl; external;
+  function _TIFFGetExifFieldInfo(var size: size_t): PTIFFFieldInfo; cdecl; external;
+  function _TIFFSampleToTagType(tif: PTIFF): TTIFFDataType; cdecl; external;
+  procedure _TIFFSetDefaultCompressionState(tif: PTIFF); cdecl; external;
+  procedure _TIFFsetString(cpp: PPChar; cp: PChar); cdecl; external;
 
-procedure _TIFFsetByteArray(vpp: PPointer; vp: Pointer; n: Cardinal); cdecl; external;
-function TIFFGetTagListCount(tif: PTIFF): Integer; cdecl; external;
-function _TIFFgetMode(const mode, module: PChar): Integer; cdecl; external;
-procedure TIFFError(const S: PChar); varargs; cdecl; external;
+  function TIFFCIELabToRGBInit(cielab: PTIFFCIELabToRGB; display: PTIFFDisplay; refWhite: PSingle): Integer; cdecl; external;
+  function TIFFYCbCrToRGBInit(ycbcr: PTIFFYCbCrToRGB; luma, refBlackWhite: PSingle): Integer; cdecl; external;
+  procedure TIFFCIELabToXYZ(cielab: PTIFFCIELabToRGB; l: Cardinal; a, b: Integer; var X, Y, Z: Single); cdecl; external;
+  procedure TIFFXYZToRGB(cielab: PTIFFCIELabToRGB; X, Y, Z: Single; var r, g, b: Cardinal); cdecl; external;
+  procedure TIFFYCbCrtoRGB(ycbcr: PTIFFYCbCrToRGB; Y: Cardinal; Cb, Cr: Integer; var r, g, b: Cardinal); cdecl; external;
 
-{$L fax3sm_winnt.obj}
-{$L tif_aux.obj}
-{$L tif_close.obj}
-{$L tif_codec.obj}
-{$L tif_color.obj}
-{$L tif_compress.obj}
-{$L tif_dir.obj}
-{$L tif_dirinfo.obj}
-{$L tif_dirread.obj}
-{$L tif_dirwrite.obj}
-{$L tif_dumpmode.obj}
-{$L tif_error.obj}
-{$L tif_fax3.obj}
-{$L tif_flush.obj}
-{$L tif_getimage.obj}
-{$L tif_jpeg.obj}
-{$L tif_luv.obj}
-{$L tif_lzw.obj}
-{$L tif_ojpeg.obj}
-{$L tif_open.obj}
-{$L tif_packbits.obj}
-{$L tif_pixarlog.obj}
-{$L tif_predict.obj}
-{$L tif_print.obj}
-{$L tif_read.obj}
-{$L tif_strip.obj}
-{$L tif_swab.obj}
-{$L tif_thunder.obj}
-{$L tif_tile.obj}
-{$L tif_version.obj}
-{$L tif_warning.obj}
-{$L tif_win32.obj}
-{$L tif_write.obj}
-{$L tif_zip.obj}
-{$L tif_next.obj}
-{$L tif_extension.obj}
-{$L adler32.obj}
-{$L inflate.obj}
-{$L inffast.obj}
-{$L inftrees.obj}
-{-$L zutil.obj}
-{$L deflate.obj}
-{$L crc32.obj}
-{$L trees.obj}
+  procedure _TIFFsetByteArray(vpp: PPointer; vp: Pointer; n: Cardinal); cdecl; external;
+  function TIFFGetTagListCount(tif: PTIFF): Integer; cdecl; external;
+  function _TIFFgetMode(const mode, module: PChar): Integer; cdecl; external;
+  procedure TIFFError(const S: PChar); varargs; cdecl; external;
 
-//----------------------------------------------------------------------------------------------------------------------
+  {$L fax3sm_winnt.obj}
+  {$L tif_aux.obj}
+  {$L tif_close.obj}
+  {$L tif_codec.obj}
+  {$L tif_color.obj}
+  {$L tif_compress.obj}
+  {$L tif_dir.obj}
+  {$L tif_dirinfo.obj}
+  {$L tif_dirread.obj}
+  {$L tif_dirwrite.obj}
+  {$L tif_dumpmode.obj}
+  {$L tif_error.obj}
+  {$L tif_fax3.obj}
+  {$L tif_flush.obj}
+  {$L tif_getimage.obj}
+  {$L tif_jpeg.obj}
+  {$L tif_luv.obj}
+  {$L tif_lzw.obj}
+  {$L tif_ojpeg.obj}
+  {$L tif_open.obj}
+  {$L tif_packbits.obj}
+  {$L tif_pixarlog.obj}
+  {$L tif_predict.obj}
+  {$L tif_print.obj}
+  {$L tif_read.obj}
+  {$L tif_strip.obj}
+  {$L tif_swab.obj}
+  {$L tif_thunder.obj}
+  {$L tif_tile.obj}
+  {$L tif_version.obj}
+  {$L tif_warning.obj}
+  {$L tif_win32.obj}
+  {$L tif_write.obj}
+  {$L tif_zip.obj}
+  {$L tif_next.obj}
+  {$L tif_extension.obj}
+  {$L adler32.obj}
+  {$L inflate.obj}
+  {$L inffast.obj}
+  {$L inftrees.obj}
+  {-$L zutil.obj}
+  {$L deflate.obj}
+  {$L crc32.obj}
+  {$L trees.obj}
 
-procedure GraphicExTIFFError(Module: PChar; const Format: PChar; Params: va_list); cdecl;
+  //----------------------------------------------------------------------------------------------------------------------
 
-var
-  Buffer: array[0..1000] of Char;
-//  Param1, Param2: PAnsiChar;
-//  wtf: AnsiString;
-begin
-//try to find out what's wrong with Params
-//  Param1:=Params^;
-//  Param2:=Param1+1;
-//  wtf:=Param1;
-//  GraphicExError(SysUtils.Format(Format,[Param1, Param2]));
-//  Param2:=PAnsiChar((Params+1)^);
-  wvsprintf(Buffer, Format, Params);
-  GraphicExError(Buffer);
-end;
+  procedure GraphicExTIFFError(Module: PChar; const Format: PChar; Params: va_list); cdecl;
 
-//----------------------------------------------------------------------------------------------------------------------
+  var
+    Buffer: array[0..1000] of Char;
+  begin
+    wvsprintf(Buffer, Format, Params);
+    GraphicExError(Buffer);
+  end;
 
-procedure GraphicExTIFFWarning(Module: PChar; const Format: PChar; Params: va_list); cdecl;
-var
-  Buffer: array[0..1000] of Char;
-begin
-  wvsprintf(Buffer, Format, Params);
-  OutputDebugString(Buffer);
-end;
+  //----------------------------------------------------------------------------------------------------------------------
 
-//----------------------------------------------------------------------------------------------------------------------
+  procedure GraphicExTIFFWarning(Module: PChar; const Format: PChar; Params: va_list); cdecl;
+  var
+    Buffer: array[0..1000] of Char;
+  begin
+    wvsprintf(Buffer, Format, Params);
+    OutputDebugString(Buffer);
+  end;
 
-function zcalloc(opaque: Pointer; items, size: Integer): Pointer;
-begin
-  GetMem(result,items * size);
-end;
+  //----------------------------------------------------------------------------------------------------------------------
 
-procedure zcfree(opaque, block: Pointer);
-begin
-  FreeMem(block);
-end;
+  function zcalloc(opaque: Pointer; items, size: Integer): Pointer;
+  begin
+    GetMem(result,items * size);
+  end;
+
+  procedure zcfree(opaque, block: Pointer);
+  begin
+    FreeMem(block);
+  end;
 
 
-{$ifndef WIN64}
-procedure _llmod;
-asm
-  jmp System.@_llmod;
-end;
-{$endif}
+  {$ifndef WIN64}
+  procedure _llmod;
+  asm
+    jmp System.@_llmod;
+  end;
+  {$endif}
 
-initialization
-  TIFFSetWarningHandler(@GraphicExTIFFWarning);
-  TIFFSetErrorHandler(@GraphicExTIFFError);
-finalization
+  initialization
+    TIFFSetWarningHandler(@GraphicExTIFFWarning);
+    TIFFSetErrorHandler(@GraphicExTIFFError);
+  finalization
+
+{$endif NewTIFFGraphic}
+
 end.
 
 

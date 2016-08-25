@@ -1,5 +1,7 @@
 unit GraphicEx;
 
+
+
 {$IFDEF FPC}
   {$MODE Delphi}
 {$ENDIF}
@@ -66,7 +68,7 @@ uses
 {$ELSE}
   LCLIntf, LCLType, LMessages,
 {$ENDIF}
-  Classes, ExtCtrls, Graphics, SysUtils, Contnrs, JPG,
+  Classes, ExtCtrls, Graphics, SysUtils, Contnrs, (*JPG,*)
   {$ifdef TIFFGraphic}
   TIFF,
   {$endif TIFFGraphic}
@@ -118,6 +120,7 @@ type
     ctPredictedZip,     // ZIP comression with prediction
     ctSGILog,           // SGI Log Luminance RLE
     ctSGILog24          // SGI Log 24-bit packed
+//    ct
   );
 
   // properties of a particular image which are set while loading an image or when
@@ -157,6 +160,20 @@ type
 
     // TIFF
     Orientation: Word;
+    FirstIFD: Cardinal;
+    BytesPerLine: Cardinal;
+    YCbCrSubSampling: TByteArray;
+    JPEGTables: TByteArray;
+    Predictor: Integer;
+    CurrentRow: Cardinal;
+    CurrentStrip: Integer;
+    StripCount: Integer;
+    RowsPerStrip: TCardinalArray;
+    TileWidth: Cardinal;
+    TileLength: Cardinal;
+    JPEGColorMode: Cardinal;
+    JPEGTablesMode: Cardinal;
+    PlanarConfig: Cardinal;
   end;
 
   // This mode is used when creating a file mapping. See TFileMapping.
@@ -214,7 +231,8 @@ type
     class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; overload; virtual;
     class function CanLoad(Stream: TStream): Boolean; overload;
     procedure LoadFromFile(const FileName: string); override;
-    procedure LoadFromFileByIndex(const FileName: string; ImageIndex: Cardinal = 0);
+    procedure LoadFromFileByIndex(const FileName: string; ImageIndex: Cardinal = 0);  virtual; //by default it
+    //creates file mapping and then calls LoadFromMemory. But if we use TStream instead, we can want to override it...
     procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); virtual;
     procedure LoadFromResourceID(Instance: THandle; ResID: Integer; ImageIndex: Cardinal = 0);
     procedure LoadFromResourceName(Instance: THandle; const ResName: string; ImageIndex: Cardinal = 0);
@@ -255,7 +273,7 @@ type
   end;
   {$endif SGIGraphic}
 
-  {$ifdef TIFFGraphic}
+  {$ifdef NewTIFFGraphic}
   // *.tif, *.tiff images
   TTIFFGraphic = class(TGraphicExGraphic)
   private
@@ -271,16 +289,51 @@ type
     procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
     function ReadImageProperties(const Memory: Pointer; Size:Int64; ImageIndex: Cardinal): Boolean; override;
   end;
+  {$endif NewTIFFGraphic}
+  {$ifdef OldTIFFGraphic}
+    TIFDEntry = packed record
+      Tag: Word;
+      DataType: Word;
+      DataLength: Cardinal;
+      Offset: Cardinal;
+    end;
 
-    {$ifdef EPSGraphic}
+    TTIFFPalette = array[0..787] of Word;
+
+    TTIFFGraphic = class(TGraphicExGraphic)
+    private
+      FBasePosition: Int64; //won't be too surprised of more than 2 Gb image...
+      FIFD: array of TIFDEntry; // the tags of one image file directory
+      FPalette: TTIFFPalette;
+      FYCbCrPositioning: Cardinal;
+      FYCbCrCoefficients: TFloatArray;
+      function FindTag(Tag: Cardinal; var Index: Cardinal): Boolean;
+      procedure GetValueList(Stream: TStream; Tag: Cardinal; var Values: TByteArray); overload;
+      procedure GetValueList(Stream: TStream; Tag: Cardinal; var Values: TCardinalArray); overload;
+      procedure GetValueList(Stream: TStream; Tag: Cardinal; var Values: TFloatArray); overload;
+      function GetValue(Stream: TStream; Tag: Cardinal; Default: Single = 0): Single; overload;
+      function GetValue(Tag: Cardinal; Default: Cardinal = 0): Cardinal; overload;
+      function GetValue(Tag: Cardinal; var Size: Cardinal; Default: Cardinal = 0): Cardinal; overload;
+      procedure SortIFD;
+      procedure SwapIFD;
+    public
+      class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
+      procedure LoadFromStream(Stream: TStream); override;
+      procedure LoadFromFileByIndex(const FileName: string; ImageIndex: Cardinal = 0); override;
+      procedure SaveToStream(Stream: TStream); override;
+      function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
+    end;
+  {$endif OldTIFFGraphic}
+
+  {$ifdef EPSGraphic}
     TEPSGraphic = class(TTIFFGraphic)
     public
       class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; override;
       procedure LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0); override;
       function ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean; override;
     end;
-    {$endif EPSGraphic}
-  {$endif TIFFGraphic}
+ {$endif EPSGraphic}
+
 
   {$ifdef TargaGraphic}
   // *.tga; *.vst; *.icb; *.vda; *.win images
@@ -772,6 +825,7 @@ uses
   IntfGraphics,
 {$ENDIF}
   Math, MZLib, JPEG;
+
 
 type
   {$ifndef COMPILER_6_UP}
@@ -2744,14 +2798,45 @@ end;
 //----------------- TTIFFGraphic ---------------------------------------------------------------------------------------
 
 {$ifdef TIFFGraphic}
+  type
+    PTIFFHeader = ^TTIFFHeader;
+    TTIFFHeader = packed record
+      ByteOrder: Word;
+      Version: Word;
+      FirstIFD: Cardinal;
+    end;
 
-type
-  PTIFFHeader = ^TTIFFHeader;
-  TTIFFHeader = packed record
-    ByteOrder: Word;
-    Version: Word;
-    FirstIFD: Cardinal;
+  class function TTIFFGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
+  var
+    Run: PByte;
+    Header: TTIFFHeader;
+
+  begin
+    Run := Memory;
+    Result := Size > SizeOf(TTIFFHeader);
+    if Result then
+    begin
+      Move(Run^, Header, SizeOf(Header));
+      with Header do
+      begin
+        Result := (ByteOrder = TIFF_BIGENDIAN) or (ByteOrder = TIFF_LITTLEENDIAN);
+        if Result then
+        begin
+          if ByteOrder = TIFF_BIGENDIAN then
+          begin
+            Version := Swap(Header.Version);
+            FirstIFD := SwapLong(Header.FirstIFD);
+          end;
+
+          Result := (Version = TIFF_VERSION) and (Integer(FirstIFD) < Size);
+        end;
+      end;
+    end;
   end;
+
+{$endif TIFFGraphic}
+
+{$ifdef NewTIFFGraphic}
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -3023,37 +3108,6 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-class function TTIFFGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
-
-var
-  Run: PByte;
-  Header: TTIFFHeader;
-
-begin
-  Run := Memory;
-  Result := Size > SizeOf(TTIFFHeader);
-  if Result then
-  begin
-    Move(Run^, Header, SizeOf(Header));
-    with Header do
-    begin
-      Result := (ByteOrder = TIFF_BIGENDIAN) or (ByteOrder = TIFF_LITTLEENDIAN);
-      if Result then
-      begin
-        if ByteOrder = TIFF_BIGENDIAN then
-        begin
-          Version := Swap(Header.Version);
-          FirstIFD := SwapLong(Header.FirstIFD);
-        end;
-
-        Result := (Version = TIFF_VERSION) and (Integer(FirstIFD) < Size);
-      end;
-    end;
-  end;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
 procedure TTIFFGraphic.LoadFromMemory(const Memory: Pointer; Size: Int64; ImageIndex: Cardinal = 0);
 
 var
@@ -3232,6 +3286,7 @@ var
   ResUnit: Word;
   FillOrder: Word;
 
+  DebugSize: Integer;
   {$ifndef DELPHI_7_UP}
     // Structure used to build a va_list array.
     ExtraInfo: record
@@ -3253,6 +3308,9 @@ begin
 
       TIFFImage := TIFFClientOpen('', 'r', Cardinal(Self), TIFFReadProc, TIFFWriteProc, TIFFSeekProc, TIFFCloseProc,
         TIFFSizeProc, TIFFMapProc, TIFFUnmapProc);
+
+      DebugSize:=GlobalSize(NativeInt(TIFFImage));
+
       if Assigned(TIFFImage) then
       try
         // This version is actually a magic number, which does never change.
@@ -3412,6 +3470,1038 @@ begin
     end;
   end;
 end;
+{$endif NewTIFFGraphic}
+
+{$ifdef OldTIFFGraphic}
+function TTIFFGraphic.FindTag(Tag: Cardinal; var Index: Cardinal): Boolean;
+
+// looks through the currently loaded IFD for the entry indicated by Tag;
+// returns True and the index of the entry in Index if the entry is there
+// otherwise the result is False and Index undefined
+// Note: The IFD is sorted so we can use a binary search here.
+
+var
+  L, H, I, C: Integer;
+
+begin
+  Result := False;
+  L := 0;
+  H := High(FIFD);
+  while L <= H do
+  begin
+    I := (L + H) shr 1;
+    C := Integer(FIFD[I].Tag) - Integer(Tag);
+    if C < 0 then L := I + 1
+             else
+    begin
+      H := I - 1;
+      if C = 0 then
+      begin
+        Result := True;
+        L := I;
+      end;
+    end;
+  end;
+  Index := L;
+end;
+
+const
+  DataTypeToSize: array[TIFF_NOTYPE..TIFF_SLONG] of Byte = (0, 1, 1, 2, 4, 8, 1, 1, 2, 4);
+
+procedure TTIFFGraphic.GetValueList(Stream: TStream; Tag: Cardinal; var Values: TByteArray);
+
+// returns the values of the IFD entry indicated by Tag
+
+var
+  Index,
+  Value,
+  Shift: Cardinal;
+  I: Integer;
+
+begin
+  Values := nil;
+  if FindTag(Tag, Index) and
+     (FIFD[Index].DataLength > 0) then
+  begin
+    // prepare value list
+    SetLength(Values, FIFD[Index].DataLength);
+
+    // determine whether the data fits into 4 bytes
+    Value := DataTypeToSize[TTiffDataType(FIFD[Index].DataType)] * FIFD[Index].DataLength;
+
+    // data fits into one cardinal -> extract it
+    if Value <= 4 then
+    begin
+      Shift := DataTypeToSize[TTiffDataType(FIFD[Index].DataType)] * 8;
+      Value := FIFD[Index].Offset;
+      for I := 0 to FIFD[Index].DataLength - 1 do
+      begin
+        case TTiffDataType(FIFD[Index].DataType) of
+          TIFF_BYTE:
+            Values[I] := Byte(Value);
+          TIFF_SHORT,
+          TIFF_SSHORT:
+            // no byte swap needed here because values in the IFD are already swapped
+            // (if necessary at all)
+            Values[I] := Word(Value);
+          TIFF_LONG,
+          TIFF_SLONG:
+            Values[I] := Value;
+        end;
+        Value := Value shr Shift;
+      end;
+    end
+    else
+    begin
+      // data of this tag does not fit into one 32 bits value
+      Stream.Position := FBasePosition + FIFD[Index].Offset;
+      // bytes sized data can be read directly instead of looping through the array
+      if TTiffDataType(FIFD[Index].DataType) in [TIFF_BYTE, TIFF_ASCII, TIFF_SBYTE, TIFF_UNDEFINED]
+        then Stream.Read(Values[0], Value)
+        else
+      begin
+        for I := 0 to High(Values) do
+        begin
+          Stream.Read(Value, DataTypeToSize[TTiffDataType(FIFD[Index].DataType)]);
+          case TTiffDataType(FIFD[Index].DataType) of
+            TIFF_BYTE:
+              Value := Byte(Value);
+            TIFF_SHORT,
+            TIFF_SSHORT:
+              begin
+                if ioBigEndian in FImageProperties.Options then Value := Swap(Word(Value))
+                                                           else Value := Word(Value);
+              end;
+            TIFF_LONG,
+            TIFF_SLONG:
+              if ioBigEndian in FImageProperties.Options then Value := SwapLong(Value);
+          end;
+          Values[I] := Value;
+        end;
+      end;
+    end;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TTIFFGraphic.GetValueList(Stream: TStream; Tag: Cardinal; var Values: TCardinalArray);
+
+// returns the values of the IFD entry indicated by Tag
+
+var
+  Index,
+  Value,
+  Shift: Cardinal;
+  I: Integer;
+
+begin
+  Values := nil;
+  if FindTag(Tag, Index) and
+     (FIFD[Index].DataLength > 0) then
+  begin
+    // prepare value list
+    SetLength(Values, FIFD[Index].DataLength);
+
+    // determine whether the data fits into 4 bytes
+    Value := DataTypeToSize[TTiffDataType(FIFD[Index].DataType)] * FIFD[Index].DataLength;
+
+    // data fits into one cardinal -> extract it
+    if Value <= 4 then
+    begin
+      Shift := DataTypeToSize[TTiffDataType(FIFD[Index].DataType)] * 8;
+      Value := FIFD[Index].Offset;
+      for I := 0 to FIFD[Index].DataLength - 1 do
+      begin
+        case TTiffDataType(FIFD[Index].DataType) of
+          TIFF_BYTE,
+          TIFF_ASCII,
+          TIFF_SBYTE,
+          TIFF_UNDEFINED:
+            Values[I] := Byte(Value);
+          TIFF_SHORT,
+          TIFF_SSHORT:
+            // no byte swap needed here because values in the IFD are already swapped
+            // (if necessary at all)
+            Values[I] := Word(Value);
+          TIFF_LONG,
+          TIFF_SLONG:
+            Values[I] := Value;
+        end;
+        Value := Value shr Shift;
+      end;
+    end
+    else
+    begin
+      // data of this tag does not fit into one 32 bits value
+      Stream.Position := FBasePosition + FIFD[Index].Offset;
+      // even bytes sized data must be read by the loop as it is expanded to cardinals
+      for I := 0 to High(Values) do
+      begin
+        Stream.Read(Value, DataTypeToSize[TTiffDataType(FIFD[Index].DataType)]);
+        case TTiffDataType(FIFD[Index].DataType) of
+          TIFF_BYTE:
+            Value := Byte(Value);
+          TIFF_SHORT,
+          TIFF_SSHORT:
+            begin
+              if ioBigEndian in FImageProperties.Options then Value := Swap(Word(Value))
+                                                         else Value := Word(Value);
+            end;
+          TIFF_LONG,
+          TIFF_SLONG:
+            if ioBigEndian in FImageProperties.Options then Value := SwapLong(Value);
+        end;
+        Values[I] := Value;
+      end;
+    end;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TTIFFGraphic.GetValueList(Stream: TStream; Tag: Cardinal; var Values: TFloatArray);
+
+// returns the values of the IFD entry indicated by Tag
+
+var
+  Index,
+  Shift,
+  IntValue: Cardinal;
+  Value: Single;
+  I: Integer;
+  IntNominator,
+  IntDenominator: Cardinal;
+  FloatNominator,
+  FloatDenominator: Cardinal;
+
+begin
+  Values := nil;
+  if FindTag(Tag, Index) and
+     (FIFD[Index].DataLength > 0) then
+  begin
+    // prepare value list
+    SetLength(Values, FIFD[Index].DataLength);
+
+    // determine whether the data fits into 4 bytes
+    Value := DataTypeToSize[TTiffDataType(FIFD[Index].DataType)] * FIFD[Index].DataLength;
+
+    // data fits into one cardinal -> extract it
+    if Value <= 4 then
+    begin
+      Shift := DataTypeToSize[TTiffDataType(FIFD[Index].DataType)] * 8;
+      IntValue := FIFD[Index].Offset;
+      for I := 0 to FIFD[Index].DataLength - 1 do
+      begin
+        case TTiffDataType(FIFD[Index].DataType) of
+          TIFF_BYTE,
+          TIFF_ASCII,
+          TIFF_SBYTE,
+          TIFF_UNDEFINED:
+            Values[I] := Byte(IntValue);
+          TIFF_SHORT,
+          TIFF_SSHORT:
+            // no byte swap needed here because values in the IFD are already swapped
+            // (if necessary at all)
+            Values[I] := Word(IntValue);
+          TIFF_LONG,
+          TIFF_SLONG:
+            Values[I] := IntValue;
+        end;
+        IntValue := IntValue shr Shift;
+      end;
+    end
+    else
+    begin
+      // data of this tag does not fit into one 32 bits value
+      Stream.Position := FBasePosition + FIFD[Index].Offset;
+      // even bytes sized data must be read by the loop as it is expanded to Single
+      for I := 0 to High(Values) do
+      begin
+        case TTiffDataType(FIFD[Index].DataType) of
+          TIFF_BYTE:
+            begin
+              Stream.Read(IntValue, DataTypeToSize[TTiffDataType(FIFD[Index].DataType)]);
+              Value := Byte(IntValue);
+            end;
+          TIFF_SHORT,
+          TIFF_SSHORT:
+            begin
+              Stream.Read(IntValue, DataTypeToSize[TTiffDataType(FIFD[Index].DataType)]);
+              if ioBigEndian in FImageProperties.Options then Value := Swap(Word(IntValue))
+                                                         else Value := Word(IntValue);
+            end;
+          TIFF_LONG,
+          TIFF_SLONG:
+            begin
+              Stream.Read(IntValue, DataTypeToSize[TTiffDataType(FIFD[Index].DataType)]);
+              if ioBigEndian in FImageProperties.Options then Value := SwapLong(IntValue);
+            end;
+          TIFF_RATIONAL,
+          TIFF_SRATIONAL:
+            begin
+              Stream.ReadBuffer(FloatNominator, SizeOf(FloatNominator));
+              Stream.ReadBuffer(FloatDenominator, SizeOf(FloatDenominator));
+              if ioBigEndian in FImageProperties.Options then
+              begin
+                FloatNominator := SwapLong(Cardinal(FloatNominator));
+                FloatDenominator := SwapLong(Cardinal(FloatDenominator));
+              end;
+              Value := FloatNominator / FloatDenominator;
+            end;
+          TIFF_FLOAT:
+            begin
+              Stream.ReadBuffer(IntNominator, SizeOf(IntNominator));
+              Stream.ReadBuffer(IntDenominator, SizeOf(IntDenominator));
+              if ioBigEndian in FImageProperties.Options then
+              begin
+                IntNominator := SwapLong(IntNominator);
+                IntDenominator := SwapLong(IntDenominator);
+              end;
+              Value := IntNominator / IntDenominator;
+            end;
+          end;
+        Values[I] := Value;
+      end;
+    end;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TTIFFGraphic.GetValue(Stream: TStream; Tag: Cardinal; Default: Single = 0): Single;
+
+// returns the value of the IFD entry indicated by Tag or the default value if the entry is not there
+
+var
+  Index: Cardinal;
+  IntNominator,
+  IntDenominator: Cardinal;
+  FloatNominator,
+  FloatDenominator: Cardinal;
+
+begin
+  Result := Default;
+  if FindTag(Tag, Index) then
+  begin
+    // if the data length is > 1 then Offset is a real offset into the stream,
+    // otherwise it is the value itself and must be shortend depending on the data type
+    if FIFD[Index].DataLength = 1 then
+    begin
+      case TTiffDataType(FIFD[Index].DataType) of
+        TIFF_BYTE:
+          Result := Byte(FIFD[Index].Offset);
+        TIFF_SHORT,
+        TIFF_SSHORT:
+          Result := Word(FIFD[Index].Offset);
+        TIFF_LONG,
+        TIFF_SLONG: // nothing to do
+          Result := FIFD[Index].Offset;
+        TIFF_RATIONAL,
+        TIFF_SRATIONAL:
+          begin
+            Stream.Position := FBasePosition + FIFD[Index].Offset;
+            Stream.ReadBuffer(FloatNominator, SizeOf(FloatNominator));
+            Stream.ReadBuffer(FloatDenominator, SizeOf(FloatDenominator));
+            if ioBigEndian in FImageProperties.Options then
+            begin
+              FloatNominator := SwapLong(Cardinal(FloatNominator));
+              FloatDenominator := SwapLong(Cardinal(FloatDenominator));
+            end;
+            Result := FloatNominator / FloatDenominator;
+          end;
+        TIFF_FLOAT:
+          begin
+            Stream.Position := FBasePosition + FIFD[Index].Offset;
+            Stream.ReadBuffer(IntNominator, SizeOf(IntNominator));
+            Stream.ReadBuffer(IntDenominator, SizeOf(IntDenominator));
+            if ioBigEndian in FImageProperties.Options then
+            begin
+              IntNominator := SwapLong(IntNominator);
+              IntDenominator := SwapLong(IntDenominator);
+            end;
+            Result := IntNominator / IntDenominator;
+          end;
+      end;
+    end;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TTIFFGraphic.GetValue(Tag: Cardinal; Default: Cardinal = 0): Cardinal;
+
+// returns the value of the IFD entry indicated by Tag or the default value if the entry is not there
+
+var
+  Index: Cardinal;
+
+begin
+  if not FindTag(Tag, Index) then Result := Default
+                             else
+  begin
+    Result := FIFD[Index].Offset;
+    // if the data length is > 1 then Offset is a real offset into the stream,
+    // otherwise it is the value itself and must be shortend depending on the data type
+    if FIFD[Index].DataLength = 1 then
+    begin
+      case TTiffDataType(FIFD[Index].DataType) of
+        TIFF_BYTE:
+          Result := Byte(Result);
+        TIFF_SHORT,
+        TIFF_SSHORT:
+          Result := Word(Result);
+        TIFF_LONG,
+        TIFF_SLONG: // nothing to do
+          ;
+      else
+        Result := Default;
+      end;
+    end;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TTIFFGraphic.GetValue(Tag: Cardinal; var Size: Cardinal; Default: Cardinal): Cardinal;
+
+// Returns the value of the IFD entry indicated by Tag or the default value if the entry is not there.
+// If the tag exists then also the data size is returned.
+
+var
+  Index: Cardinal;
+
+begin
+  if not FindTag(Tag, Index) then
+  begin
+    Result := Default;
+    Size := 0;
+  end
+  else
+  begin
+    Result := FIFD[Index].Offset;
+    Size := FIFD[Index].DataLength;
+    // if the data length is > 1 then Offset is a real offset into the stream,
+    // otherwise it is the value itself and must be shortend depending on the data type
+    if FIFD[Index].DataLength = 1 then
+    begin
+      case TTiffDataType(FIFD[Index].DataType) of
+        TIFF_BYTE:
+          Result := Byte(Result);
+        TIFF_SHORT,
+        TIFF_SSHORT:
+          Result := Word(Result);
+        TIFF_LONG,
+        TIFF_SLONG: // nothing to do
+          ;
+      else
+        Result := Default;
+      end;
+    end;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TTIFFGraphic.SortIFD;
+
+// Although all entries in the IFD should be sorted there are still files where this is not the case.
+// Because the lookup for certain tags in the IFD uses binary search it must be made sure the IFD is
+// sorted (what we do here).
+
+  //--------------- local function --------------------------------------------
+
+  procedure QuickSort(L, R: Integer);
+
+  var
+    I, J, M: Integer;
+    T: TIFDEntry;
+
+  begin
+    repeat
+      I := L;
+      J := R;
+      M := (L + R) shr 1;
+      repeat
+        while FIFD[I].Tag < FIFD[M].Tag do Inc(I);
+        while FIFD[J].Tag > FIFD[M].Tag do Dec(J);
+        if I <= J then
+        begin
+          T := FIFD[I];
+          FIFD[I] := FIFD[J];
+          FIFD[J] := T;
+          Inc(I);
+          Dec(J);
+        end;
+      until I > J;
+      if L < J then QuickSort(L, J);
+      L := I;
+    until I >= R;
+  end;
+
+  //--------------- end local functions ---------------------------------------
+
+begin
+  QuickSort(0, High(FIFD));
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TTIFFGraphic.SwapIFD;
+
+// swap the member fields of all entries of the currently loaded IFD from big endian to little endian
+
+var
+  I: Integer;
+  Size: Cardinal;
+
+begin
+  for I := 0 to High(FIFD) do
+    with FIFD[I] do
+    begin
+      Tag := Swap(Tag);
+      DataType := Swap(DataType);
+      DataLength := SwapLong(DataLength);
+
+      // determine whether the data fits into 4 bytes
+      Size := DataTypeToSize[TTiffDataType(FIFD[I].DataType)] * FIFD[I].DataLength;
+      if Size >= 4 then Offset := SwapLong(Offset)
+                   else
+        case TTiffDataType(DataType) of
+          TIFF_SHORT,
+          TIFF_SSHORT:
+            if DataLength > 1 then Offset := SwapLong(Offset)
+                              else Offset := Swap(Word(Offset));
+        end;
+    end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TTIFFGraphic.LoadFromFileByIndex(const FileName: string; ImageIndex: Cardinal = 0);
+var fs: TStream;
+begin
+  fs:=TFileStream.Create(FileName,fmOpenRead);
+  try
+    LoadFromStream(fs);
+  finally
+    fs.Free;
+  end;
+end;
+
+procedure TTIFFGraphic.LoadFromStream(Stream: TStream);
+
+var
+  IFDCount: Word;
+  Buffer: Pointer;
+  Run: PAnsiChar;
+  Pixels,
+  EncodedData,
+  DataPointerCopy: Pointer;
+  Offsets,
+  ByteCounts: TCardinalArray;
+  ColorMap: Cardinal;
+
+  StripSize: Cardinal;
+  Decoder: TDecoder;
+
+  // dynamically assigned handler
+  Deprediction: procedure(P: Pointer; Count: Cardinal);
+  TifCompression: Integer;
+
+begin
+  Handle := 0;
+  Deprediction := nil;
+  Decoder := nil;
+
+  // we need to keep the current stream position because all position information
+  // are relative to this one
+  FBasePosition := Stream.Position;
+  if ReadImageProperties(Stream, 0) then
+  begin
+    with FImageProperties do
+    try
+      // tiled images aren't supported
+      if ioTiled in Options then Exit;
+
+      FProgressRect := Rect(0, 0, 0, 1);
+      Progress(Self, psStarting, 0, False, FProgressRect, gesPreparing);
+
+      // read data of the first image file directory (IFD)
+      Stream.Position := FBasePosition + FirstIFD;
+      Stream.ReadBuffer(IFDCount, SizeOf(IFDCount));
+      if ioBigEndian in Options then IFDCount := Swap(IFDCount);
+      SetLength(FIFD, IFDCount);
+      Stream.ReadBuffer(FIFD[0], IFDCount * SizeOf(TIFDEntry));
+      if ioBigEndian in Options then SwapIFD;
+      SortIFD;
+
+      // --- read the data of the directory which are needed to actually load the image:
+
+      // data organization
+      GetValueList(Stream, TIFFTAG_STRIPOFFSETS, Offsets);
+      GetValueList(Stream, TIFFTAG_STRIPBYTECOUNTS, ByteCounts);
+
+      // retrive additional tile data if necessary
+      if ioTiled in Options then
+      begin
+        GetValueList(Stream, TIFFTAG_TILEOFFSETS, Offsets);
+        GetValueList(Stream, TIFFTAG_TILEBYTECOUNTS, ByteCounts);
+      end;
+
+      // determine pixelformat and setup color conversion
+      with ColorManager do
+      begin
+        if ioBigEndian in Options then SourceOptions := [coNeedByteSwap]
+                                  else SourceOptions := [];
+        SourceBitsPerSample := BitsPerSample;
+        if SourceBitsPerSample = 16 then TargetBitsPerSample := 8
+                                    else TargetBitsPerSample := SourceBitsPerSample;
+
+        // the JPEG lib does internally a conversion to RGB
+        if Compression in [ctOJPEG, ctJPEG] then SourceColorScheme := csBGR
+                                            else SourceColorScheme := ColorScheme;
+
+        case SourceColorScheme of
+          csRGBA:
+            TargetColorScheme := csBGRA;
+          csRGB:
+            TargetColorScheme := csBGR;
+          csCMY,
+          csCMYK,
+          csCIELab,
+          csYCbCr:
+            TargetColorScheme := csBGR;
+          csIndexed:
+            begin
+              if HasAlpha then SourceColorScheme := csGA; // fake indexed images with alpha (used in EPS)
+                                                          // as being grayscale with alpha
+              TargetColorScheme := csIndexed;
+            end;
+        else
+          TargetColorScheme := SourceColorScheme;
+        end;
+
+        SourceSamplesPerPixel := SamplesPerPixel;
+        if SourceColorScheme = csCMYK then TargetSamplesPerPixel := 3
+                                      else TargetSamplesPerPixel := SamplesPerPixel;
+        if SourceColorScheme = csCIELab then SourceOptions := SourceOptions + [coLabByteRange];
+
+        if SourceColorScheme = csGA then PixelFormat := pf8Bit
+                                    else PixelFormat := TargetPixelFormat;
+      end;
+
+      // now that the pixel format is set we can also set the (possibly large) image dimensions
+      Self.Width := Width;
+      Self.Height := Height;
+      if (Width = 0) or (Height = 0) then GraphicExError(gesInvalidImage, ['TIF/TIFF']);
+
+      FProgressRect.Right := Width;
+      if ColorManager.TargetColorScheme in [csIndexed, csG, csGA] then
+      begin
+        // load palette data and build palette
+        if ColorManager.TargetColorScheme = csIndexed then
+        begin
+          ColorMap := GetValue(TIFFTAG_COLORMAP, StripSize, 0);
+          if StripSize > 0 then
+          begin
+            Stream.Position := FBasePosition + ColorMap;
+            // number of palette entries is also given by the color map tag
+            // (3 components each (r,g,b) and two bytes per component)
+            Stream.ReadBuffer(FPalette[0] , 2 * StripSize);
+            Palette := ColorManager.CreateColorPalette([@FPalette[0], @FPalette[StripSize div 3],
+                                                       @FPalette[2 * StripSize div 3]], pfPlane16Triple, StripSize, False);
+          end;
+        end
+        else Palette := ColorManager.CreateGrayScalePalette(ioMinIsWhite in Options);
+      end
+      else
+        if ColorManager.SourceColorScheme = csYCbCr then
+          ColorManager.SetYCbCrParameters(FYCbCrCoefficients, YCbCrSubSampling[0], YCbCrSubSampling[1]);
+
+      // intermediate buffer for data
+      BytesPerLine := (BitsPerPixel * Width + 7) div 8;
+
+      // determine prediction scheme
+      if Compression <> ctNone then
+      begin
+        // Prediction without compression makes no sense at all (as it is to improve
+        // compression ratios). Appearently there are image which are uncompressed but still
+        // have a prediction scheme set. Hence we must check for it.
+        case Predictor of
+          PREDICTION_HORZ_DIFFERENCING: // currently only one prediction scheme is defined
+            case SamplesPerPixel of
+              4:
+                Deprediction := Depredict4;
+              3:
+                Deprediction := Depredict3;
+            else
+              Deprediction := Depredict1;
+            end;
+        end;
+      end;
+
+      // create decompressor for the image
+      case Compression of
+        ctNone:
+          ;
+        {$ifdef UseLZW}
+        ctLZW:
+          Decoder := TTIFFLZWDecoder.Create;
+        {$endif}
+        ctPackedBits:
+          Decoder := TPackbitsRLEDecoder.Create;
+        ctFaxRLE,
+        ctFaxRLEW:
+          Decoder := TCCITTMHDecoder.Create(GetValue(TIFFTAG_GROUP3OPTIONS),
+                                            ioReversed in Options,
+                                            Compression = ctFaxRLEW,
+                                            Width);
+        ctFax3:
+          Decoder := TCCITTFax3Decoder.Create(GetValue(TIFFTAG_GROUP3OPTIONS), ioReversed in Options, False, Width);
+        ctJPEG:
+          begin
+            // some extra work is needed for JPEG
+            GetValueList(Stream, TIFFTAG_JPEGTABLES, JPEGTables);
+
+            Decoder := TTIFFJPEGDecoder.Create(@FImageProperties);
+          end;
+        ctThunderscan:
+          Decoder := TThunderDecoder.Create(Width);
+        ctLZ77:
+          Decoder := TLZ77Decoder.Create(Z_PARTIAL_FLUSH, True);
+      else
+        {
+        COMPRESSION_OJPEG,
+        COMPRESSION_CCITTFAX4
+        COMPRESSION_NEXT
+        COMPRESSION_IT8CTPAD
+        COMPRESSION_IT8LW
+        COMPRESSION_IT8MP
+        COMPRESSION_IT8BL
+        COMPRESSION_PIXARFILM
+        COMPRESSION_PIXARLOG
+        COMPRESSION_DCS
+        COMPRESSION_JBIG}
+        TIFCompression := GetValue(TIFFTAG_COMPRESSION);
+        GraphicExError(gesUnsupportedFeature, ['Compression method '+IntToStr(Integer(TifCompression))+' is ', 'TIF/TIFF']);
+      end;
+
+      if Assigned(Decoder) then Decoder.DecodeInit;
+      Progress(Self, psEnding, 0, False, FProgressRect, '');
+
+      Progress(Self, psStarting, 0, False, FProgressRect, gesTransfering);
+      // go for each strip in the image (which might contain more than one line)
+      CurrentRow := 0;
+      CurrentStrip := 0;
+      StripCount := Length(Offsets);
+      while CurrentStrip < StripCount do
+      begin
+        Stream.Position := FBasePosition + Offsets[CurrentStrip];
+        if CurrentStrip < Length(RowsPerStrip) then StripSize := BytesPerLine * RowsPerStrip[CurrentStrip]
+                                               else StripSize := BytesPerLine * RowsPerStrip[High(RowsPerStrip)];
+
+        GetMem(Buffer, StripSize);
+        Run := Buffer;
+        try
+          // decompress strip if necessary
+          if Assigned(Decoder) then
+          begin
+            GetMem(EncodedData, ByteCounts[CurrentStrip]);
+            try
+              DataPointerCopy := EncodedData;
+              Stream.Read(EncodedData^, ByteCounts[CurrentStrip]);
+              // need pointer copies here because they could get modified
+              // while decoding
+              Decoder.Decode(DataPointerCopy, Pointer(Run), ByteCounts[CurrentStrip], StripSize);
+            finally
+              if Assigned(EncodedData) then FreeMem(EncodedData);
+            end;
+          end
+          else
+          begin
+            Stream.Read(Buffer^, StripSize);
+          end;
+
+          Run := Buffer;
+          // go for each line (row) in the strip
+          while (CurrentRow < Height) and ((Run - Buffer) < Integer(StripSize)) do
+          begin
+            Pixels := ScanLine[CurrentRow];
+            // depredict strip if necessary
+            if Assigned(Deprediction) then Deprediction(Run, Width - 1);
+            // any color conversion comes last
+            ColorManager.ConvertRow([Run], Pixels, Width, $FF);
+            Inc(PAnsiChar(Run), BytesPerLine);
+            Inc(CurrentRow);
+
+            Progress(Self, psRunning, MulDiv(CurrentRow, 100, Height), True, FProgressRect, '');
+            OffsetRect(FProgressRect, 0, 1);
+          end;
+
+        finally
+          if Assigned(Buffer) then FreeMem(Buffer);
+        end;
+
+        Inc(CurrentStrip);
+      end;
+    finally
+      Progress(Self, psEnding, 0, False, FProgressRect, '');
+
+      if Assigned(Decoder) then Decoder.DecodeEnd;
+      Decoder.Free;
+    end;
+  end
+  else GraphicExError(gesInvalidImage, ['TIF/TIFF']);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TTIFFGraphic.SaveToStream(Stream: TStream);
+
+begin
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+function TTIFFGraphic.ReadImageProperties(Stream: TStream; ImageIndex: Cardinal): Boolean;
+
+// Reads all relevant TIF properties of the image of index ImageIndex (zero based).
+// Returns True if the image ImageIndex could be read, otherwise False.
+
+const
+  PhotometricToColorScheme: array[PHOTOMETRIC_MINISWHITE..PHOTOMETRIC_CIELAB] of TColorScheme = (
+    csG,
+    csG,
+    csRGBA,
+    csIndexed,
+    csUnknown,
+    csCMYK,
+    csYCbCr,
+    csUnknown,
+    csCIELab
+  );
+
+var
+  IFDCount: Word;
+  ExtraSamples: TCardinalArray;
+  PhotometricInterpretation: Byte;
+  TIFCompression: Word;
+  Index: Cardinal;
+
+  IFDOffset: Cardinal;
+  Header: TTIFFHeader;
+  LocalBitsPerSample: TCardinalArray;
+
+begin
+  // clear image properties
+  Result := inherited ReadImageProperties(Stream, ImageIndex);
+
+  with FImageProperties do
+  begin
+    // rewind stream to header position
+    Stream.Position := FBasePosition;
+
+    Stream.ReadBuffer(Header, SizeOf(Header));
+    if Header.ByteOrder = TIFF_BIGENDIAN then
+    begin
+      Options := Options + [ioBigEndian];
+      Header.Version := Swap(Header.Version);
+      Header.FirstIFD := SwapLong(Header.FirstIFD);
+    end;
+
+    Version := Header.Version;
+    FirstIFD := Header.FirstIFD;
+    if Version = TIFF_VERSION then
+    begin
+      IFDOffset := Header.FirstIFD;
+      // advance to next IFD until we have the desired one
+      repeat
+        Stream.Position := FBasePosition + IFDOffset;
+        // number of entries in this directory
+        Stream.ReadBuffer(IFDCount, SizeOf(IFDCount));
+        if Header.ByteOrder = TIFF_BIGENDIAN then IFDCount := Swap(IFDCount);
+
+        // if we already have the desired image then get out of here
+        if ImageIndex = 0 then Break;
+
+        Dec(ImageIndex);
+        // advance to offset for next IFD
+        Stream.Seek(IFDCount * SizeOf(TIFDEntry), soFromCurrent);
+        Stream.ReadBuffer(IFDOffset, SizeOf(IFDOffset));
+        // no further image available, but the required index is still not found
+        if IFDOffset = 0 then Exit;
+      until False;
+
+      SetLength(FIFD, IFDCount);
+      Stream.ReadBuffer(FIFD[0], IFDCount * SizeOf(TIFDEntry));
+      if Header.ByteOrder = TIFF_BIGENDIAN then SwapIFD;
+      SortIFD;
+
+      Width := GetValue(TIFFTAG_IMAGEWIDTH);
+      Height := GetValue(TIFFTAG_IMAGELENGTH);
+      if (Width = 0) or (Height = 0) then Exit;
+
+      // data organization
+      GetValueList(Stream, TIFFTAG_ROWSPERSTRIP, RowsPerStrip);
+      // some images rely on the default size ($FFFFFFFF) if only one stripe is in the image,
+      // make sure there's a valid value also in this case
+      if (Length(RowsPerStrip) = 0) or (RowsPerStrip[0] = $FFFFFFFF) then
+      begin
+        SetLength(RowsPerStrip, 1);
+        RowsPerStrip[0] := Height;
+      end;
+
+      // number of color components per pixel (1 for b&w, 16 and 256 colors, 3 for RGB, 4 for CMYK etc.)
+      SamplesPerPixel := GetValue(TIFFTAG_SAMPLESPERPIXEL, 1);
+
+      // number of bits per color component
+      GetValueList(Stream, TIFFTAG_BITSPERSAMPLE, LocalBitsPerSample);
+      if Length(LocalBitsPerSample) = 0 then BitsPerSample := 1
+                                        else BitsPerSample := LocalBitsPerSample[0];
+
+      // determine whether image is tiled and retrive tile data if necessary
+      TileWidth := GetValue(TIFFTAG_TILEWIDTH, 0);
+      TileLength := GetValue(TIFFTAG_TILELENGTH, 0);
+      if  (TileWidth > 0) and (TileLength > 0) then Include(Options, ioTiled);
+
+      // photometric interpretation determines the color space
+      PhotometricInterpretation := GetValue(TIFFTAG_PHOTOMETRIC);
+      // type of extra information for additional samples per pixel
+      GetValueList(Stream, TIFFTAG_EXTRASAMPLES, ExtraSamples);
+
+      // determine whether extra samples must be considered
+      HasAlpha := Length(ExtraSamples) > 0;
+      // if any of the extra sample contains an invalid value then consider
+      // it as being not existant to avoid wrong interpretation for badly
+      // written images
+      if HasAlpha then
+      begin
+        for Index := 0 to High(ExtraSamples) do
+          if ExtraSamples[Index] > EXTRASAMPLE_UNASSALPHA then
+          begin
+            HasAlpha := False;
+            Break;
+          end;
+      end;
+
+      // currently all bits per sample values are equal
+      BitsPerPixel := BitsPerSample * SamplesPerPixel;
+
+      // create decompressor for the image
+      TIFCompression := GetValue(TIFFTAG_COMPRESSION);
+      case TIFCompression of
+        COMPRESSION_NONE:
+          Compression := ctNone;
+        COMPRESSION_LZW:
+          Compression := ctLZW;
+        COMPRESSION_PACKBITS:
+          Compression := ctPackedBits;
+        COMPRESSION_CCITTRLE:
+          Compression := ctFaxRLE;
+        COMPRESSION_CCITTRLEW:
+          Compression := ctFaxRLEW;
+        COMPRESSION_CCITTFAX3:
+          Compression := ctFax3;
+        COMPRESSION_OJPEG:
+          Compression := ctOJPEG;
+        COMPRESSION_JPEG:
+          Compression := ctJPEG;
+        COMPRESSION_CCITTFAX4:
+          Compression := ctFax4;
+        COMPRESSION_NEXT:
+          Compression := ctNext;
+        COMPRESSION_THUNDERSCAN:
+          Compression := ctThunderscan;
+        COMPRESSION_IT8CTPAD:
+          Compression := ctIT8CTPAD;
+        COMPRESSION_IT8LW:
+          Compression := ctIT8LW;
+        COMPRESSION_IT8MP:
+          Compression := ctIT8MP;
+        COMPRESSION_IT8BL:
+          Compression := ctIT8BL;
+        COMPRESSION_PIXARFILM:
+          Compression := ctPixarFilm;
+        COMPRESSION_PIXARLOG: // also a LZ77 clone
+          Compression := ctPixarLog;
+        COMPRESSION_ADOBE_DEFLATE,
+        COMPRESSION_DEFLATE:
+          Compression := ctLZ77;
+        COMPRESSION_DCS:
+          Compression := ctDCS;
+        COMPRESSION_JBIG:
+          Compression := ctJBIG;
+      else
+        Compression := ctUnknown;
+      end;
+
+      if PhotometricInterpretation in [PHOTOMETRIC_MINISWHITE..PHOTOMETRIC_CIELAB] then
+      begin
+        ColorScheme := PhotometricToColorScheme[PhotometricInterpretation];
+        if (PhotometricInterpretation = PHOTOMETRIC_RGB) and (SamplesPerPixel < 4) then ColorScheme := csRGB;
+        if PhotometricInterpretation = PHOTOMETRIC_MINISWHITE then Include(Options, ioMinIsWhite);
+
+        // extra work necessary for YCbCr
+        if PhotometricInterpretation = PHOTOMETRIC_YCBCR then
+        begin
+          if FindTag(TIFFTAG_YCBCRSUBSAMPLING, Index)
+            then GetValueList(Stream, TIFFTAG_YCBCRSUBSAMPLING, YCbCrSubSampling)
+            else
+            begin
+              // initialize default values if nothing is given in the file
+              SetLength(YCbCrSubSampling, 2);
+              YCbCrSubSampling[0] := 2;
+              YCbCrSubSampling[1] := 2;
+            end;
+          if FindTag(TIFFTAG_YCBCRPOSITIONING, Index) then FYCbCrPositioning := GetValue(TIFFTAG_YCBCRPOSITIONING)
+                                                      else FYCbCrPositioning := YCBCRPOSITION_CENTERED;
+
+          if FindTag(TIFFTAG_YCBCRCOEFFICIENTS, Index)
+            then GetValueList(Stream, TIFFTAG_YCBCRCOEFFICIENTS, FYCbCrCoefficients)
+            else
+            begin
+              // defaults are from CCIR recommendation 601-1
+              SetLength(FYCbCrCoefficients, 3);
+              FYCbCrCoefficients[0] := 0.299;
+              FYCbCrCoefficients[1] := 0.587;
+              FYCbCrCoefficients[2] := 0.114;
+            end;
+        end;
+      end
+      else ColorScheme := csUnknown;
+
+      JPEGColorMode := GetValue(TIFFTAG_JPEGCOLORMODE, JPEGCOLORMODE_RAW);
+      JPEGTablesMode := GetValue(TIFFTAG_JPEGTABLESMODE, JPEGTABLESMODE_QUANT or JPEGTABLESMODE_HUFF);
+
+      PlanarConfig := GetValue(TIFFTAG_PLANARCONFIG);
+      // other image properties
+      XResolution := GetValue(Stream, TIFFTAG_XRESOLUTION);
+      YResolution := GetValue(Stream, TIFFTAG_YRESOLUTION);
+      if GetValue(TIFFTAG_RESOLUTIONUNIT, RESUNIT_INCH) = RESUNIT_CENTIMETER then
+      begin
+        // Resolution is given in centimeters.
+        // Although I personally prefer the metric system over the old english one :-)
+        // I still convert to inches because it is an unwritten rule to give image resolutions in dpi.
+        XResolution := XResolution * 2.54;
+        YResolution := YResolution * 2.54;
+      end;
+
+      // determine prediction scheme
+      Predictor := GetValue(TIFFTAG_PREDICTOR);
+
+      // determine fill order in bytes
+      if GetValue(TIFFTAG_FILLORDER, FILLORDER_MSB2LSB) = FILLORDER_LSB2MSB then Include(Options, ioReversed);
+
+      // finally show that we found and read an image
+      Result := True;
+    end;
+  end;
+end;
+
+
+
+{$endif OldTIFFGraphic}
 
 //----------------- TEPSGraphic ----------------------------------------------------------------------------------------
 
@@ -3473,8 +4563,6 @@ begin
 end;
 
 {$endif EPSGraphic}
-
-{$endif TIFFGraphic}
 
 //----------------- TTargaGraphic --------------------------------------------------------------------------------------
 
@@ -7937,7 +9025,7 @@ var
   ChunkSize: Cardinal;
   LayerInfo: TPSPLayerInfoChunk;
   ChannelInfo: TPSPChannelInfoChunk;
-  LayerName: string;
+  LayerName: AnsiString;
   NameLength: Word;
 
   // file version 4 specific data
@@ -7953,6 +9041,7 @@ var
   X, Y,
   Index,
   RowSize: Integer; // size in bytes of one scanline
+  LayerRowSize: Integer;
 
   // other data
   RawPalette: array[0..4 * 256 - 1] of Byte;
@@ -8252,7 +9341,11 @@ begin
               if ChannelCount > 3 then
               begin
                 ColorManager.TargetColorScheme := csBGRA;
+                ColorManager.SourceColorScheme := csRGBA;
                 PixelFormat := pf32Bit;
+                {$IFDEF Delphi_8_Up}
+                  AlphaFormat:=afDefined;
+                {$ENDIF}
               end;
 
               if Version > 3 then
@@ -8283,13 +9376,29 @@ begin
                 end
                 else
                 begin
-                  for Y := 0 to Height - 1 do
+                //let's try to use image rect from layer
+//                Inc(R,LayerInfo.SavedImageRectangle.Left
+                  LayerRowSize := 0; // make compiler quiet
+                  case BitsPerSample of
+                    1:
+                      LayerRowSize := (LayerInfo.SavedImageRectangle.Right-LayerInfo.SavedImageRectangle.Left + 7) div 8;
+                    4:
+                      LayerRowSize := (LayerInfo.SavedImageRectangle.Right-LayerInfo.SavedImageRectangle.Left) div 2 + 1;
+                    8:
+                      LayerRowSize := LayerInfo.SavedImageRectangle.Right-LayerInfo.SavedImageRectangle.Left;
+                  else
+                    GraphicExError(gesInvalidColorFormat, ['PSP']);
+                  end;
+//                  layerRowSize:=(LayerInfo.SavedImageRectangle.Right-LayerInfo.SavedImageRectangle.Left)
+                  for Y := LayerInfo.SavedImageRectangle.Top to LayerInfo.SavedImageRectangle.Bottom - 1 do
                   begin
-                    ColorManager.ConvertRow([R, G, B, C], ScanLine[Y], Width, $FF);
-                    Inc(R, RowSize);
-                    Inc(G, RowSize);
-                    Inc(B, RowSize);
-                    Inc(C, RowSize);
+//                    ColorManager.ConvertRow([R, G, B, C], ScanLine[Y], Width, $FF);
+                    ColorManager.ConvertRow([R, G, B, C], ScanLine[Y], LayerInfo.SavedImageRectangle.Right-LayerInfo.SavedImageRectangle.Left, $FF);
+
+                    Inc(R, LayerRowSize);
+                    Inc(G, LayerRowSize);
+                    Inc(B, LayerRowSize);
+                    Inc(C, LayerRowSize);
 
                     Progress(Self, psRunning, MulDiv(Y, 100, Height), True, FProgressRect, '');
                     OffsetRect(FProgressRect, 0, 1);
@@ -9707,7 +10816,7 @@ var
 begin
   Result := '';
   if Formats = [] then
-    Formats := [ftAnimation..ftVector];
+    Formats := [ftAnimation..ftEnableSaving];
   DL := TStringList.Create;
   DL.Sorted := SortType in [fstDescription, fstBoth];
   EL := TStringList.Create;
