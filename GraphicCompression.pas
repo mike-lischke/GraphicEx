@@ -40,14 +40,6 @@ interface
 {$I Compilers.inc}
 {$I GraphicConfiguration.inc}
 
-{$ifdef COMPILER_7_UP}
-  // For some things to work we need code, which is classified as being unsafe for .NET.
-  // We switch off warnings about that fact. We know it and we accept it.
-  {$warn UNSAFE_TYPE off}
-  {$warn UNSAFE_CAST off}
-  {$warn UNSAFE_CODE off}
-{$endif COMPILER_7_UP}
-
 uses                                                
   Windows, Classes, SysUtils, Graphics,  
   JPG,   // JPEG compression support
@@ -214,6 +206,7 @@ type
   end;
 
 
+  {$IFDEF OldTIFFGraphic}
   TTIFFJPEGDecoder = class;
 
   TJPEGGeneral = packed record
@@ -258,8 +251,9 @@ type
     procedure DecodeEnd; override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
+  {$ENDIF}
 
-  
+
   TThunderDecoder = class(TDecoder)
   private
     FWidth: Cardinal; // width of a scanline in pixels
@@ -1759,8 +1753,8 @@ procedure TCCITTDecoder.MakeStates;
     begin
       // determine next state according to the bit string
       {$IFDEF ResortToPurePascal}
-        Bit:=(Bits and $80000000)<>0;
-        Bits:=Bits shl 1;
+        Bit := (Bits and $80000000) <> 0;
+        Bits := Bits shl 1;
       {$ELSE}
         asm
           SHL [Bits], 1
@@ -1891,27 +1885,27 @@ begin
   if FSwapBits then
   {$IFDEF ResortToPurePascal}
     for i := PackedSize-1 downto 0 do
-      PByteArray(Source)^[i]:=ReverseTable[PByteArray(Source)^[i]];
+      PByteArray(Source)^[i] := ReverseTable[PByteArray(Source)^[i]];
   {$ELSE}
-  asm
-         PUSH EBX
-         LEA EBX, ReverseTable
-         MOV ECX, [PackedSize]
-         MOV EDX, [Source]
-         MOV EDX, [EDX]
-  @@1:
-         MOV AL, [EDX]
-         {$ifdef COMPILER_6}
-           XLATB
-         {$else}
-           XLAT
-         {$endif COMPILER_6}
-         MOV [EDX], AL
-         INC EDX
-         DEC ECX
-         JNZ @@1
-         POP EBX
-  end;
+    asm
+           PUSH EBX
+           LEA EBX, ReverseTable
+           MOV ECX, [PackedSize]
+           MOV EDX, [Source]
+           MOV EDX, [EDX]
+    @@1:
+           MOV AL, [EDX]
+           {$ifdef COMPILER_6}
+             XLATB
+           {$else}
+             XLAT
+           {$endif COMPILER_6}
+           MOV [EDX], AL
+           INC EDX
+           DEC ECX
+           JNZ @@1
+           POP EBX
+    end;
   {$ENDIF}
 
   // setup initial states
@@ -1933,7 +1927,8 @@ begin
     if ((FOptions and 1)<>0) and (not NextBit) then begin
       //begin 2-dimension decoding here
 //      raise exception.Create('sorry, 2-dimensional fax3 decoding not fully implemented!');
-
+//     surprisingly enough, even without code here fax3 2D is decoded good enough
+//     to understand what's written there. But of course vert. resolution dropped 2 to 4 times
 
     end
     else begin
@@ -2349,17 +2344,21 @@ begin
     end;
 
     if (FState.General.d.image_width <> SegmentWidth) or
-       (FState.General.d.image_height <> SegmentHeight) then CompressionError(gesJPEGStripSize);
+       (FState.General.d.image_height <> SegmentHeight) then
+        CompressionError(gesJPEGStripSize);
 
     Temp := 1;
-    if PlanarConfig = PLANARCONFIG_CONTIG then Temp := SamplesPerPixel;
-    if FState.General.d.num_components <> Temp then CompressionError(gesJPEGComponentCount);
+    if PlanarConfig = PLANARCONFIG_CONTIG then
+      Temp := SamplesPerPixel;
+    if FState.General.d.num_components <> Temp then
+      CompressionError(gesJPEGComponentCount);
 
-    if FState.General.d.data_precision <> BitsPerSample then CompressionError(gesJPEGDataPrecision);
+    if FState.General.d.data_precision <> BitsPerSample then
+      CompressionError(gesJPEGDataPrecision);
 
     if PlanarConfig = PLANARCONFIG_CONTIG then
     begin
-      // component 0 should have expected sampling factors 
+      // component 0 should have expected sampling factors
       if (FState.General.d.comp_info.h_samp_factor <> FState.HSampling) or
          (FState.General.d.comp_info.v_samp_factor <> FState.VSampling) then
         CompressionError(gesJPEGSamplingFactors);
@@ -2379,11 +2378,13 @@ begin
          (FState.General.d.comp_info.v_samp_factor <> 1) then
         CompressionError(gesJPEGSamplingFactors);
     end;
-  
+
     // Since libjpeg can convert YCbCr data to RGB (actually BGR) on the fly I let do
     // it this conversion instead handling it by the color manager.
-    if ColorScheme = csYCbCr then FState.General.d.jpeg_color_space := JCS_YCbCr
-                             else FState.General.d.jpeg_color_space := JCS_UNKNOWN;
+    if ColorScheme = csYCbCr then
+      FState.General.d.jpeg_color_space := JCS_YCbCr
+    else
+      FState.General.d.jpeg_color_space := JCS_UNKNOWN;
     FState.General.d.out_color_space := JCS_RGB;
 
     FState.General.d.raw_data_out := False;
@@ -2402,7 +2403,8 @@ begin
       begin
         // jpeg_read_scanlines needs as target an array of pointers, but since we read only one lin
         // at a time we can simply pass the address of the pointer to the data
-        if jpeg_read_scanlines(@FState.General.d, @Target, 1) <> 1 then Exit;
+        if jpeg_read_scanlines(@FState.General.d, @Target, 1) <> 1 then
+          Exit;
         Inc(Target, FState.BytesPerLine);
         Dec(J);
       end;
@@ -2462,7 +2464,7 @@ begin
     if jpeg_read_header(@FState.General, False) <> JPEG_HEADER_TABLES_ONLY then
       CompressionError(gesJPEGBogusTableField);
   end;
-  
+
   Internaljpeg_data_src(FState);
 end;
 
@@ -2864,6 +2866,8 @@ end;
 // This routine is invoked only for warning messages, since error_exit does its own thing
 // and trace_level is never set > 0.
 
+{$IFDEF OldTiffGraphic}
+
 procedure Internaljpeg_output_message(cinfo: j_common_ptr); cdecl;
 
 var
@@ -3081,13 +3085,17 @@ begin
     end;
 
     if (FState.General.d.image_width <> SegmentWidth) or
-       (FState.General.d.image_height <> SegmentHeight) then CompressionError(gesJPEGStripSize);
+       (FState.General.d.image_height <> SegmentHeight) then
+       CompressionError(gesJPEGStripSize);
 
     Temp := 1;
-    if PlanarConfig = PLANARCONFIG_CONTIG then Temp := SamplesPerPixel;
-    if FState.General.d.num_components <> Temp then CompressionError(gesJPEGComponentCount);
+    if PlanarConfig = PLANARCONFIG_CONTIG then
+      Temp := SamplesPerPixel;
+    if FState.General.d.num_components <> Temp then
+      CompressionError(gesJPEGComponentCount);
 
-    if FState.General.d.data_precision <> BitsPerSample then CompressionError(gesJPEGDataPrecision);
+    if FState.General.d.data_precision <> BitsPerSample then
+      CompressionError(gesJPEGDataPrecision);
 
     if PlanarConfig = PLANARCONFIG_CONTIG then
     begin
@@ -3213,6 +3221,8 @@ procedure TTIFFJPEGDecoder.Encode(Source, Dest: Pointer; Count: Cardinal; var By
 begin
 end;
 
+
+{$ENDIF}
 
 
 end.

@@ -24,14 +24,6 @@ unit TIFF;
   {$Align On}
 {$endif COMPILER_7_UP}
 
-{$ifdef COMPILER_7_UP}
-  // For some things to work we need code, which is classified as being unsafe for .NET.
-  // We switch off warnings about that fact. We know it and we accept it.
-  {$warn UNSAFE_TYPE off}
-  {$warn UNSAFE_CAST off}
-  {$warn UNSAFE_CODE off}
-{$endif COMPILER_7_UP}
-
 interface
 
 uses
@@ -647,12 +639,12 @@ implementation
 
   //----------------------------------------------------------------------------------------------------------------------
 
-  function zcalloc(opaque: Pointer; items, size: Integer): Pointer;
+  function zcalloc(opaque: Pointer; items, size: Integer): Pointer; cdecl;
   begin
     GetMem(result,items * size);
   end;
 
-  procedure zcfree(opaque, block: Pointer);
+  procedure zcfree(opaque, block: Pointer); cdecl;
   begin
     FreeMem(block);
   end;
