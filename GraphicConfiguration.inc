@@ -19,9 +19,11 @@
 
 // Pick your preferred image formats here or leave them all enabled. By disabling
 // certain formats which are not of interest you can save some memory.
+{$define UseLZW}  //patent is out, yay!
 {$define SGIGraphic}             // *.bw, *.rgb, *.rgba, *.sgi images are supported
 {$define AutodeskGraphic}        // *.cel, *.pic images
-{$define TIFFGraphic}            // *.tif, *.tiff images
+{-$define NewTIFFGraphic}            // *.tif, *.tiff images
+{$define OldTIFFGraphic}
 {$define TargaGraphic}           // *.tga, *.vst, *.icb, *.vda, *.win images
 {$define PCXGraphic}             // *.pcx, *.pcc, *.scr images
 {$define PCDGraphic}             // *.pcd images
@@ -36,5 +38,6 @@
 {$define ArtsAndLettersGraphic}  // *.ged images
 
 // adjust dependent definitions
+{$ifdef NewTIFFGraphic} {$define TIFFGraphic} {$endif}
+{$ifdef OldTIFFGraphic} {$define TIFFGraphic} {$endif}
 {$ifndef TIFFGraphic} {$undef EPSGraphic} {$endif}
-

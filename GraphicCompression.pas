@@ -40,14 +40,6 @@ interface
 {$I Compilers.inc}
 {$I GraphicConfiguration.inc}
 
-{$ifdef COMPILER_7_UP}
-  // For some things to work we need code, which is classified as being unsafe for .NET.
-  // We switch off warnings about that fact. We know it and we accept it.
-  {$warn UNSAFE_TYPE off}
-  {$warn UNSAFE_CAST off}
-  {$warn UNSAFE_CODE off}
-{$endif COMPILER_7_UP}
-
 uses                                                
   Windows, Classes, SysUtils, Graphics,  
   JPG,   // JPEG compression support
@@ -213,9 +205,10 @@ type
     property ZLibResult: Integer read FZLibResult;
   end;
 
-  (*
+
+  {$IFDEF OldTIFFGraphic}
   TTIFFJPEGDecoder = class;
-        
+
   TJPEGGeneral = packed record
     case byte of
       0: (common: jpeg_common_struct);
@@ -258,8 +251,9 @@ type
     procedure DecodeEnd; override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
-  *)
-  
+  {$ENDIF}
+
+
   TThunderDecoder = class(TDecoder)
   private
     FWidth: Cardinal; // width of a scanline in pixels
@@ -1758,10 +1752,15 @@ procedure TCCITTDecoder.MakeStates;
     while BitLen > 0 do
     begin
       // determine next state according to the bit string
-      asm
-        SHL [Bits], 1
-        SETC [Bit]
-      end;
+      {$IFDEF ResortToPurePascal}
+        Bit := (Bits and $80000000) <> 0;
+        Bits := Bits shl 1;
+      {$ELSE}
+        asm
+          SHL [Bits], 1
+          SETC [Bit]
+        end;
+      {$ENDIF}
       NewState := Target[State].NewState[Bit];
       // Is it a not yet assigned state?
       if NewState = 0 then
@@ -1822,6 +1821,7 @@ procedure TCCITTFax3Decoder.Decode(var Source, Dest: Pointer; PackedSize, Unpack
 var
   RunLength: Integer;
   EOLCount: Integer;
+{$IFDEF ResortToPurePascal}i: Integer;{$ENDIF}
 
   //--------------- local functions -------------------------------------------
 
@@ -1883,25 +1883,30 @@ begin
 
   // swap all bits here, in order to avoid frequent tests in the main loop
   if FSwapBits then
-  asm
-         PUSH EBX
-         LEA EBX, ReverseTable
-         MOV ECX, [PackedSize]
-         MOV EDX, [Source]
-         MOV EDX, [EDX]
-  @@1:
-         MOV AL, [EDX]
-         {$ifdef COMPILER_6}
-           XLATB
-         {$else}
-           XLAT
-         {$endif COMPILER_6}
-         MOV [EDX], AL
-         INC EDX
-         DEC ECX
-         JNZ @@1
-         POP EBX
-  end;
+  {$IFDEF ResortToPurePascal}
+    for i := PackedSize-1 downto 0 do
+      PByteArray(Source)^[i] := ReverseTable[PByteArray(Source)^[i]];
+  {$ELSE}
+    asm
+           PUSH EBX
+           LEA EBX, ReverseTable
+           MOV ECX, [PackedSize]
+           MOV EDX, [Source]
+           MOV EDX, [EDX]
+    @@1:
+           MOV AL, [EDX]
+           {$ifdef COMPILER_6}
+             XLATB
+           {$else}
+             XLAT
+           {$endif COMPILER_6}
+           MOV [EDX], AL
+           INC EDX
+           DEC ECX
+           JNZ @@1
+           POP EBX
+    end;
+  {$ENDIF}
 
   // setup initial states
   // a row always starts with a (possibly zero-length) white run
@@ -1919,26 +1924,35 @@ begin
   repeat
     // synchronize to start of next line
     SynchBOL;
-    // a line always starts with a white run
-    FIsWhite := True;
-    // decode one line
-    repeat
-      if FIsWhite then
-        RunLength := FindWhiteCode
-      else
-        RunLength := FindBlackCode;
-      if RunLength >= 0 then
-      begin
-        if FillRun(RunLength) then
-          Break;
-        FIsWhite := not FIsWhite;
-      end
-      else
-        if RunLength = G3_EOL then
-          Inc(EOLCount)
+    if ((FOptions and 1)<>0) and (not NextBit) then begin
+      //begin 2-dimension decoding here
+//      raise exception.Create('sorry, 2-dimensional fax3 decoding not fully implemented!');
+//     surprisingly enough, even without code here fax3 2D is decoded good enough
+//     to understand what's written there. But of course vert. resolution dropped 2 to 4 times
+
+    end
+    else begin
+      // a line always starts with a white run
+      FIsWhite := True;
+      // decode one line
+      repeat
+        if FIsWhite then
+          RunLength := FindWhiteCode
         else
-          Break;
-    until (RunLength = G3_EOL) or (FPackedSize = 0);
+          RunLength := FindBlackCode;
+        if RunLength >= 0 then
+        begin
+          if FillRun(RunLength) then
+            Break;
+          FIsWhite := not FIsWhite;
+        end
+        else
+          if RunLength = G3_EOL then
+            Inc(EOLCount)
+          else
+            Break;
+      until (RunLength = G3_EOL) or (FPackedSize = 0);
+    end;
     AdjustEOL;
   until (FPackedSize = 0) or (FTarget - PChar(Dest) >= UnpackedSize);
 end;
@@ -2330,17 +2344,21 @@ begin
     end;
 
     if (FState.General.d.image_width <> SegmentWidth) or
-       (FState.General.d.image_height <> SegmentHeight) then CompressionError(gesJPEGStripSize);
+       (FState.General.d.image_height <> SegmentHeight) then
+        CompressionError(gesJPEGStripSize);
 
     Temp := 1;
-    if PlanarConfig = PLANARCONFIG_CONTIG then Temp := SamplesPerPixel;
-    if FState.General.d.num_components <> Temp then CompressionError(gesJPEGComponentCount);
+    if PlanarConfig = PLANARCONFIG_CONTIG then
+      Temp := SamplesPerPixel;
+    if FState.General.d.num_components <> Temp then
+      CompressionError(gesJPEGComponentCount);
 
-    if FState.General.d.data_precision <> BitsPerSample then CompressionError(gesJPEGDataPrecision);
+    if FState.General.d.data_precision <> BitsPerSample then
+      CompressionError(gesJPEGDataPrecision);
 
     if PlanarConfig = PLANARCONFIG_CONTIG then
     begin
-      // component 0 should have expected sampling factors 
+      // component 0 should have expected sampling factors
       if (FState.General.d.comp_info.h_samp_factor <> FState.HSampling) or
          (FState.General.d.comp_info.v_samp_factor <> FState.VSampling) then
         CompressionError(gesJPEGSamplingFactors);
@@ -2360,11 +2378,13 @@ begin
          (FState.General.d.comp_info.v_samp_factor <> 1) then
         CompressionError(gesJPEGSamplingFactors);
     end;
-  
+
     // Since libjpeg can convert YCbCr data to RGB (actually BGR) on the fly I let do
     // it this conversion instead handling it by the color manager.
-    if ColorScheme = csYCbCr then FState.General.d.jpeg_color_space := JCS_YCbCr
-                             else FState.General.d.jpeg_color_space := JCS_UNKNOWN;
+    if ColorScheme = csYCbCr then
+      FState.General.d.jpeg_color_space := JCS_YCbCr
+    else
+      FState.General.d.jpeg_color_space := JCS_UNKNOWN;
     FState.General.d.out_color_space := JCS_RGB;
 
     FState.General.d.raw_data_out := False;
@@ -2383,7 +2403,8 @@ begin
       begin
         // jpeg_read_scanlines needs as target an array of pointers, but since we read only one lin
         // at a time we can simply pass the address of the pointer to the data
-        if jpeg_read_scanlines(@FState.General.d, @Target, 1) <> 1 then Exit;
+        if jpeg_read_scanlines(@FState.General.d, @Target, 1) <> 1 then
+          Exit;
         Inc(Target, FState.BytesPerLine);
         Dec(J);
       end;
@@ -2443,7 +2464,7 @@ begin
     if jpeg_read_header(@FState.General, False) <> JPEG_HEADER_TABLES_ONLY then
       CompressionError(gesJPEGBogusTableField);
   end;
-  
+
   Internaljpeg_data_src(FState);
 end;
 
@@ -2837,6 +2858,372 @@ begin
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
+//----------------- TTIFFJPEGDecoder ---------------------------------------------------------------------------------------
+
+
+// Libjpeg interface layer needed to provide access from the JPEG coder class.
+
+// This routine is invoked only for warning messages, since error_exit does its own thing
+// and trace_level is never set > 0.
+
+{$IFDEF OldTiffGraphic}
+
+procedure Internaljpeg_output_message(cinfo: j_common_ptr); cdecl;
+
+var
+  Buffer: array[0..JMSG_LENGTH_MAX] of Char;
+  State: PJPEGState;
+
+begin
+  State := Pointer(cinfo);
+	State.Error.format_message(@State.General.common, Buffer);
+  MessageBox(0, Buffer, PChar(gesWarning), MB_OK or MB_ICONWARNING);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+{
+procedure Internaljpeg_create_compress(var State: TJPEGState);
+
+begin
+	// initialize JPEG error handling
+  State.General.Common.err := @State.Error;
+	State.Error.output_message := Internaljpeg_output_message;
+
+	jpeg_createCompress(@State.General.c, JPEG_LIB_VERSION, SizeOf(State.General.c));
+end;
+}
+//----------------------------------------------------------------------------------------------------------------------
+
+// JPEG library source data manager. These routines supply compressed data to libjpeg.
+
+procedure std_init_source(cinfo: j_decompress_ptr);
+
+var
+  State: PJPEGState;
+
+begin
+  State := Pointer(cinfo);
+
+	State.SourceManager.next_input_byte := State.RawBuffer;
+	State.SourceManager.bytes_in_buffer := State.RawBufferSize;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure std_fill_input_buffer(cinfo: j_decompress_ptr);
+
+const
+  Dummy_EOI: array[0..1] of JOCTET = ($FF, JPEG_EOI);
+
+var
+  State: PJPEGState;
+
+begin
+  State := Pointer(cinfo);
+
+	// Should never get here since entire strip/tile is read into memory before the
+  // decompressor is called, and thus was supplied by init_source.
+	MessageBox(0, PChar(gesJPEGEOI), PChar(gesWarning), MB_OK or MB_ICONWARNING);
+
+	// insert a fake EOI marker
+	State.SourceManager.next_input_byte := @Dummy_EOI;
+	State.SourceManager.bytes_in_buffer := 2;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure std_skip_input_data(cinfo: j_decompress_ptr; num_bytes: Integer);
+
+var
+  State: PJPEGState;
+
+begin
+  State := Pointer(cinfo);
+
+	if num_bytes > 0 then
+  begin
+		if num_bytes > State.SourceManager.bytes_in_buffer then
+    begin
+			// oops, buffer overrun
+			std_fill_input_buffer(cinfo);
+		end
+    else
+    begin
+			Inc(State.SourceManager.next_input_byte, num_bytes);
+			Dec(State.SourceManager.bytes_in_buffer, num_bytes);
+		end;
+	end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure std_term_source(cinfo: j_decompress_ptr);
+
+// No work necessary here.
+
+begin
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure Internaljpeg_data_src(var State: TJPEGState);
+
+begin
+  with State do
+  begin
+    // set data source manager
+    General.d.src := @SourceManager;
+
+    // fill in fields in our data source manager
+    SourceManager.init_source := @std_init_source;
+    SourceManager.fill_input_buffer := @std_fill_input_buffer;
+    SourceManager.skip_input_data := @std_skip_input_data;
+    SourceManager.resync_to_restart := @jpeg_resync_to_restart;
+    SourceManager.term_source := @std_term_source;
+    SourceManager.bytes_in_buffer := 0;		// for safety
+    SourceManager.next_input_byte := nil;
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+// Alternate source manager for reading from JPEGTables.
+// We can share all the code except for the init routine.
+
+procedure tables_init_source(cinfo: j_decompress_ptr);
+
+var
+  State: PJPEGState;
+
+begin
+  State := Pointer(cinfo);
+
+	State.SourceManager.next_input_byte := State.JPEGTables;
+	State.SourceManager.bytes_in_buffer := State.JTLength;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure Internaljpeg_tables_src(var State: TJPEGState);
+
+begin
+	Internaljpeg_data_src(State);
+	State.SourceManager.init_source := @tables_init_source;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+constructor TTIFFJPEGDecoder.Create(Properties: Pointer);
+
+begin
+  FImageProperties := Properties;
+  with PImageProperties(Properties)^ do
+  begin
+    if Assigned(JPEGTables) then
+    begin
+      FState.JPEGTables := @JPEGTables[0];
+      FState.JTLength := Length(JPEGTables);
+    end;
+    // no else branch, rely on class initialization
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TTIFFJPEGDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+
+type
+  PCompInfoArray = ^TCompInfoArray;
+  TCompInfoArray = array[0..MAX_COMPONENTS - 1] of jpeg_component_info;
+
+const
+  // also defined in GraphicEx, but not publicitly
+  PLANARCONFIG_CONTIG = 1;
+  PLANARCONFIG_SEPARATE = 2;
+
+var
+	I, J: Integer;
+  SegmentWidth,
+  SegmentHeight: Cardinal;
+  Temp: Integer;
+  Target: PByte;
+
+begin
+	// Reset decoder state from any previous strip/tile, in case application didn't read the whole strip.
+	jpeg_abort(@FState.General.Common);
+
+  FState.RawBuffer := Source;
+  FState.RawBufferSize := PackedSize;
+	// Read the header for this strip/tile.
+	jpeg_read_header(@FState.General, True);
+
+  with PImageProperties(FImageProperties)^ do
+  begin
+    // Check image parameters and set decompression parameters.
+    if ioTiled in Options then
+    begin
+      // tiled images currently not supported
+      SegmentWidth := TileWidth;
+      SegmentHeight := Height;
+      BytesPerLine := 0; //TIFFTileRowSize(tif);
+    end
+    else
+    begin
+      SegmentWidth := Width;
+      SegmentHeight := Height - CurrentRow;
+      // I assume here that all strips are equally sized
+      if SegmentHeight > RowsPerStrip[0] then SegmentHeight := RowsPerStrip[0];
+    end;
+
+    FState.BytesPerLine := BytesPerLine;
+
+    if (PlanarConfig = PLANARCONFIG_SEPARATE) and (CurrentStrip = StripCount) then
+    begin
+      // For PC 2, scale down the expected strip/tile size to match a downsampled component
+      SegmentWidth := (SegmentWidth + Cardinal(FState.HSampling - 1)) div FState.HSampling;
+      SegmentHeight := (SegmentHeight + Cardinal(FState.VSampling - 1)) div FState.VSampling;
+    end;
+
+    if (FState.General.d.image_width <> SegmentWidth) or
+       (FState.General.d.image_height <> SegmentHeight) then
+       CompressionError(gesJPEGStripSize);
+
+    Temp := 1;
+    if PlanarConfig = PLANARCONFIG_CONTIG then
+      Temp := SamplesPerPixel;
+    if FState.General.d.num_components <> Temp then
+      CompressionError(gesJPEGComponentCount);
+
+    if FState.General.d.data_precision <> BitsPerSample then
+      CompressionError(gesJPEGDataPrecision);
+
+    if PlanarConfig = PLANARCONFIG_CONTIG then
+    begin
+      // component 0 should have expected sampling factors
+      if (FState.General.d.comp_info.h_samp_factor <> FState.HSampling) or
+         (FState.General.d.comp_info.v_samp_factor <> FState.VSampling) then
+        CompressionError(gesJPEGSamplingFactors);
+
+      // rest should have sampling factors 1,1
+      for I := 1 to FState.General.d.num_components - 1 do
+        with PCompInfoArray(FState.General.d.comp_info)[I] do
+        begin
+          if (h_samp_factor <> 1) or (v_samp_factor <> 1) then
+            CompressionError(gesJPEGSamplingFactors);
+        end;
+    end
+    else
+    begin
+      // PC 2's single component should have sampling factors 1,1
+      if (FState.General.d.comp_info.h_samp_factor <> 1) or
+         (FState.General.d.comp_info.v_samp_factor <> 1) then
+        CompressionError(gesJPEGSamplingFactors);
+    end;
+
+    // Since libjpeg can convert YCbCr data to RGB (actually BGR) on the fly I let do
+    // it this conversion instead handling it by the color manager.
+    if ColorScheme = csYCbCr then FState.General.d.jpeg_color_space := JCS_YCbCr
+                             else FState.General.d.jpeg_color_space := JCS_UNKNOWN;
+    FState.General.d.out_color_space := JCS_RGB;
+
+    FState.General.d.raw_data_out := False;
+
+    // Start JPEG decompressor
+    jpeg_start_decompress(@FState.General);
+
+    try
+      Target := Dest;
+      // data is expected to be read in multiples of a scanline
+      J := Cardinal(UnpackedSize) div FState.BytesPerLine;
+      if (Cardinal(UnpackedSize) mod FState.BytesPerLine) <> 0 then
+        CompressionError(gesJPEGFractionalLine);
+
+      while J > 0 do
+      begin
+        // jpeg_read_scanlines needs as target an array of pointers, but since we read only one lin
+        // at a time we can simply pass the address of the pointer to the data
+        if jpeg_read_scanlines(@FState.General.d, @Target, 1) <> 1 then Exit;
+        Inc(Target, FState.BytesPerLine);
+        Dec(J);
+      end;
+    finally
+      jpeg_finish_decompress(@FState.General.d);
+    end
+  end;
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TTIFFJPEGDecoder.DecodeEnd;
+
+begin
+  // release libjpeg resources
+  jpeg_destroy(@FState.General.Common);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+var
+  // default routines for error manager (filled on unit initialization time)
+  jpeg_empty_error_mgr: jpeg_error_mgr = (
+    error_exit: nil;
+    emit_message: nil;
+    output_message: nil;
+    format_message: nil;
+    reset_error_mgr: nil);
+
+procedure TTIFFJPEGDecoder.DecodeInit;
+begin
+	// initialize JPEG error handling
+  FState.Error := jpeg_empty_error_mgr;
+	FState.General.d.common.err := @FState.Error;
+	FState.Error.output_message := Internaljpeg_output_message;
+
+  // let JPEG library init the core structure before setting our own stuff
+	jpeg_createDecompress(@FState.General.d, JPEG_LIB_VERSION, SizeOf(FState.General.d));
+
+  with PImageProperties(FImageProperties)^ do
+  begin
+    if {(ColorScheme = csYCbCr) and} Assigned(YCbCrSubsampling) then
+    begin
+		  FState.HSampling := YCbCrSubsampling[0];
+		  FState.VSampling := YCbCrSubsampling[1];
+    end
+    else
+    begin
+		  // TIFF 6.0 forbids subsampling of all other color spaces
+		  FState.HSampling := 1;
+		  FState.VSampling := 1;
+    end;
+  end;
+
+  // default values for codec-specific fields
+  with FState do
+  begin
+    // Default IJG quality
+    JPEGQuality := 75;
+  end;
+
+  if Assigned(FState.JPEGTables) then
+  begin
+    Internaljpeg_tables_src(FState);
+    if jpeg_read_header(@FState.General, False) <> JPEG_HEADER_TABLES_ONLY then
+      CompressionError(gesJPEGBogusTableField);
+  end;
+
+  Internaljpeg_data_src(FState);
+end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+procedure TTIFFJPEGDecoder.Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal);
+
+begin
+end;
+
+
+{$ENDIF}
+
 
 end.
 
