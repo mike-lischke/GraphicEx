@@ -146,7 +146,8 @@ type
     FIsWhite,          // alternating flag used while coding
     FSwapBits: Boolean; // True if the order of all bits in a byte must be swapped
     FWhiteStates,
-    FBlackStates: TStateArray;
+    FBlackStates,
+    F2DStates: TStateArray;
     FWidth: Cardinal; // need to know how line length for modified huffman encoding
 
     // coding/encoding variables
@@ -161,9 +162,12 @@ type
     FWordAligned: Boolean;
     procedure MakeStates;
   protected
+    procedure ReverseBits(Source: Pointer; PackedSize: Integer);
     function FillRun(RunLength: Cardinal): Boolean;
+    function DoFiniteStateMachine(const states: TStateArray): Integer;
     function FindBlackCode: Integer;
     function FindWhiteCode: Integer;
+    function Find2DCode:    Integer;
     function NextBit: Boolean;
   public
     constructor Create(Options: Integer; SwapBits, WordAligned: Boolean; Width: Cardinal);
@@ -673,7 +677,7 @@ begin
   FreeCode := ClearCode + 2;
   OldCode := NoLZWCode;
   CodeSize := 9;
-  CodeMask := (1 shl CodeSize) - 1; 
+  CodeMask := (1 shl CodeSize) - 1;
 
   // init code table
   for I := 0 to ClearCode - 1 do
@@ -1323,6 +1327,33 @@ const
   G3_INVALID = -2;
 
 //----------------------------------------------------------------------------------------------------------------------
+procedure TCCITTDecoder.ReverseBits(Source: Pointer; PackedSize: Integer);
+{$IFDEF ResortToPurePascal}
+var i: Integer;
+begin
+  for i := PackedSize-1 downto 0 do
+      PByteArray(Source)^[i] := ReverseTable[PByteArray(Source)^[i]];
+{$ELSE}
+  asm
+  //Source is in EDX
+  //PackedSize is in ECX
+         PUSH EBX
+         LEA EBX, ReverseTable
+  @@1:
+         MOV AL, [EDX]
+         {$ifdef COMPILER_6}
+           XLATB
+         {$else}
+           XLAT
+         {$endif COMPILER_6}
+         MOV [EDX], AL
+         INC EDX
+         DEC ECX
+         JNZ @@1
+         POP EBX
+{$ENDIF}
+end;
+
 
 function TCCITTDecoder.FillRun(RunLength: Cardinal): Boolean;
 
@@ -1377,7 +1408,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TCCITTDecoder.FindBlackCode: Integer;
+function TCCITTDecoder.DoFiniteStateMachine(const states: TStateArray): Integer;
 
 // Executes the state machine to find the run length for the next bit combination.
 // Returns the run length of the found code.
@@ -1405,15 +1436,15 @@ begin
     Bit := (FBits and FMask) <> 0;
 
     // advance the state machine
-    NewState := FBlackStates[State].NewState[Bit];
+    NewState := states[State].NewState[Bit];
     if NewState = 0 then
     begin
-      Inc(Result, FBlackStates[State].RunLength);
-      if FBlackStates[State].RunLength < 64 then
+      Inc(Result, states[State].RunLength);
+      if states[State].RunLength < 64 then
         Break
       else
       begin
-        NewState := FBlackStates[0].NewState[Bit];
+        NewState := states[0].NewState[Bit];
       end;
     end;
     State := NewState;
@@ -1422,60 +1453,25 @@ begin
     FMask := FMask shr 1;
     if FBitsLeft > 0 then
       Dec(FBitsLeft);
+
   until False;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
 function TCCITTDecoder.FindWhiteCode: Integer;
-
-// Executes the state machine to find the run length for the next bit combination.
-// Returns the run length of the found code.
-
-var
-  State,
-  NewState: Cardinal;
-  Bit: Boolean;
-
 begin
-  State := 0;
-  Result := 0;
-  repeat
-    // advance to next byte in the input Buffer if necessary
-    if FBitsLeft = 0 then
-    begin
-      if FPackedSize = 0 then
-        Break;
-      FBits := FSource^;
-      Inc(FSource);
-      Dec(FPackedSize);
-      FMask := $80;
-      FBitsLeft := 8;
-    end;
-    Bit := (FBits and FMask) <> 0;
+  Result := DoFiniteStateMachine(FWhiteStates);
+end;
 
-    // advance the state machine
-    NewState := FWhiteStates[State].NewState[Bit];
-    if NewState = 0 then
-    begin
-      // a code has been found
-      Inc(Result, FWhiteStates[State].RunLength);
-      // if we found a terminating code then exit loop, otherwise continue
-      if FWhiteStates[State].RunLength < 64 then
-        Break
-      else
-      begin
-        // found a make up code, continue state machine with current bit (rather than reading the next one)
-        NewState := FWhiteStates[0].NewState[Bit];
-      end;
-    end;
-    State := NewState;
+function TCCITTDecoder.FindBlackCode: Integer;
+begin
+  Result := DoFiniteStateMachine(FBlackStates);
+end;
 
-    // address next bit
-    FMask := FMask shr 1;
-    if FBitsLeft > 0 then
-      Dec(FBitsLeft);
-  until False;
+function TCCITTDecoder.Find2DCode: Integer;
+begin
+  Result := DoFiniteStateMachine(F2DStates);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1727,6 +1723,24 @@ const // CCITT code tables
     // EOL codes are added "manually"
   );
 
+  TwoDimCodes: array [0..10] of TCodeEntry = (
+    (Code : $0001; Len : 4),  //Pass
+    (Code : $0001; Len : 3),  //Horizontal (start)
+    (Code : $0001; Len : 1),  //V(0)
+    (Code : $0003; Len : 3),  //VR(1)
+    (Code : $0003; Len : 6),  //VR(2)
+    (Code : $0003; Len : 7),  //VR(3)
+    (Code : $0002; Len : 3),  //VL(1)
+    (Code : $0002; Len : 6),  //VL(2)
+    (Code : $0002; Len : 7),  //VL(3)
+    (Code : $0001; Len : 7),  //2-D extensions
+    (Code : $0001; Len : 9)  //1-D extensions
+  );
+
+  cePass = 0;
+  ceHorizontal = 1;
+
+
 procedure TCCITTDecoder.MakeStates;
 
 // creates state arrays for white and black codes
@@ -1788,7 +1802,7 @@ begin
   // set an initial entry in each state array
   SetLength(FWhiteStates, 1);
   SetLength(FBlackStates, 1);
-
+  SetLength(F2DStates,    1);
   // with codes
   for I := 0 to 63 do
     with WhiteCodes[I] do AddCode(FWhiteStates, Code, Len, I);
@@ -1812,6 +1826,10 @@ begin
   AddCode(FBlackStates, 1, 10, G3_INVALID);
   AddCode(FBlackStates, 1, 11, G3_INVALID);
   AddCode(FBlackStates, 0, 12, G3_INVALID);
+
+  //2D mode
+  for I := 0 to 10 do
+    with TwoDimCodes[I] do AddCode(F2DStates, Code, Len, I);
 end;
 
 //----------------- TCCITTFax3Decoder ----------------------------------------------------------------------------------
@@ -1821,8 +1839,14 @@ procedure TCCITTFax3Decoder.Decode(var Source, Dest: Pointer; PackedSize, Unpack
 var
   RunLength: Integer;
   EOLCount: Integer;
-{$IFDEF ResortToPurePascal}i: Integer;{$ENDIF}
+  ChangingElems: array [Boolean] of array of Integer;  //coordinates of these pixels on prev. row
+  curChangingElem: Integer; //even (0,2,...) means changing from white to black,
+                            //odd (1,3,...) are black to white
+  prevChangingElem: Integer;
+  BitPos: Integer;
 
+  RowUsed: Boolean;
+  RowCount: Integer;
   //--------------- local functions -------------------------------------------
 
   procedure SynchBOL;
@@ -1883,31 +1907,7 @@ begin
 
   // swap all bits here, in order to avoid frequent tests in the main loop
   if FSwapBits then
-  {$IFDEF ResortToPurePascal}
-    for i := PackedSize-1 downto 0 do
-      PByteArray(Source)^[i] := ReverseTable[PByteArray(Source)^[i]];
-  {$ELSE}
-    asm
-           PUSH EBX
-           LEA EBX, ReverseTable
-           MOV ECX, [PackedSize]
-           MOV EDX, [Source]
-           MOV EDX, [EDX]
-    @@1:
-           MOV AL, [EDX]
-           {$ifdef COMPILER_6}
-             XLATB
-           {$else}
-             XLAT
-           {$endif COMPILER_6}
-           MOV [EDX], AL
-           INC EDX
-           DEC ECX
-           JNZ @@1
-           POP EBX
-    end;
-  {$ENDIF}
-
+    ReverseBits(Source, PackedSize);
   // setup initial states
   // a row always starts with a (possibly zero-length) white run
   FSource := Source;
@@ -1919,17 +1919,111 @@ begin
   FRestWidth := FWidth;
   FFreeTargetBits := 8;
   EOLCount := 0;
+  RowUsed:=false; //could be true as well
+  RowCount:=0;
 
   // main loop
   repeat
     // synchronize to start of next line
+    BitPos := 0;
+    CurChangingElem:=0;
+    PrevChangingElem:=0;
     SynchBOL;
-    if ((FOptions and 1)<>0) and (not NextBit) then begin
+    if ((FOptions and 1)<>0) and (not NextBit) then
+    begin
+      FIsWhite := True;
       //begin 2-dimension decoding here
 //      raise exception.Create('sorry, 2-dimensional fax3 decoding not fully implemented!');
 //     surprisingly enough, even without code here fax3 2D is decoded good enough
 //     to understand what's written there. But of course vert. resolution dropped 2 to 4 times
+      repeat
+//        if RowCount=62 then
+//          inc(RowCount);
+        RunLength :=Find2DCode;
+        if RunLength = cePass then begin
+          FillRun(ChangingElems[RowUsed,PrevChangingElem+1]-BitPos);  //we need b2 here
+          BitPos := ChangingElems[RowUsed,PrevChangingElem+1];
 
+          if BitPos >= FWidth then
+          begin
+            if Length(ChangingElems[not RowUsed])<=CurChangingElem then
+              SetLength(ChangingElems[not RowUsed],Length(ChangingElems[not RowUsed])*2+1); //asymptotically fast realloc
+            ChangingElems[not RowUsed,CurChangingElem]:=BitPos;
+            Break;
+          end;
+
+          inc(PrevChangingElem,2);
+        end
+        else if RunLength = ceHorizontal then begin
+          //two passes: black and then white
+          if FIsWhite then
+            RunLength := FindWhiteCode
+          else
+            RunLength := FindBlackCode;
+          FillRun(RunLength);
+          inc(BitPos, RunLength);
+
+          if Length(ChangingElems[not RowUsed])<=CurChangingElem then
+            SetLength(ChangingElems[not RowUsed],Length(ChangingElems[not RowUsed])*2+1); //asymptotically fast realloc
+          ChangingElems[not RowUsed,CurChangingElem]:=BitPos;
+          inc(CurChangingElem);
+
+          if BitPos = FWidth then
+            Break;
+
+          FIsWhite := not FIsWhite;
+          if FIsWhite then
+            RunLength := FindWhiteCode
+          else
+            RunLength := FindBlackCode;
+          FillRun(RunLength);
+          inc(BitPos, RunLength);
+
+          if Length(ChangingElems[not RowUsed])<=CurChangingElem then
+            SetLength(ChangingElems[not RowUsed],Length(ChangingElems[not RowUsed])*2+1); //asymptotically fast realloc
+          ChangingElems[not RowUsed,CurChangingElem]:=BitPos;
+          inc(CurChangingElem);
+
+          if BitPos = FWidth then
+            Break;
+
+          while ChangingElems[RowUsed,PrevChangingElem]<=BitPos do
+            inc(PrevChangingElem,2); //we might want to add 'dummy' at the end of line
+          FIsWhite := not FIsWhite;
+        end
+        else if (RunLength > 1) and (RunLength < 9) then begin
+          //vertical coding
+          if RunLength <6 then
+            RunLength := (ChangingElems[RowUsed, PrevChangingElem]-BitPos)+(RunLength-2)  //R0 to R3
+          else
+            RunLength := (ChangingElems[RowUsed, PrevChangingElem]-BitPos)-(RunLength-5);  //L1 to L3
+          if RunLength<0 then break; //some garbage got here
+          FillRun(RunLength);
+          inc(BitPos, RunLength);
+
+          if Length(ChangingElems[not RowUsed])<=CurChangingElem then
+            SetLength(ChangingElems[not RowUsed],Length(ChangingElems[not RowUsed])*2+1); //asymptotically fast realloc
+          ChangingElems[not RowUsed,CurChangingElem]:=BitPos;
+          inc(CurChangingElem);
+
+          if BitPos >= FWidth then
+            Break;
+          FIsWhite := not FIsWhite;
+          //find b positions again, that is moving CurChangingElem
+
+          dec(PrevChangingElem);  //as we may turn left, then maybe previous changing elem of same color is better
+          if PrevChangingElem=-1 then
+            PrevChangingElem:=1;
+
+          while ChangingElems[RowUsed,PrevChangingElem]<=BitPos do
+            inc(PrevChangingElem,2);
+        end
+        else
+          raise Exception.Create('special codes for reverting fax3 2D to uncompressed mode not implemented');
+      until false;
+      //if BitPos>=FWidth then Exit;
+
+      RowUsed:=not RowUsed;
     end
     else begin
       // a line always starts with a white run
@@ -1940,6 +2034,16 @@ begin
           RunLength := FindWhiteCode
         else
           RunLength := FindBlackCode;
+        //populating array for 2D compression (if needed)
+        if ((FOptions and 1) <> 0) then begin
+          inc(BitPos,RunLength);
+          if Length(ChangingElems[RowUsed])<=CurChangingElem then
+            SetLength(ChangingElems[RowUsed],Length(ChangingElems[RowUsed])*2+1); //asymptotically fast realloc
+          ChangingElems[RowUsed,CurChangingElem]:=BitPos;
+          inc(CurChangingElem);
+        end;
+
+
         if RunLength >= 0 then
         begin
           if FillRun(RunLength) then
@@ -1952,8 +2056,12 @@ begin
           else
             Break;
       until (RunLength = G3_EOL) or (FPackedSize = 0);
+      if Length(ChangingElems[RowUsed])<=CurChangingElem then
+        SetLength(ChangingElems[RowUsed],Length(ChangingElems[RowUsed])*2+1); //asymptotically fast realloc
+      ChangingElems[RowUsed,CurChangingElem]:=FWidth;
     end;
     AdjustEOL;
+    inc(RowCount);
   until (FPackedSize = 0) or (FTarget - PChar(Dest) >= UnpackedSize);
 end;
 
@@ -1995,27 +2103,8 @@ begin
   FillChar(Dest^, UnpackedSize, 0);
 
   // swap all bits here, in order to avoid frequent tests in the main loop
-  if FSwapBits then 
-  asm
-         PUSH EBX
-         LEA EBX, ReverseTable
-         MOV ECX, [PackedSize]
-         MOV EDX, [Source]
-         MOV EDX, [EDX]
-  @@1:
-         MOV AL, [EDX]
-         {$ifdef COMPILER_6}
-           XLATB
-         {$else}
-           XLAT
-         {$endif COMPILER_6}
-         MOV [EDX], AL
-         INC EDX
-         DEC ECX
-         JNZ @@1
-         POP EBX
-  end;
-
+  if FSwapBits then
+    ReverseBits(Source, PackedSize);
   // setup initial states
   // a row always starts with a (possibly zero-length) white run
   FIsWhite := True;
@@ -2118,363 +2207,6 @@ function TLZ77Decoder.GetAvailableOutput: Integer;
 begin
   Result := FStream.avail_out;
 end;
-
-(*
-//----------------- TTIFFJPEGDecoder ---------------------------------------------------------------------------------------
-
-// Libjpeg interface layer needed to provide access from the JPEG coder class.
-
-// This routine is invoked only for warning messages, since error_exit does its own thing
-// and trace_level is never set > 0.
-
-procedure Internaljpeg_output_message(cinfo: j_common_ptr);
-
-var
-  Buffer: array[0..JMSG_LENGTH_MAX] of Char;
-  State: PJPEGState;
-
-begin
-  State := Pointer(cinfo);
-	State.Error.format_message(@State.General.common, Buffer);
-  MessageBox(0, Buffer, PChar(gesWarning), MB_OK or MB_ICONWARNING);
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-{
-procedure Internaljpeg_create_compress(var State: TJPEGState);
-
-begin
-	// initialize JPEG error handling
-  State.General.Common.err := @State.Error;
-	State.Error.output_message := Internaljpeg_output_message;
-
-	jpeg_createCompress(@State.General.c, JPEG_LIB_VERSION, SizeOf(State.General.c));
-end;
-}
-//----------------------------------------------------------------------------------------------------------------------
-
-// JPEG library source data manager. These routines supply compressed data to libjpeg.
-
-procedure std_init_source(cinfo: j_decompress_ptr); 
-
-var
-  State: PJPEGState;
-
-begin
-  State := Pointer(cinfo);
-
-	State.SourceManager.next_input_byte := State.RawBuffer;
-	State.SourceManager.bytes_in_buffer := State.RawBufferSize;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure std_fill_input_buffer(cinfo: j_decompress_ptr); 
-
-const
-  Dummy_EOI: array[0..1] of JOCTET = ($FF, JPEG_EOI);
-
-var
-  State: PJPEGState;
-
-begin
-  State := Pointer(cinfo);
-
-	// Should never get here since entire strip/tile is read into memory before the
-  // decompressor is called, and thus was supplied by init_source.
-	MessageBox(0, PChar(gesJPEGEOI), PChar(gesWarning), MB_OK or MB_ICONWARNING);
-
-	// insert a fake EOI marker
-	State.SourceManager.next_input_byte := @Dummy_EOI;
-	State.SourceManager.bytes_in_buffer := 2;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure std_skip_input_data(cinfo: j_decompress_ptr; num_bytes: Integer); 
-
-var
-  State: PJPEGState;
-
-begin
-  State := Pointer(cinfo);
-
-	if num_bytes > 0 then
-  begin
-		if num_bytes > State.SourceManager.bytes_in_buffer then
-    begin
-			// oops, buffer overrun
-			std_fill_input_buffer(cinfo);
-		end
-    else
-    begin
-			Inc(State.SourceManager.next_input_byte, num_bytes);
-			Dec(State.SourceManager.bytes_in_buffer, num_bytes);
-		end;
-	end;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure std_term_source(cinfo: j_decompress_ptr); 
-
-// No work necessary here.
-
-begin
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure Internaljpeg_data_src(var State: TJPEGState);
-
-begin
-  with State do
-  begin
-    // set data source manager
-    General.d.src := @SourceManager;
-    
-    // fill in fields in our data source manager
-    SourceManager.init_source := @std_init_source;
-    SourceManager.fill_input_buffer := @std_fill_input_buffer;
-    SourceManager.skip_input_data := @std_skip_input_data;
-    SourceManager.resync_to_restart := @jpeg_resync_to_restart;
-    SourceManager.term_source := @std_term_source;
-    SourceManager.bytes_in_buffer := 0;		// for safety
-    SourceManager.next_input_byte := nil;
-  end;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-// Alternate source manager for reading from JPEGTables.
-// We can share all the code except for the init routine.
-
-procedure tables_init_source(cinfo: j_decompress_ptr);
-
-var
-  State: PJPEGState;
-
-begin
-  State := Pointer(cinfo);
-
-	State.SourceManager.next_input_byte := State.JPEGTables;
-	State.SourceManager.bytes_in_buffer := State.JTLength;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure Internaljpeg_tables_src(var State: TJPEGState);
-
-begin
-	Internaljpeg_data_src(State);
-	State.SourceManager.init_source := @tables_init_source;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-constructor TTIFFJPEGDecoder.Create(Properties: Pointer);
-
-begin
-  FImageProperties := Properties;
-  with PImageProperties(Properties)^ do
-  begin
-    if Assigned(JPEGTables) then
-    begin
-      FState.JPEGTables := @JPEGTables[0];
-      FState.JTLength := Length(JPEGTables);
-    end;
-    // no else branch, rely on class initialization
-  end;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure TTIFFJPEGDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
-
-type
-  PCompInfoArray = ^TCompInfoArray;
-  TCompInfoArray = array[0..MAX_COMPONENTS - 1] of jpeg_component_info;
-
-const
-  // also defined in GraphicEx, but not publicitly
-  PLANARCONFIG_CONTIG = 1;
-  PLANARCONFIG_SEPARATE = 2;
-
-var
-	I, J: Integer;
-  SegmentWidth,
-  SegmentHeight: Cardinal;
-  Temp: Integer;
-  Target: PByte;
-  
-begin
-	// Reset decoder state from any previous strip/tile, in case application didn't read the whole strip.
-	jpeg_abort(@FState.General.Common);
-
-  FState.RawBuffer := Source;
-  FState.RawBufferSize := PackedSize;
-	// Read the header for this strip/tile.
-	jpeg_read_header(@FState.General, True);
-
-  with PImageProperties(FImageProperties)^ do
-  begin
-    // Check image parameters and set decompression parameters.
-    if ioTiled in Options then
-    begin
-      // tiled images currently not supported
-      SegmentWidth := TileWidth;
-      SegmentHeight := Height;
-      BytesPerLine := 0; //TIFFTileRowSize(tif);
-    end
-    else
-    begin
-      SegmentWidth := Width;
-      SegmentHeight := Height - CurrentRow;
-      // I assume here that all strips are equally sized
-      if SegmentHeight > RowsPerStrip[0] then SegmentHeight := RowsPerStrip[0];
-    end;
-
-    FState.BytesPerLine := BytesPerLine;
-    
-    if (PlanarConfig = PLANARCONFIG_SEPARATE) and (CurrentStrip = StripCount) then
-    begin
-      // For PC 2, scale down the expected strip/tile size to match a downsampled component
-      SegmentWidth := (SegmentWidth + Cardinal(FState.HSampling - 1)) div FState.HSampling;
-      SegmentHeight := (SegmentHeight + Cardinal(FState.VSampling - 1)) div FState.VSampling;
-    end;
-
-    if (FState.General.d.image_width <> SegmentWidth) or
-       (FState.General.d.image_height <> SegmentHeight) then
-        CompressionError(gesJPEGStripSize);
-
-    Temp := 1;
-    if PlanarConfig = PLANARCONFIG_CONTIG then
-      Temp := SamplesPerPixel;
-    if FState.General.d.num_components <> Temp then
-      CompressionError(gesJPEGComponentCount);
-
-    if FState.General.d.data_precision <> BitsPerSample then
-      CompressionError(gesJPEGDataPrecision);
-
-    if PlanarConfig = PLANARCONFIG_CONTIG then
-    begin
-      // component 0 should have expected sampling factors
-      if (FState.General.d.comp_info.h_samp_factor <> FState.HSampling) or
-         (FState.General.d.comp_info.v_samp_factor <> FState.VSampling) then
-        CompressionError(gesJPEGSamplingFactors);
-
-      // rest should have sampling factors 1,1
-      for I := 1 to FState.General.d.num_components - 1 do
-        with PCompInfoArray(FState.General.d.comp_info)[I] do
-        begin
-          if (h_samp_factor <> 1) or (v_samp_factor <> 1) then
-            CompressionError(gesJPEGSamplingFactors);
-        end;
-    end
-    else
-    begin
-      // PC 2's single component should have sampling factors 1,1
-      if (FState.General.d.comp_info.h_samp_factor <> 1) or
-         (FState.General.d.comp_info.v_samp_factor <> 1) then
-        CompressionError(gesJPEGSamplingFactors);
-    end;
-
-    // Since libjpeg can convert YCbCr data to RGB (actually BGR) on the fly I let do
-    // it this conversion instead handling it by the color manager.
-    if ColorScheme = csYCbCr then
-      FState.General.d.jpeg_color_space := JCS_YCbCr
-    else
-      FState.General.d.jpeg_color_space := JCS_UNKNOWN;
-    FState.General.d.out_color_space := JCS_RGB;
-
-    FState.General.d.raw_data_out := False;
-
-    // Start JPEG decompressor
-    jpeg_start_decompress(@FState.General);
-
-    try
-      Target := Dest;
-      // data is expected to be read in multiples of a scanline
-      J := Cardinal(UnpackedSize) div FState.BytesPerLine;
-      if (Cardinal(UnpackedSize) mod FState.BytesPerLine) <> 0 then
-        CompressionError(gesJPEGFractionalLine);
-
-      while J > 0 do
-      begin
-        // jpeg_read_scanlines needs as target an array of pointers, but since we read only one lin
-        // at a time we can simply pass the address of the pointer to the data
-        if jpeg_read_scanlines(@FState.General.d, @Target, 1) <> 1 then
-          Exit;
-        Inc(Target, FState.BytesPerLine);
-        Dec(J);
-      end;
-    finally
-      jpeg_finish_decompress(@FState.General.d);
-    end
-  end;
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure TTIFFJPEGDecoder.DecodeEnd;
-
-begin
-  // release libjpeg resources
-  jpeg_destroy(@FState.General.Common);
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure TTIFFJPEGDecoder.DecodeInit;
-
-begin
-	// initialize JPEG error handling
-  FState.Error := jpeg_std_error;
-	FState.General.d.common.err := @FState.Error;
-	FState.Error.output_message := Internaljpeg_output_message;
-
-  // let JPEG library init the core structure before setting our own stuff
-	jpeg_createDecompress(@FState.General.d, JPEG_LIB_VERSION, SizeOf(FState.General.d));
-
-  with PImageProperties(FImageProperties)^ do
-  begin
-    if {(ColorScheme = csYCbCr) and} Assigned(YCbCrSubsampling) then
-    begin
-		  FState.HSampling := YCbCrSubsampling[0];
-		  FState.VSampling := YCbCrSubsampling[1];
-    end
-    else
-    begin
-		  // TIFF 6.0 forbids subsampling of all other color spaces
-		  FState.HSampling := 1;
-		  FState.VSampling := 1;
-    end;
-  end;
-
-  // default values for codec-specific fields
-  with FState do
-  begin
-    // Default IJG quality
-    JPEGQuality := 75;
-  end;
-
-  if Assigned(FState.JPEGTables) then
-  begin
-    Internaljpeg_tables_src(FState);
-    if jpeg_read_header(@FState.General, False) <> JPEG_HEADER_TABLES_ONLY then
-      CompressionError(gesJPEGBogusTableField);
-  end;
-
-  Internaljpeg_data_src(FState);
-end;
-
-//----------------------------------------------------------------------------------------------------------------------
-
-procedure TTIFFJPEGDecoder.Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal);
-
-begin
-end;
-*)
 
 //----------------- TThunderDecoder ------------------------------------------------------------------------------------
 
@@ -3070,7 +2802,7 @@ begin
     else
     begin
       SegmentWidth := Width;
-      SegmentHeight := Height - CurrentRow;
+      SegmentHeight := Cardinal(Height) - CurrentRow;
       // I assume here that all strips are equally sized
       if SegmentHeight > RowsPerStrip[0] then SegmentHeight := RowsPerStrip[0];
     end;

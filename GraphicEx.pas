@@ -4293,6 +4293,7 @@ begin
           end;
 
           Inc(CurrentStrip);
+//          break;  //debug only
         end;
       end
       else begin
@@ -4304,8 +4305,8 @@ begin
 
 //        GraphicExError('sorry, tiled images are still under construction');
           for CurrentTileRow := 0 to (Cardinal(Height) + TileLength-1) div TileLength - 1 do begin
-            if (CurrentTileRow+1) * TileLength > Height then
-              RowCount := Height - CurrentTileRow * TileLength
+            if (CurrentTileRow+1) * TileLength > Cardinal(Height) then
+              RowCount := Cardinal(Height) - CurrentTileRow * TileLength
             else
               RowCount := TileLength;
             for CurrentTileCol := 0 to (Cardinal(Width) + TileWidth-1) div TileWidth -1 do begin
@@ -4329,7 +4330,7 @@ begin
                 Stream.Read(Buffer^, TileSize);
               end;
               //ok, we have current tile in Buffer, time to copy it into image
-              if (CurrentTileCol+1) * TileWidth <= Width then //most of our tiles
+              if (CurrentTileCol+1) * TileWidth <= Cardinal(Width) then //most of our tiles
                 for i := 0 to RowCount-1 do begin
                   Y := PAnsiChar(ScanLine[CurrentTileRow * TileLength + i]) + CurrentTileCol * TileWidth * BitsPerPixel div 8;
                   ColorManager.ConvertRow([Run], Y, TileWidth, $FF);
@@ -4338,7 +4339,7 @@ begin
               else  //tiles to the right of the image which should be clipped
                 for i := 0 to RowCount-1 do begin
                   Y := PAnsiChar(ScanLine[CurrentTileRow * TileLength + i]) + CurrentTileCol * TileWidth * BitsPerPixel div 8;
-                  ColorManager.ConvertRow([Run], Y, Width - CurrentTileCol * TileWidth, $FF);
+                  ColorManager.ConvertRow([Run], Y, Cardinal(Width) - CurrentTileCol * TileWidth, $FF);
                   inc(Run, BytesPerTileRow);
                 end;
               inc(CurrentTile);

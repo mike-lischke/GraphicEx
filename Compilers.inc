@@ -105,7 +105,7 @@
  {$IFDEF CONDITIONALEXPRESSIONS}
     {$IF CompilerVersion >= 14.0}
       {$DEFINE NEWER_COMPILER}
-    {$ENDIF}
+    {$IFEND}
  {$ENDIF}
 
 
