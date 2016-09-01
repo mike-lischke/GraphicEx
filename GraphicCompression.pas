@@ -174,8 +174,7 @@ type
     procedure ReverseBits(Source: Pointer; PackedSize: Integer);
     function FillRun(RunLength: Cardinal): Boolean;
     function DoFiniteStateMachine(const states: TStateArray): Integer;
-    function FindBlackCode: Integer;
-    function FindWhiteCode: Integer;
+    function FindRunLength: Integer;
     function Find2DCode:    Integer;
     function NextBit: Boolean;
 
@@ -1471,14 +1470,12 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-function TCCITTDecoder.FindWhiteCode: Integer;
+function TCCITTDecoder.FindRunLength: Integer;
 begin
-  Result := DoFiniteStateMachine(FWhiteStates);
-end;
-
-function TCCITTDecoder.FindBlackCode: Integer;
-begin
-  Result := DoFiniteStateMachine(FBlackStates);
+  if FIsWhite then
+    Result := DoFiniteStateMachine(FWhiteStates)
+  else
+    Result := DoFiniteStateMachine(FBlackStates);
 end;
 
 function TCCITTDecoder.Find2DCode: Integer;
@@ -1965,10 +1962,7 @@ begin
         end
         else if RunLength = ceHorizontal then begin
           //two passes: black and then white
-          if FIsWhite then
-            RunLength := FindWhiteCode
-          else
-            RunLength := FindBlackCode;
+          RunLength:=FindRunLength;
           FillRun(RunLength);
           inc(fBitPos, RunLength);
 
@@ -1978,10 +1972,7 @@ begin
             Break;
 
           FIsWhite := not FIsWhite;
-          if FIsWhite then
-            RunLength := FindWhiteCode
-          else
-            RunLength := FindBlackCode;
+          RunLength:=FindRunLength;
           FillRun(RunLength);
           inc(fBitPos, RunLength);
 
@@ -2029,10 +2020,7 @@ begin
       FIsWhite := True;
       // decode one line
       repeat
-        if FIsWhite then
-          RunLength := FindWhiteCode
-        else
-          RunLength := FindBlackCode;
+        RunLength:=FindRunLength;
         //populating array for 2D compression (if needed)
         if ((FOptions and 1) <> 0) then begin
           inc(fBitPos, RunLength);
@@ -2114,10 +2102,7 @@ begin
 
   // main loop
   repeat
-    if FIsWhite then
-      RunLength := FindWhiteCode
-    else
-      RunLength := FindBlackCode;
+    RunLength:=FindRunLength;
     if RunLength > 0 then
       if FillRun(RunLength) then
         AdjustEOL;
