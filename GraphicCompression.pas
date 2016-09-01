@@ -1828,8 +1828,6 @@ procedure TCCITTFax3Decoder.Decode(var Source, Dest: Pointer; PackedSize, Unpack
 var
   RunLength: Integer;
   EOLCount: Integer;
-
-  RowCount: Integer;
   //--------------- local functions -------------------------------------------
 
   procedure SynchBOL;
@@ -1902,8 +1900,7 @@ begin
   FRestWidth := FWidth;
   FFreeTargetBits := 8;
   EOLCount := 0;
-  fRowUsed:=false; //could be true as well
-  RowCount:=0;
+  //we don't care, is FRowUsed true or false, it's totally symmetric
 
   // main loop
   repeat
@@ -1916,12 +1913,7 @@ begin
     begin
       FIsWhite := True;
       //begin 2-dimension decoding here
-//      raise exception.Create('sorry, 2-dimensional fax3 decoding not fully implemented!');
-//     surprisingly enough, even without code here fax3 2D is decoded good enough
-//     to understand what's written there. But of course vert. resolution dropped 2 to 4 times
       repeat
-//        if RowCount=62 then
-//          inc(RowCount);
         RunLength :=Find2DCode;
         if RunLength = cePass then begin
           FillRun(fChangingElems[fRowUsed,fPrevChangingElem+1]-fBitPos);  //we need b2 here
@@ -1940,9 +1932,6 @@ begin
 
           UpdateChangingElem;
 
-          if fBitPos = FWidth then
-            Break;
-
           FIsWhite := not FIsWhite;
           RunLength:=FindRunLength;
           FillRun(RunLength);
@@ -1950,7 +1939,7 @@ begin
 
           UpdateChangingElem;
 
-          if fBitPos = FWidth then
+          if fBitPos >= FWidth then
             Break;
 
           while fChangingElems[fRowUsed,fPrevChangingElem]<=fBitPos do
@@ -1984,7 +1973,6 @@ begin
         else
           raise Exception.Create('special codes for reverting fax3 2D to uncompressed mode not implemented');
       until false;
-      //if BitPos>=FWidth then Exit;
 
     end
     else begin
@@ -2015,7 +2003,6 @@ begin
     fBitPos:=fWidth;
     UpdateChangingElem;
     AdjustEOL;
-    inc(RowCount);
     fRowUsed:=not fRowUsed;
   until (FPackedSize = 0) or (FTarget - PChar(Dest) >= UnpackedSize);
 end;
@@ -2023,15 +2010,119 @@ end;
 //----------------------------------------------------------------------------------------------------------------------
 
 procedure TCCITTFax3Decoder.Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal);
-
 begin
 
 end;
 
 //------------------TCCITTFax4Decoder ------------------------------------------------------------------------------------
 procedure TCCITTFax4Decoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
-begin
+var RunLength: Integer;
 
+  procedure AdjustEOL;
+  begin
+    FIsWhite := False;
+    if FFreeTargetBits in [1..7] then
+      Inc(FTarget);
+    FFreeTargetBits := 8;
+    FRestWidth := FWidth;
+  end;
+
+begin
+  // make all bits white
+  FillChar(Dest^, UnpackedSize, 0);
+
+  // swap all bits here, in order to avoid frequent tests in the main loop
+  if FSwapBits then
+    ReverseBits(Source, PackedSize);
+  // setup initial states
+  // a row always starts with a (possibly zero-length) white run
+  FSource := Source;
+  FBitsLeft := 0;
+  FPackedSize := PackedSize;
+
+  // target preparation
+  FTarget := Dest;
+  FRestWidth := FWidth;
+  FFreeTargetBits := 8;
+  fRowUsed:=false; //could be true as well, it's symmetric
+  fBitPos:=FWidth;
+  UpdateChangingElem; //this way we form white reference line
+  UpdateChangingElem;
+  fRowUsed:=true;
+
+  // main loop
+  repeat
+    // synchronize to start of next line
+    fBitPos := 0;
+    fCurChangingElem:=0;
+    fPrevChangingElem:=0;
+    FIsWhite := True;
+    repeat
+      RunLength :=Find2DCode;
+      if RunLength = cePass then begin
+        FillRun(fChangingElems[fRowUsed,fPrevChangingElem+1]-fBitPos);  //we need b2 here
+        fBitPos := fChangingElems[fRowUsed,fPrevChangingElem+1];
+
+        if fBitPos >= FWidth then
+          Break;
+
+        inc(fPrevChangingElem,2);
+      end
+      else if RunLength = ceHorizontal then begin
+        //two passes: black and then white
+        RunLength:=FindRunLength;
+        FillRun(RunLength);
+        inc(fBitPos, RunLength);
+
+        UpdateChangingElem;
+
+        FIsWhite := not FIsWhite;
+        RunLength:=FindRunLength;
+        FillRun(RunLength);
+        inc(fBitPos, RunLength);
+
+        UpdateChangingElem;
+
+        if fBitPos >= FWidth then
+          Break;
+
+        while fChangingElems[fRowUsed,fPrevChangingElem]<=fBitPos do
+          inc(fPrevChangingElem,2); //we might want to add 'dummy' at the end of line
+        FIsWhite := not FIsWhite;
+      end
+      else if (RunLength > 1) and (RunLength < 9) then begin
+        //vertical coding
+        if RunLength <6 then
+          RunLength := (fChangingElems[fRowUsed, fPrevChangingElem]-fBitPos)+(RunLength-2)  //R0 to R3
+        else
+          RunLength := (fChangingElems[fRowUsed, fPrevChangingElem]-fBitPos)-(RunLength-5);  //L1 to L3
+        if RunLength<0 then break; //some garbage got here
+        FillRun(RunLength);
+        inc(fBitPos, RunLength);
+
+        UpdateChangingElem;
+
+        if fBitPos >= FWidth then
+          Break;
+        FIsWhite := not FIsWhite;
+        //find b positions again, that is moving CurChangingElem
+
+        dec(fPrevChangingElem);  //as we may turn left, then maybe previous changing elem of same color is better
+        if fPrevChangingElem=-1 then
+          fPrevChangingElem:=1;
+
+        while fChangingElems[fRowUsed,fPrevChangingElem]<=fBitPos do
+          inc(fPrevChangingElem,2);
+      end
+      else
+        raise Exception.Create('special codes for reverting fax4 to uncompressed mode not implemented');
+    until false;
+    //if BitPos>=FWidth then Exit;
+    fBitPos:=fWidth;
+    UpdateChangingElem;
+    AdjustEOL;
+    fRowUsed:=not fRowUsed;
+  until (FPackedSize = 0) or (FTarget - PChar(Dest) >= UnpackedSize);
 end;
 
 procedure TCCITTFax4Decoder.Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal);

@@ -4201,6 +4201,8 @@ begin
                                             Width);
         ctFax3:
           Decoder := TCCITTFax3Decoder.Create(GetValue(TIFFTAG_GROUP3OPTIONS), ioReversed in Options, False, Width);
+        ctFax4:
+          Decoder := TCCITTFax4Decoder.Create(GetValue(TIFFTAG_GROUP4OPTIONS), ioReversed in Options, False, Width);
         ctJPEG:
           begin
             // some extra work is needed for JPEG
