@@ -160,6 +160,15 @@ type
     FTarget: PByte;
     FFreeTargetBits: Byte;
     FWordAligned: Boolean;
+
+    //some fields for 2D compression. Will be used in Fax3 (T4) as well as Fax4 (T6) decoders
+    fChangingElems: array [Boolean] of array of Integer;  //coordinates of these pixels on prev. row
+    fcurChangingElem: Integer; //even (0,2,...) means changing from white to black,
+                            //odd (1,3,...) are black to white
+    fprevChangingElem: Integer;
+    fRowUsed: Boolean;
+    fBitPos: Integer;
+
     procedure MakeStates;
   protected
     procedure ReverseBits(Source: Pointer; PackedSize: Integer);
@@ -169,6 +178,9 @@ type
     function FindWhiteCode: Integer;
     function Find2DCode:    Integer;
     function NextBit: Boolean;
+
+    //2D decompression routines
+    procedure UpdateChangingElem;
   public
     constructor Create(Options: Integer; SwapBits, WordAligned: Boolean; Width: Cardinal);
   end;
@@ -1832,6 +1844,14 @@ begin
     with TwoDimCodes[I] do AddCode(F2DStates, Code, Len, I);
 end;
 
+procedure TCCITTDecoder.UpdateChangingElem;
+begin
+  if Length(fChangingElems[not fRowUsed])<=fCurChangingElem then
+    SetLength(fChangingElems[not fRowUsed],Length(fChangingElems[not fRowUsed])*2+1); //asymptotically fast realloc
+  fChangingElems[not fRowUsed,fCurChangingElem]:=fBitPos;
+  inc(fCurChangingElem);
+end;
+
 //----------------- TCCITTFax3Decoder ----------------------------------------------------------------------------------
 
 procedure TCCITTFax3Decoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
@@ -1839,13 +1859,7 @@ procedure TCCITTFax3Decoder.Decode(var Source, Dest: Pointer; PackedSize, Unpack
 var
   RunLength: Integer;
   EOLCount: Integer;
-  ChangingElems: array [Boolean] of array of Integer;  //coordinates of these pixels on prev. row
-  curChangingElem: Integer; //even (0,2,...) means changing from white to black,
-                            //odd (1,3,...) are black to white
-  prevChangingElem: Integer;
-  BitPos: Integer;
 
-  RowUsed: Boolean;
   RowCount: Integer;
   //--------------- local functions -------------------------------------------
 
@@ -1919,15 +1933,15 @@ begin
   FRestWidth := FWidth;
   FFreeTargetBits := 8;
   EOLCount := 0;
-  RowUsed:=false; //could be true as well
+  fRowUsed:=false; //could be true as well
   RowCount:=0;
 
   // main loop
   repeat
     // synchronize to start of next line
-    BitPos := 0;
-    CurChangingElem:=0;
-    PrevChangingElem:=0;
+    fBitPos := 0;
+    fCurChangingElem:=0;
+    fPrevChangingElem:=0;
     SynchBOL;
     if ((FOptions and 1)<>0) and (not NextBit) then
     begin
@@ -1941,18 +1955,13 @@ begin
 //          inc(RowCount);
         RunLength :=Find2DCode;
         if RunLength = cePass then begin
-          FillRun(ChangingElems[RowUsed,PrevChangingElem+1]-BitPos);  //we need b2 here
-          BitPos := ChangingElems[RowUsed,PrevChangingElem+1];
+          FillRun(fChangingElems[fRowUsed,fPrevChangingElem+1]-fBitPos);  //we need b2 here
+          fBitPos := fChangingElems[fRowUsed,fPrevChangingElem+1];
 
-          if BitPos >= FWidth then
-          begin
-            if Length(ChangingElems[not RowUsed])<=CurChangingElem then
-              SetLength(ChangingElems[not RowUsed],Length(ChangingElems[not RowUsed])*2+1); //asymptotically fast realloc
-            ChangingElems[not RowUsed,CurChangingElem]:=BitPos;
+          if fBitPos >= FWidth then
             Break;
-          end;
 
-          inc(PrevChangingElem,2);
+          inc(fPrevChangingElem,2);
         end
         else if RunLength = ceHorizontal then begin
           //two passes: black and then white
@@ -1961,14 +1970,11 @@ begin
           else
             RunLength := FindBlackCode;
           FillRun(RunLength);
-          inc(BitPos, RunLength);
+          inc(fBitPos, RunLength);
 
-          if Length(ChangingElems[not RowUsed])<=CurChangingElem then
-            SetLength(ChangingElems[not RowUsed],Length(ChangingElems[not RowUsed])*2+1); //asymptotically fast realloc
-          ChangingElems[not RowUsed,CurChangingElem]:=BitPos;
-          inc(CurChangingElem);
+          UpdateChangingElem;
 
-          if BitPos = FWidth then
+          if fBitPos = FWidth then
             Break;
 
           FIsWhite := not FIsWhite;
@@ -1977,53 +1983,46 @@ begin
           else
             RunLength := FindBlackCode;
           FillRun(RunLength);
-          inc(BitPos, RunLength);
+          inc(fBitPos, RunLength);
 
-          if Length(ChangingElems[not RowUsed])<=CurChangingElem then
-            SetLength(ChangingElems[not RowUsed],Length(ChangingElems[not RowUsed])*2+1); //asymptotically fast realloc
-          ChangingElems[not RowUsed,CurChangingElem]:=BitPos;
-          inc(CurChangingElem);
+          UpdateChangingElem;
 
-          if BitPos = FWidth then
+          if fBitPos = FWidth then
             Break;
 
-          while ChangingElems[RowUsed,PrevChangingElem]<=BitPos do
-            inc(PrevChangingElem,2); //we might want to add 'dummy' at the end of line
+          while fChangingElems[fRowUsed,fPrevChangingElem]<=fBitPos do
+            inc(fPrevChangingElem,2); //we might want to add 'dummy' at the end of line
           FIsWhite := not FIsWhite;
         end
         else if (RunLength > 1) and (RunLength < 9) then begin
           //vertical coding
           if RunLength <6 then
-            RunLength := (ChangingElems[RowUsed, PrevChangingElem]-BitPos)+(RunLength-2)  //R0 to R3
+            RunLength := (fChangingElems[fRowUsed, fPrevChangingElem]-fBitPos)+(RunLength-2)  //R0 to R3
           else
-            RunLength := (ChangingElems[RowUsed, PrevChangingElem]-BitPos)-(RunLength-5);  //L1 to L3
+            RunLength := (fChangingElems[fRowUsed, fPrevChangingElem]-fBitPos)-(RunLength-5);  //L1 to L3
           if RunLength<0 then break; //some garbage got here
           FillRun(RunLength);
-          inc(BitPos, RunLength);
+          inc(fBitPos, RunLength);
 
-          if Length(ChangingElems[not RowUsed])<=CurChangingElem then
-            SetLength(ChangingElems[not RowUsed],Length(ChangingElems[not RowUsed])*2+1); //asymptotically fast realloc
-          ChangingElems[not RowUsed,CurChangingElem]:=BitPos;
-          inc(CurChangingElem);
+          UpdateChangingElem;
 
-          if BitPos >= FWidth then
+          if fBitPos >= FWidth then
             Break;
           FIsWhite := not FIsWhite;
           //find b positions again, that is moving CurChangingElem
 
-          dec(PrevChangingElem);  //as we may turn left, then maybe previous changing elem of same color is better
-          if PrevChangingElem=-1 then
-            PrevChangingElem:=1;
+          dec(fPrevChangingElem);  //as we may turn left, then maybe previous changing elem of same color is better
+          if fPrevChangingElem=-1 then
+            fPrevChangingElem:=1;
 
-          while ChangingElems[RowUsed,PrevChangingElem]<=BitPos do
-            inc(PrevChangingElem,2);
+          while fChangingElems[fRowUsed,fPrevChangingElem]<=fBitPos do
+            inc(fPrevChangingElem,2);
         end
         else
           raise Exception.Create('special codes for reverting fax3 2D to uncompressed mode not implemented');
       until false;
       //if BitPos>=FWidth then Exit;
 
-      RowUsed:=not RowUsed;
     end
     else begin
       // a line always starts with a white run
@@ -2036,13 +2035,9 @@ begin
           RunLength := FindBlackCode;
         //populating array for 2D compression (if needed)
         if ((FOptions and 1) <> 0) then begin
-          inc(BitPos,RunLength);
-          if Length(ChangingElems[RowUsed])<=CurChangingElem then
-            SetLength(ChangingElems[RowUsed],Length(ChangingElems[RowUsed])*2+1); //asymptotically fast realloc
-          ChangingElems[RowUsed,CurChangingElem]:=BitPos;
-          inc(CurChangingElem);
+          inc(fBitPos, RunLength);
+          UpdateChangingElem;
         end;
-
 
         if RunLength >= 0 then
         begin
@@ -2056,12 +2051,12 @@ begin
           else
             Break;
       until (RunLength = G3_EOL) or (FPackedSize = 0);
-      if Length(ChangingElems[RowUsed])<=CurChangingElem then
-        SetLength(ChangingElems[RowUsed],Length(ChangingElems[RowUsed])*2+1); //asymptotically fast realloc
-      ChangingElems[RowUsed,CurChangingElem]:=FWidth;
     end;
+    fBitPos:=fWidth;
+    UpdateChangingElem;
     AdjustEOL;
     inc(RowCount);
+    fRowUsed:=not fRowUsed;
   until (FPackedSize = 0) or (FTarget - PChar(Dest) >= UnpackedSize);
 end;
 
