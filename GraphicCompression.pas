@@ -1919,7 +1919,7 @@ begin
           FillRun(fChangingElems[fRowUsed,fPrevChangingElem+1]-fBitPos);  //we need b2 here
           fBitPos := fChangingElems[fRowUsed,fPrevChangingElem+1];
 
-          if fBitPos >= FWidth then
+          if Cardinal(fBitPos) >= FWidth then
             Break;
 
           inc(fPrevChangingElem,2);
@@ -1939,7 +1939,7 @@ begin
 
           UpdateChangingElem;
 
-          if fBitPos >= FWidth then
+          if Cardinal(fBitPos) >= FWidth then
             Break;
 
           while fChangingElems[fRowUsed,fPrevChangingElem]<=fBitPos do
@@ -1958,7 +1958,7 @@ begin
 
           UpdateChangingElem;
 
-          if fBitPos >= FWidth then
+          if Cardinal(fBitPos) >= FWidth then
             Break;
           FIsWhite := not FIsWhite;
           //find b positions again, that is moving CurChangingElem
@@ -2063,7 +2063,7 @@ begin
         FillRun(fChangingElems[fRowUsed,fPrevChangingElem+1]-fBitPos);  //we need b2 here
         fBitPos := fChangingElems[fRowUsed,fPrevChangingElem+1];
 
-        if fBitPos >= FWidth then
+        if Cardinal(fBitPos) >= FWidth then
           Break;
 
         inc(fPrevChangingElem,2);
@@ -2083,7 +2083,7 @@ begin
 
         UpdateChangingElem;
 
-        if fBitPos >= FWidth then
+        if Cardinal(fBitPos) >= FWidth then
           Break;
 
         while fChangingElems[fRowUsed,fPrevChangingElem]<=fBitPos do
@@ -2102,7 +2102,7 @@ begin
 
         UpdateChangingElem;
 
-        if fBitPos >= FWidth then
+        if Cardinal(fBitPos) >= FWidth then
           Break;
         FIsWhite := not FIsWhite;
         //find b positions again, that is moving CurChangingElem

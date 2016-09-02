@@ -98,16 +98,43 @@
  {$endif DELPHI.NET_1}
 {$endif CLR}
 
-{$ifdef Win32}
-
-// Compiler defines not specific to a particlular platform.
-
  {$IFDEF CONDITIONALEXPRESSIONS}
     {$IF CompilerVersion >= 14.0}
       {$DEFINE NEWER_COMPILER}
     {$IFEND}
  {$ENDIF}
 
+{$ifdef Win32}
+
+// Compiler defines not specific to a particlular platform.
+
+  {$ifdef VER300}
+    {$define COMPILER_23}
+  {$endif VER300}
+
+  {$ifdef VER290}
+    {$define COMPILER_22}
+  {$endif VER290}
+
+  {$ifdef VER280}
+    {$define COMPILER_21}
+  {$endif VER280}
+
+  {$ifdef VER270}
+    {$define COMPILER_20}
+  {$endif VER270}
+
+  {$ifdef VER260}
+    {$define COMPILER_19}
+  {$endif VER260}
+
+  {$ifdef VER250}
+    {$define COMPILER_18}
+  {$endif VER250}
+
+  {$ifdef VER240}
+    {$define COMPILER_17}
+  {$endif VER240}
 
  // BDS 2008 (BDS 6.0) DELPHI and BCB are no longer defined, only COMPILER
  {$ifdef VER200}
@@ -447,32 +474,6 @@
 
 {$endif}
 
-{$IFDEF NEWER_COMPILER}
- {$define COMPILER_1_UP}
- {$define COMPILER_2_UP}
- {$define COMPILER_3_UP}
- {$define COMPILER_4_UP}
- {$define COMPILER_5_UP}
- {$define COMPILER_6_UP}
- {$define COMPILER_7_UP}
- {$define COMPILER_8_UP}
- {$define COMPILER_9_UP}
- {$define COMPILER_10_UP}
- // Backwards compatibility
- {$define DELPHI_2_UP}
- {$define DELPHI_3_UP}
- {$define DELPHI_4_UP}
- {$define DELPHI_5_UP}
- {$define DELPHI_6_UP}
- {$define DELPHI_7_UP}
- {$define DELPHI_8_UP}
- {$define DELPHI_9_UP}
- {$define CPPB_3_UP}
- {$define CPPB_4_UP}
- {$define CPPB_5_UP}
- {$define CPPB_6_UP}
-{$ENDIF}
-
 {$ifdef COMPILER_11}
  {$define COMPILER_1_UP}
  {$define COMPILER_2_UP}
@@ -503,7 +504,7 @@
    {$define CPPB}
  {$else}
    {$define DELPHI}
- {$endif} 
+ {$endif}
 
 {$endif}
 
@@ -539,14 +540,115 @@
    {$define CPPB}
  {$else}
    {$define DELPHI}
- {$endif} 
+ {$endif}
 
 {$endif}
+
+{$ifdef COMPILER_17}
+ {$define COMPILER_1_UP}
+ {$define COMPILER_2_UP}
+ {$define COMPILER_3_UP}
+ {$define COMPILER_4_UP}
+ {$define COMPILER_5_UP}
+ {$define COMPILER_6_UP}
+ {$define COMPILER_7_UP}
+ {$define COMPILER_8_UP}
+ {$define COMPILER_9_UP}
+ {$define COMPILER_10_UP}
+ {$define COMPILER_11_UP}
+ {$define COMPILER_12_UP}
+ {$define COMPILER_13_UP}
+ {$define COMPILER_14_UP}
+ {$define COMPILER_15_UP}
+ {$define COMPILER_16_UP}
+ {$define COMPILER_17_UP}
+ // Backwards compatibility
+ {$define DELPHI_2_UP}
+ {$define DELPHI_3_UP}
+ {$define DELPHI_4_UP}
+ {$define DELPHI_5_UP}
+ {$define DELPHI_6_UP}
+ {$define DELPHI_7_UP}
+ {$define DELPHI_8_UP}
+ {$define DELPHI_9_UP}
+ {$define CPPB_3_UP}
+ {$define CPPB_4_UP}
+ {$define CPPB_5_UP}
+ {$define CPPB_6_UP}
+
+ {$ifdef BCB}
+   {$define CPPB}
+ {$else}
+   {$define DELPHI}
+ {$endif}
+
+{$endif}
+
+{$IFDEF COMPILER_18}
+  {$define COMPILER_17_UP}
+{$ENDIF}
+
+{$IFDEF COMPILER_19}
+  {$define COMPILER_17_UP}
+{$ENDIF}
+
+{$IFDEF COMPILER_20}
+  {$define COMPILER_17_UP}
+{$ENDIF}
+
+{$IFDEF COMPILER_21}
+  {$define COMPILER_17_UP}
+{$ENDIF}
+
+{$IFDEF COMPILER_21}
+  {$define COMPILER_17_UP}
+{$ENDIF}
+
+{$IFDEF COMPILER_22}
+  {$define COMPILER_17_UP}
+{$ENDIF}
+
+{$IFDEF COMPILER_23}
+  {$define COMPILER_17_UP}
+{$ENDIF}
+
+
+
+{$IFDEF NEWER_COMPILER}
+ {$define COMPILER_1_UP}
+ {$define COMPILER_2_UP}
+ {$define COMPILER_3_UP}
+ {$define COMPILER_4_UP}
+ {$define COMPILER_5_UP}
+ {$define COMPILER_6_UP}
+ {$define COMPILER_7_UP}
+ {$define COMPILER_8_UP}
+ {$define COMPILER_9_UP}
+ {$define COMPILER_10_UP}
+ // Backwards compatibility
+ {$define DELPHI_2_UP}
+ {$define DELPHI_3_UP}
+ {$define DELPHI_4_UP}
+ {$define DELPHI_5_UP}
+ {$define DELPHI_6_UP}
+ {$define DELPHI_7_UP}
+ {$define DELPHI_8_UP}
+ {$define DELPHI_9_UP}
+ {$define CPPB_3_UP}
+ {$define CPPB_4_UP}
+ {$define CPPB_5_UP}
+ {$define CPPB_6_UP}
+{$ENDIF}
 
 {$IFDEF WIN64}
   {$DEFINE ResortToPurePascal}  //pretty handy to have pure pascal version,
   //maybe will write fast x64 asm (though it can't mix pascal and asm code in one procedure)
   //but then pure pascal can be useful for apple or android, who knows...
 {$ENDIF}
+
+{$IFDEF COMPILER_17_UP}
+  {$DEFINE UseAnsiStringsUnit}
+{$ENDIF}
+
 {-$define ResortToPurePascal}
 //----------------------------------------------------------------------------------------------------------------------

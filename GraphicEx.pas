@@ -820,8 +820,45 @@ uses
 {$ELSE}
   IntfGraphics,
 {$ENDIF}
-  Math, MZLib, JPEG;
+  Math, MZLib,
+{$IFDEF UseAnsiStringsUnit}AnsiStrings, System.Types,{$ENDIF}
+   JPEG;
+//we need System.Types because it allows to inline some functions and that'll
+//speed-up execution a little. And no warnings.
 
+
+//these functions are here, because in most recent Delphi versions they are gonna
+//move from SysUtils to AnsiStrings. When they are already called deprecated but
+//still not moved, ambiguos overload error occurs, that's one of simplest ways to
+//fix it and 'shut the compiler up' with its warnings.
+
+function MyStrLComp(const Str1, Str2: PAnsiChar; MaxLen: Cardinal): Integer;
+begin
+  {$IFDEF UseAnsiStringsUnit}
+    Result := AnsiStrings.StrLComp(Str1, Str2, MaxLen);
+  {$ELSE}
+    Result := SysUtils.StrLComp(Str1, Str2, MaxLen);
+  {$ENDIF}
+
+end;
+
+function MyStrLiComp(const Str1, Str2: PAnsiChar; MaxLen: Cardinal): Integer;
+begin
+  {$IFDEF UseAnsiStringsUnit}
+    Result := AnsiStrings.StrLIComp(Str1, Str2, MaxLen);
+  {$ELSE}
+    Result := SysUtils.StrLIComp(Str1, Str2, MaxLen);
+  {$ENDIF}
+end;
+
+function MyStrLCopy(Dest: PAnsiChar; const Source: PAnsiChar; MaxLen: Cardinal): PAnsiChar;
+begin
+  {$IFDEF UseAnsiStringsUnit}
+    Result := AnsiStrings.StrLCopy(Dest, Source, MaxLen);
+  {$ELSE}
+    Result := SysUtils.StrLCopy(Dest, Source, MaxLen);
+  {$ENDIF}
+end;
 
 type
   {$ifndef COMPILER_6_UP}
@@ -5507,7 +5544,7 @@ begin
   begin
     ID1 := Memory;
     ID2 := ID1 + $800;
-    Result := (StrLComp(ID1, 'PCD_OPA', 7) = 0) or (StrLComp(ID2, 'PCD', 3) = 0);
+    Result := (MyStrLComp(ID1, 'PCD_OPA', 7) = 0) or (MyStrLComp(ID2, 'PCD', 3) = 0);
   end;
 end;
 
@@ -5800,9 +5837,9 @@ begin
     begin
       Header := Memory;
 
-      Overview := StrLComp(Header, 'PCD_OPA', 7) = 0;
+      Overview := MyStrLComp(Header, 'PCD_OPA', 7) = 0;
       // determine if image is a PhotoCD image
-      if Overview or (StrLComp(Header + $800, 'PCD', 3) = 0) then
+      if Overview or (MyStrLComp(Header + $800, 'PCD', 3) = 0) then
       begin
         Rotate := Byte(Header[$0E02]) and 3;
 
@@ -6475,7 +6512,7 @@ class function TGIFGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
   Result := (Size > (SizeOf(TGIFHeader) + SizeOf(TLogicalScreenDescriptor) + SizeOf(TImageDescriptor))) and
-    (StrLIComp(PAnsiChar(Memory), 'GIF', 3) = 0);
+    (MyStrLIComp(PAnsiChar(Memory), 'GIF', 3) = 0);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -7773,7 +7810,7 @@ begin
   I := 0;
   while I < KeyCount do
   begin
-    if StrLComp(Run, AdjustmentKey[I], 4) = 0 then
+    if MyStrLComp(Run, AdjustmentKey[I], 4) = 0 then
       Break;
     Inc(I);
   end;
@@ -7964,7 +8001,7 @@ const
 
   begin
     Result := 0;
-    while (Result < KeyCount) and (StrLComp(Run, OSTypeKey[Result], 4) <> 0) do
+    while (Result < KeyCount) and (MyStrLComp(Run, OSTypeKey[Result], 4) <> 0) do
       Inc(Result);
     Inc(Run, 4);
   end;
@@ -8397,12 +8434,12 @@ begin
       end;
 
       // Next comes the blend mode signature which is always '8BIM'. We can use this for error checking.
-      if StrLIComp(Run, '8BIM', 4) <> 0 then
+      if MyStrLIComp(Run, '8BIM', 4) <> 0 then
         GraphicExError(gesInvalidPSDLayerData);
       Inc(Run, 4);
       // Determine the blend mode from the four character ID.
       for BlendMode := Low(TPSDLayerBlendMode) to High(TPSDLayerBlendMode) do
-        if StrLIComp(Run, PSDBlendModeMapping[BlendMode], 4) = 0 then
+        if MyStrLIComp(Run, PSDBlendModeMapping[BlendMode], 4) = 0 then
         begin
           Layer.BlendMode := BlendMode;
           Break;
@@ -8487,7 +8524,7 @@ begin
 
       // From Photoshop version 4 on there might be additional data here. This data is organized in blocks
       // all starting with '8BIM' as tag and is referred to as "adjustment layers" (e.g. Unicode name, effects etc.).
-      while StrLIComp(Run, '8BIM', 4) = 0 do
+      while MyStrLIComp(Run, '8BIM', 4) = 0 do
       begin
         Inc(Run, 4);
         LoadAdjustmentLayer(Run, Layer);
@@ -8562,7 +8599,7 @@ var
   Size: Cardinal;
 
 begin
-  while StrLIComp(Run, '8BIM', 4) = 0 do
+  while MyStrLIComp(Run, '8BIM', 4) = 0 do
   begin
     // Skip signature.
     Inc(Run, 4);
@@ -8692,7 +8729,7 @@ begin
   Result := Size > SizeOf(TPSDHeader);
   if Result then
     with PPSDHeader(Memory)^ do
-      Result := (StrLIComp(Signature, '8BPS', 4) = 0) and (Swap(Version) = 1);
+      Result := (MyStrLIComp(Signature, '8BPS', 4) = 0) and (Swap(Version) = 1);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -9136,7 +9173,7 @@ class function TPSPGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
   with PPSPFileHeader(Memory)^ do
-    Result := (Size > SizeOf(TPSPFileHeader)) and (StrLIComp(Signature, MagicID, Length(MagicID)) = 0) and
+    Result := (Size > SizeOf(TPSPFileHeader)) and (MyStrLIComp(Signature, MagicID, Length(MagicID)) = 0) and
       (MajorVersion >= 3);
 end;
 
@@ -9475,7 +9512,7 @@ begin
                 ColorManager.TargetColorScheme := csBGRA;
                 ColorManager.SourceColorScheme := csRGBA;
                 PixelFormat := pf32Bit;
-                {$IFDEF Delphi_8_Up}
+                {$IFDEF Delphi_10_Up}
                   AlphaFormat:=afDefined;
                 {$ENDIF}
               end;
@@ -9633,7 +9670,7 @@ begin
       Move(Run^, Header, SizeOf(Header));
       Inc(Run, SizeOf(Header));
 
-      if (StrLIComp(Header.Signature, MagicID, Length(MagicID)) = 0) and
+      if (MyStrLIComp(Header.Signature, MagicID, Length(MagicID)) = 0) and
          (Header.MajorVersion >= 3) then
       begin
         Version := Header.MajorVersion;
@@ -9743,7 +9780,7 @@ type
 class function TPNGGraphic.CanLoad(const Memory: Pointer; Size: Int64): Boolean;
 
 begin
-  Result := (Size > SizeOf(PNGMagic) + SizeOf(TIHDRChunk)) and (StrLIComp(PAnsiChar(Memory), PNGMagic, 8) = 0);
+  Result := (Size > SizeOf(PNGMagic) + SizeOf(TIHDRChunk)) and (MyStrLIComp(PAnsiChar(Memory), PNGMagic, 8) = 0);
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -10055,7 +10092,7 @@ begin
       Move(Run^, Magic, 8);
       Inc(Run, 8);
 
-      if StrLComp(Magic, PNGMagic, Length(Magic)) = 0 then
+      if MyStrLComp(Magic, PNGMagic, Length(Magic)) = 0 then
       begin
         // first chunk must be an IHDR chunk
         FCurrentCRC := LoadAndSwapHeader(Run);
@@ -10352,7 +10389,7 @@ begin
     begin
       Offset := Length(Keyword) + 1;
       SetLength(Contents, FHeader.Length - Offset + 1);
-      StrLCopy(PAnsiChar(Contents), PAnsiChar(FRawBuffer) + Offset, FHeader.Length - Offset);
+      MyStrLCopy(PAnsiChar(Contents), PAnsiChar(FRawBuffer) + Offset, FHeader.Length - Offset);
       Comment := Comment + string(PAnsiChar(Contents)); //cast to string to avoid warnings
     end;
   end;
