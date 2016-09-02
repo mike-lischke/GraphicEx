@@ -806,6 +806,7 @@ function ReadImageProperties(const FileName: string; var Properties: TImagePrope
 // Automatic save to selected extension
 procedure SaveGraphicToFile(source: TGraphic; FileName: string);
 
+function ReadBigEndianWord(var Run: PAnsiChar): Word;
 
 var
   FileFormatList: TFileFormatList;
@@ -4206,7 +4207,7 @@ begin
       begin
         // Prediction without compression makes no sense at all (as it is to improve
         // compression ratios). Appearently there are image which are uncompressed but still
-        // have a prediction scheme set. Hence we must check for it.
+        // have a prediction scheme set. Hewe must check for it.
         case Predictor of
           PREDICTION_HORZ_DIFFERENCING: // currently only one prediction scheme is defined
             case SamplesPerPixel of
@@ -4245,7 +4246,7 @@ begin
             // some extra work is needed for JPEG
             GetValueList(Stream, TIFFTAG_JPEGTABLES, JPEGTables);
 
-            Decoder := TTIFFJPEGDecoder.Create(@FImageProperties);
+            Decoder := TJPEGDecoder.Create(@FImageProperties);
           end;
         ctThunderscan:
           Decoder := TThunderDecoder.Create(Width);
@@ -4254,7 +4255,6 @@ begin
       else
         {
         COMPRESSION_OJPEG,
-        COMPRESSION_CCITTFAX4
         COMPRESSION_NEXT
         COMPRESSION_IT8CTPAD
         COMPRESSION_IT8LW

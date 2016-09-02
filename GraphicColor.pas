@@ -1810,6 +1810,15 @@ begin
                   end;
 
                   // blue
+                  assert(X<MaxInt);
+                  assert(Y<MaxInt);
+                  assert(Z<MaxInt);
+                  assert(X>-MaxInt);
+                  assert(Y>-MaxInt);
+                  assert(Z>-MaxInt);
+                  if Round(255 * ( 0.099 * X - 0.198 * Y + 1.099 * Z))>=MaxInt then
+                    assert(Round(255 * ( 0.099 * X - 0.198 * Y + 1.099 * Z))<MaxInt);
+                  assert(Round(255 * ( 0.099 * X - 0.198 * Y + 1.099 * Z))>-MaxInt);
                   Target8^ := ClampByte(Round(255 * ( 0.099 * X - 0.198 * Y + 1.099 * Z)));
                   Inc(Target8);
                   // green
