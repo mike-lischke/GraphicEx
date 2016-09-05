@@ -823,7 +823,7 @@ uses
 {$ENDIF}
   Math, MZLib,
 {$IFDEF UseAnsiStringsUnit}AnsiStrings, System.Types,{$ENDIF}
-   JPEG;
+   JPEG, JpegCompression;
 //we need System.Types because it allows to inline some functions and that'll
 //speed-up execution a little. And no warnings.
 
