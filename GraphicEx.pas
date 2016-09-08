@@ -4126,12 +4126,6 @@ begin
         else
           TargetBitsPerSample := SourceBitsPerSample;
 
-        // the JPEG lib does internally a conversion to RGB
-        if Compression in [ctOJPEG, ctJPEG] then
-          SourceColorScheme := csBGR
-        else
-          SourceColorScheme := ColorScheme;
-
         case SourceColorScheme of
           csRGBA:
             TargetColorScheme := csBGRA;
@@ -4332,7 +4326,7 @@ begin
           end;
 
           Inc(CurrentStrip);
-//          break;  //debug only
+          break;  //debug only
         end;
       end
       else begin
