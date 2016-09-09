@@ -36,12 +36,12 @@ type
   end;
 
   TRealArray64 = array [0..63] of Real; //to store coefs. for DCT
+  PRealArray64 = ^TRealArray64;
 
   TJPEGDecoder = class(TDecoder)
   private
     FImageProperties: Pointer; // anonymously declared because I cannot take GraphicEx.pas in the uses clause above
-    FQuantTables: array [0..3] of PQuantTableArray;  //FQuantTables[id]
-    //maybe we shouldn't be so greedy
+    FQuantTables: array [0..3] of TRealArray64;  //we multiply them by scaling factors for one of fastest IDCT
     FHuffmanTables: array [boolean] of array [0..3] of PHuffmanTables;  //FHuffmanTables[IsDC][id]
 
     FSource: Pointer;
@@ -57,6 +57,7 @@ type
     fBytesPerSample: Integer; //1 for 8-bit precision, 2 for 12-bit
     fColorComponents: array of TJpegComponentDescriptor;
     fInterleavedBlockSize: Integer; //size in bytes of one interleaved block in output
+    fBlocksPerRow: Integer; //number of input interleaved blocks (4 blocks Y + 1 Cb + 1 Cr counts as one) per row
     fRowSize: Integer;  //size in bytes of one row
 
     PRED: array [0..3] of Integer;  //previous DC coefficient for each component.
@@ -151,6 +152,21 @@ const ZigZagPath: array [0..63] of TZigZagCoords = (
   (R: 4; C: 6), (R: 3; C: 7), (R: 4; C: 7), (R: 5; C: 6),
   (R: 6; C: 5), (R: 7; C: 4), (R: 7; C: 5), (R: 6; C: 6),
   (R: 5; C: 7), (R: 6; C: 7), (R: 7; C: 6), (R: 7; C: 7));
+
+//  C + R*8
+var ZigZag1D: array [0..63] of Integer;
+//  (0, 1, 8, 16, 9, 2, 3, 10,
+//   17,
+
+const IDCT_Scales: array [0..7] of Real = (
+  1,
+  1.38703984532215,
+  1.30656296487638,
+  1.17587560241936,
+  1,
+  0.785694958387102,
+  0.541196100146197,
+  0.275899379282943);
 
 const SQR_2     = 1.4142135623731;
       INV_SQR_2 = 0.707106781186547;
@@ -456,12 +472,16 @@ end;
 function TJPEGDecoder.HuffExtend(V: Integer; T: Integer): Integer;
 var i: Integer;
 begin
-  i := 1 shl (T-1);
-  while V < i do begin
-    i := ((-1) shl T) + 1;
-    inc(V,i);
+  if T = 0 then
+    Result:=0
+  else begin
+    i := 1 shl (T-1);
+    while V < i do begin
+      i := ((-1) shl T) + 1;
+      inc(V,i);
+    end;
+    Result:=V;
   end;
-  Result:=V;
 end;
 
 
@@ -479,10 +499,10 @@ begin
 end;
 
 destructor TJPEGDecoder.Destroy;
-var i: Integer;
+//var i: Integer;
 begin
-  for i := 0 to 3 do
-    if Assigned(FQuantTables[i]) then FreeMem(FQuantTables[i]);
+//  for i := 0 to 3 do
+//    if Assigned(FQuantTables[i]) then FreeMem(FQuantTables[i]);
   inherited Destroy;
 end;
 
@@ -493,15 +513,13 @@ procedure TJPEGDecoder.DecodeQuantTable;
 var B: Byte;
     SectionSize: Word;
     ID: Byte;
-    i: Integer;
+    i,j,k: Integer;
 begin
   SectionSize := NextWord;
   B := NextByte;
   ID := B and $0F;
   if ID>3 then
     GraphicExError('quant table ID must be 0..3');
-  if FQuantTables[ID]=nil then
-    GetMem(FQuantTables[ID],64*SizeOf(Integer));
   if (B and $F0) = 0 then begin
     if SectionSize <> 67 then
       GraphicExError('quant table of size 67 expected for 1-byte vals');
@@ -516,6 +534,15 @@ begin
   end
   else
     GraphicExError('sample sizes of 1 or 2 bytes expected for quant table');
+
+  //now we'll scale our tables for advanced IDCT method
+  k := 0;
+  for i := 0 to 7 do
+    for j := 0 to 7 do begin
+      FQuantTables[ID, k] := FQuantTables[ID, k] * IDCT_scales[i] * IDCT_scales[j];
+      inc(k);
+    end;
+
 end;
 
 procedure TJPEGDecoder.DecodeHuffmanTable;
@@ -644,8 +671,8 @@ begin
       GraphicExError('quantization table ID must be 0..3');
     if (fColorComponents[i].QuantId <> 0) and ((fframeType and $03) = 3) then
       GraphicExError('quantization table ID<>0 not allowed for lossless');
-    if FQuantTables[fColorComponents[i].QuantId]=nil then
-      GraphicExError(Format('quantization table %d not present',[fColorComponents[i].QuantId]));
+//    if FQuantTables[fColorComponents[i].QuantId]=nil then
+//      GraphicExError(Format('quantization table %d not present',[fColorComponents[i].QuantId]));
   end;
 
   //now we determine layout of interleaved output
@@ -663,6 +690,7 @@ begin
     inc(fInterleavedBlockSize, fColorComponents[i].SampleCount * fBytesPerSample);
   end;
   fRowSize := X * fInterleavedBlockSize;
+  fBlocksPerRow := X div (8 * LeastCommonDivider);
 
 
   //here we begin scans
@@ -794,15 +822,20 @@ var compNum: Integer;
   ZZ: Array [0..63] of Integer; //0: DC, others: AC coef in zig-zag order
   Buffer: TRealArray64;  //won't struggle with fixed point arithmetic here
   //later we can use SSE/SSE2 etc to make it extremely effective
-  Quant: PQuantTableArray;
+  Quant: PRealArray64;
   Run: PByte;
   WordRun: PWord absolute Run;
   CurChannelId: Integer;
+  BlockNum: Integer;
 begin
   //MCU's here are interleaved, component after component
   //dealing with sequential mode here. We can do IDCT on the fly
   //into Dest.
-  for dbg := 0 to 31 do begin
+  BlockNum := 0;
+  for dbg := 0 to 87 do begin
+    if dbg = 32 then
+      assert(dbg=32);
+
     for compNum := 0 to Ns-1 do begin
       //let's fetch appropriate quant table
       Quant := nil; //to make compiler happy. We know already that right component exists
@@ -810,7 +843,7 @@ begin
       for i := 0 to Length(fColorComponents)-1 do
         if fColorComponents[i].ComponentID = ScanHeaders[compNum].ComponentSelector then begin
           CurChannelId := i;
-          Quant := FQuantTables[fColorComponents[i].QuantID];
+          Quant := @FQuantTables[fColorComponents[i].QuantID];
           Run := fColorComponents[i].Run; //continue where we began
           break;
         end;
@@ -846,10 +879,18 @@ begin
         //OK, spectrum is almost ready
 
         for i := 63 downto 0 do
-          Buffer[ZigZagPath[i].C + ZigZagPath[i].R * 8] := ZZ[i] * Quant^[i];
+          Buffer[ZigZag1D[i]] := ZZ[i] * Quant^[i];
+
+        for i := 0 to 63 do
+          if (i mod 8) <> 0 then
+            Buffer[i] := 0;
 
         //ok, now it's in right order (row after row) and scaled back.
+        //still don't trust it too much...
         IDCT(Buffer);
+
+        for i := 0 to 63 do
+          Buffer[i] := Buffer[i] / 8;
 
         i := 0;
         //and at least, divide by 8, add 128 or 2048 and scale appropriately
@@ -863,7 +904,10 @@ begin
               end;
               inc(Run, fRowSize - 8 * fInterleavedBlockSize);
             end;
-            dec(Run, fRowSize * 8 - 8 * fInterleavedBlockSize);
+            if (BlockNum mod fBlocksPerRow) = fBlocksPerRow - 1 then //move down and left
+              dec(Run, fRowSize - 8 * fInterleavedBlockSize)
+            else
+              dec(Run, fRowSize * 8 - 8 * fInterleavedBlockSize);
           end
           else  //this part is wrong
             repeat
@@ -887,8 +931,9 @@ begin
         if PAnsiChar(fDest) + fUnpackedSize >= PAnsiChar(Run) then
           break;  //decoded all the blocks already
       end;
-    end;
-  end;
+    end; //loop over all the color components
+    inc(BlockNum);
+  end; //loop until we read all the blocks
 end;
 
 procedure TJPEGDecoder.DecodeDNL;
@@ -947,4 +992,15 @@ begin
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
+procedure PopulateZigZag1D;
+var i: Integer;
+begin
+  for i := 0 to 63 do
+    ZigZag1D[i] := ZigZagPath[i].C + ZigZagPath[i].R * 8;
+end;
+
+
+initialization
+  PopulateZigZag1D;
+
 end.
