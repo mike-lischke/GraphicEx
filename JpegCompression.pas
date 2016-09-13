@@ -95,6 +95,8 @@ type
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
+procedure DCT(var fltData: TRealArray64);
+procedure IDCT(var fltData: TRealArray64);
 
 implementation
 
@@ -343,6 +345,7 @@ begin
       tmp6 := tmp12 - tmp7;
       tmp5 := tmp11 - tmp6;
       tmp4 := tmp10 + tmp5;
+
       WorkArray[ctr]      := tmp0 + tmp7;
       WorkArray[ctr + 56] := tmp0 - tmp7;
       WorkArray[ctr + 8]  := tmp1 + tmp6;
@@ -436,7 +439,7 @@ begin
         if fCurrentByte = JPEG_DNL then
           DecodeDNL
         else
-          GraphicExError('unexpected marker at the middle of entropy-coded data');
+          GraphicExError('unexpected marker %d at the middle of entropy-coded data',[fCurrentByte]);
     end;
   end;
   Result := fCurrentByte shr 7;
@@ -536,12 +539,9 @@ begin
     GraphicExError('sample sizes of 1 or 2 bytes expected for quant table');
 
   //now we'll scale our tables for advanced IDCT method
-  k := 0;
-  for i := 0 to 7 do
-    for j := 0 to 7 do begin
-      FQuantTables[ID, k] := FQuantTables[ID, k] * IDCT_scales[i] * IDCT_scales[j];
-      inc(k);
-    end;
+  for k := 0 to 63 do
+    FQuantTables[ID, k] := FQuantTables[ID, k] * IDCT_scales[ZigZagPath[k].R] * IDCT_scales[ZigZagPath[k].C];
+
 
 end;
 
@@ -832,9 +832,14 @@ begin
   //dealing with sequential mode here. We can do IDCT on the fly
   //into Dest.
   BlockNum := 0;
-  for dbg := 0 to 87 do begin
-    if dbg = 32 then
-      assert(dbg=32);
+  //let's also reset decoder
+  for i := 0 to 3 do
+    PRED[i] := 0; //only 4 components possible in one scan
+  while true do begin
+
+//  for dbg := 0 to 10 do begin
+//    if dbg=88 then
+//      assert(dbg=88);
 
     for compNum := 0 to Ns-1 do begin
       //let's fetch appropriate quant table
@@ -872,6 +877,12 @@ begin
             else
               break;  //EOB already
           inc(k, RRRR);
+          //range check error possible on these lines
+          //because k is more than 63 already.
+          //why not EOB???
+          if k>63 then
+            break;
+
           ZZ[k] := HuffReceive(SSSS);
           ZZ[k] := HuffExtend(ZZ[k], SSSS);
           inc(k);
@@ -881,16 +892,16 @@ begin
         for i := 63 downto 0 do
           Buffer[ZigZag1D[i]] := ZZ[i] * Quant^[i];
 
-        for i := 0 to 63 do
-          if (i mod 8) <> 0 then
-            Buffer[i] := 0;
+//        for i := 0 to 63 do
+//          if (i mod 8) <> 0 then
+//            Buffer[i] := 0;
 
         //ok, now it's in right order (row after row) and scaled back.
         //still don't trust it too much...
         IDCT(Buffer);
 
-        for i := 0 to 63 do
-          Buffer[i] := Buffer[i] / 8;
+//        for i := 0 to 63 do
+//          Buffer[i] := Buffer[i] / 8;
 
         i := 0;
         //and at least, divide by 8, add 128 or 2048 and scale appropriately
@@ -927,9 +938,10 @@ begin
             end;
             inc(PByte(Run), fInterleavedBlockSize - fColorComponents[CurChannelID].SampleCount*2);
           until i=64;
+
         fColorComponents[CurChannelID].Run:=Run;
-        if PAnsiChar(fDest) + fUnpackedSize >= PAnsiChar(Run) then
-          break;  //decoded all the blocks already
+        if PAnsiChar(Run) >= PAnsiChar(fDest) + fUnpackedSize + 1 then
+          Exit;  //decoded all the blocks already
       end;
     end; //loop over all the color components
     inc(BlockNum);
