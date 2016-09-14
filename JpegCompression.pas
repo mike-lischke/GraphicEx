@@ -439,7 +439,9 @@ begin
         if fCurrentByte = JPEG_DNL then
           DecodeDNL
         else
-          GraphicExError('unexpected marker %d at the middle of entropy-coded data',[fCurrentByte]);
+          GraphicExError('unexpected marker %d at the middle of entropy-coded data',[fCurrentByte])
+      else
+        fCurrentByte := $FF;  //after all
     end;
   end;
   Result := fCurrentByte shr 7;
@@ -837,9 +839,9 @@ begin
     PRED[i] := 0; //only 4 components possible in one scan
   while true do begin
 
-//  for dbg := 0 to 10 do begin
-//    if dbg=88 then
-//      assert(dbg=88);
+//  for dbg := 0 to 250 do begin
+//    if dbg=33 then
+//      assert(dbg=33);
 
     for compNum := 0 to Ns-1 do begin
       //let's fetch appropriate quant table

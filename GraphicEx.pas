@@ -4326,7 +4326,7 @@ begin
           end;
 
           Inc(CurrentStrip);
-          break;  //debug only
+//          break;  //debug only
         end;
       end
       else begin
