@@ -60,9 +60,13 @@ type
     fBlocksPerRow: Integer; //number of input interleaved blocks (4 blocks Y + 1 Cb + 1 Cr counts as one) per row
     fRowSize: Integer;  //size in bytes of one row
 
+    fX, fY : Integer; //width and height
+
     PRED: array [0..3] of Integer;  //previous DC coefficient for each component.
       //After each RST it must reset to 0
       //no more than 4 components per scan is allowed, so we use static array here
+    curCol: array [0..3] of Integer;  //to manage edges of image if part of block is used
+    curLine: array [0..3] of Integer;
   //settings of current scan
     Ns: Word; //number of components in current scan
     ScanHeaders: array of TJpegScanHeader;
@@ -157,12 +161,11 @@ const ZigZagPath: array [0..63] of TZigZagCoords = (
 
 //  C + R*8
 var ZigZag1D: array [0..63] of Integer;
-//  (0, 1, 8, 16, 9, 2, 3, 10,
-//   17,
+
 
 const IDCT_Scales: array [0..7] of Real = (
-  1,
-  1.38703984532215,
+  1,                              //1*cos(0*pi/16)
+  1.38703984532215,               //sqrt(2)*cos(k*pi/16), k=1..7
   1.30656296487638,
   1.17587560241936,
   1,
@@ -504,10 +507,14 @@ begin
 end;
 
 destructor TJPEGDecoder.Destroy;
-//var i: Integer;
+var i: Integer;
 begin
 //  for i := 0 to 3 do
-//    if Assigned(FQuantTables[i]) then FreeMem(FQuantTables[i]);
+//    if (FQuantTables[i]<>nil) then FreeMem(FQuantTables[i]);
+  for i := 0 to 3 do begin
+    if Assigned(fHuffmanTables[true, i]) then Dispose(fHuffmanTables[true, i]);
+    if Assigned(fHuffmanTables[false, i]) then Dispose(fHuffmanTables[false, i]);
+  end;
   inherited Destroy;
 end;
 
@@ -562,7 +569,7 @@ begin
     GraphicExError('Huffman table ID must be 0..3');
   isDC := (B and $F0) = 0;
   if fHuffmanTables[isDC, ID] = nil then
-    GetMem(fHuffmanTables[isDC, ID],SizeOf(THuffmanTables));
+    New(fHuffmanTables[isDC, ID]);
   if SectionSize < 19 then
     GraphicExError('Incorrect size of Huffman table (less than 19 bytes)');
   CodesCount := 0;
@@ -629,7 +636,6 @@ end;
 
 procedure TJPEGDecoder.DecodeSOF;
 var HL: Word;
-    Y, X: Word;
     Nf: Byte;
     i,j: Integer;
     B: Byte;
@@ -648,10 +654,14 @@ begin
     fBytesPerSample := 2;
   if (fframeType = JPEG_SOF0) and (fPrecision = 12) then
     GraphicExError('12-bit samples not allowed in baseline JPEG');
-  Y := NextWord;  //number of lines (0 means implicit)
-  X := NextWord;  //number of sample per line
-  if X=0 then
+  fY := NextWord;  //number of lines (0 means implicit)
+  fX := NextWord;  //number of sample per line
+  if fX=0 then
     GraphicExError('zero samples per line is not allowed');
+//  if Y mod 8 <> 0 then
+//    GraphicExError('images with non-integer number of blocks are not yet supported');
+//  if X mod 8 <> 0 then
+//    GraphicExError('images with non-integer number of blocks are not yet supported');
   Nf := NextByte; //number of image components in frame
   if (Nf>4) and ((fframeType and $03)=2) then
     GraphicExError('number of image components more than 4 not allowed in progressive JPEG');
@@ -691,8 +701,8 @@ begin
     inc(fColorComponents[i].Run,fInterleavedBlockSize);
     inc(fInterleavedBlockSize, fColorComponents[i].SampleCount * fBytesPerSample);
   end;
-  fRowSize := X * fInterleavedBlockSize;
-  fBlocksPerRow := X div (8 * LeastCommonDivider);
+  fRowSize := fX * fInterleavedBlockSize;
+  fBlocksPerRow := (fX + 7) div (8 * LeastCommonDivider);
 
 
   //here we begin scans
@@ -894,29 +904,32 @@ begin
         for i := 63 downto 0 do
           Buffer[ZigZag1D[i]] := ZZ[i] * Quant^[i];
 
-//        for i := 0 to 63 do
-//          if (i mod 8) <> 0 then
-//            Buffer[i] := 0;
-
-        //ok, now it's in right order (row after row) and scaled back.
-        //still don't trust it too much...
         IDCT(Buffer);
-
-//        for i := 0 to 63 do
-//          Buffer[i] := Buffer[i] / 8;
 
         i := 0;
         //and at least, divide by 8, add 128 or 2048 and scale appropriately
         if fprecision=8 then
           if fColorComponents[CurChannelId].SampleCount=1 then begin //very important case, could make it separate to speed-up operations
-            for RS := 0 to 7 do begin
-              for k := 0 to 7 do begin
-                Run^ := ClampByte(Buffer[i] / 8 + 128);
-                inc(i);
-                inc(Run, fInterleavedBlockSize);
+            if ((BlockNum mod fBlocksPerRow) = fBlocksPerRow-1) and ((fX mod 8) <> 0) then
+              for RS := 0 to 7 do begin
+                for k := 0 to (fX mod 8) - 1 do begin
+                  Run^ := ClampByte(Buffer[i] / 8 + 128);
+                  inc(i);
+                  inc(Run, fInterleavedBlockSize);
+                end;
+                inc(i,8-fX mod 8);
+                inc(Run, fRowSize - (fX mod 8) * fInterleavedBlockSize);
+              end
+            else
+              for RS := 0 to 7 do begin
+                for k := 0 to 7 do begin
+                  Run^ := ClampByte(Buffer[i] / 8 + 128);
+                  inc(i);
+                  inc(Run, fInterleavedBlockSize);
+                end;
+                inc(Run, fRowSize - 8 * fInterleavedBlockSize);
               end;
-              inc(Run, fRowSize - 8 * fInterleavedBlockSize);
-            end;
+
             if (BlockNum mod fBlocksPerRow) = fBlocksPerRow - 1 then //move down and left
               dec(Run, fRowSize - 8 * fInterleavedBlockSize)
             else
@@ -968,6 +981,7 @@ begin
   fPackedSize := PackedSize;
   fDest := Dest;
   fUnpackedSize := UnpackedSize;
+  fBitCount := 0;
 
   Tag := NextWord;
   if Tag <> JPEG_SOI then

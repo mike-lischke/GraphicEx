@@ -135,6 +135,7 @@ type
     ImageCount: Cardinal;              // Number of subimages (PCD, TIF, GIF, MNG).
     Comment: string;                   // Implemented for PNG and GIF.
 
+
     // Informational data, used internally and/or by decoders
     // PCD
     Overview: Boolean;                 // true if image is an overview image
@@ -166,6 +167,10 @@ type
     JPEGColorMode: Cardinal;
     JPEGTablesMode: Cardinal;
     PlanarConfig: Cardinal;
+    JPEGProc: Word; //1 for baseline, 14 for lossless
+    QTables: TCardinalArray;
+    HuffDCTables: TCardinalArray;
+    HuffACTables: TCardinalArray;
     {$ENDIF}
   end;
 
@@ -4239,9 +4244,16 @@ begin
           begin
             // some extra work is needed for JPEG
             GetValueList(Stream, TIFFTAG_JPEGTABLES, JPEGTables);
-
             Decoder := TJPEGDecoder.Create(@FImageProperties);
           end;
+        ctOJPEG:
+          begin
+            //some more extra work is needed
+            GetValueList(Stream, TIFFTAG_JPEGPROC, JPEGProc);
+
+
+          end;
+
         ctThunderscan:
           Decoder := TThunderDecoder.Create(Width);
         ctLZ77:
@@ -4294,9 +4306,10 @@ begin
                 Stream.Read(EncodedData^, ByteCounts[CurrentStrip]);
                 // need pointer copies here because they could get modified
                 // while decoding
-                Decoder.Decode(DataPointerCopy, Pointer(Run), ByteCounts[CurrentStrip], StripSize);
+                  Decoder.Decode(DataPointerCopy, Pointer(Run), ByteCounts[CurrentStrip], StripSize);
               finally
-                if Assigned(EncodedData) then FreeMem(EncodedData);
+                if Assigned(EncodedData) then
+                  FreeMem(EncodedData);
               end;
             end
             else
@@ -4322,11 +4335,17 @@ begin
             end;
 
           finally
-            if Assigned(Buffer) then FreeMem(Buffer);
+            if Assigned(Buffer) then
+              FreeMem(Buffer)
+//            else
+//              Buffer:=nil;
           end;
 
           Inc(CurrentStrip);
 //          break;  //debug only
+          if CurrentStrip=94 then
+            assert(CurrentStrip=94);
+
         end;
       end
       else begin
