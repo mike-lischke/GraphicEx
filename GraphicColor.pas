@@ -1773,16 +1773,16 @@ begin
                 if Boolean(Mask and BitRun) then
                 begin
                   if coLabByteRange in FSourceOptions then
-                    L := Swap(LRun16^) / 2.55
+                    L := Swap(LRun16^) / 655.36
                   else
                     L := Swap(LRun16^);
                   Inc(LRun16, Increment);
 
                   if coLabChromaOffset in FSourceOptions then
                   begin
-                    a := Swap(aRun16^) - 128;
+                    a := Swap(aRun16^) - 32768;
                     Inc(aRun16, Increment);
-                    b := Swap(bRun16^) - 128;
+                    b := Swap(bRun16^) - 32768;
                     Inc(bRun16, Increment);
                   end
                   else
@@ -1810,9 +1810,6 @@ begin
                   end;
 
                   // blue
-                  if Round(255 * ( 0.099 * X - 0.198 * Y + 1.099 * Z))>=MaxInt then
-                    assert(Round(255 * ( 0.099 * X - 0.198 * Y + 1.099 * Z))<MaxInt);
-//                  assert(Round(255 * ( 0.099 * X - 0.198 * Y + 1.099 * Z))>-MaxInt);
                   Target8^ := ClampByte(Round(255 * ( 0.099 * X - 0.198 * Y + 1.099 * Z)));
                   Inc(Target8);
                   // green
@@ -1840,15 +1837,15 @@ begin
                 if Boolean(Mask and BitRun) then
                 begin
                   if coLabByteRange in FSourceOptions then
-                    L := LRun16^ / 2.55
+                    L := LRun16^ / 655.36
                   else
                     L := LRun16^;
                   Inc(LRun16, Increment);
                   if coLabChromaOffset in FSourceOptions then
                   begin
-                    a := aRun16^ - 128;
+                    a := aRun16^ - 32768;
                     Inc(aRun16, Increment);
-                    b := bRun16^ - 128;
+                    b := bRun16^ - 32768;
                     Inc(bRun16, Increment);
                   end
                   else
@@ -2101,15 +2098,15 @@ begin
                 if Boolean(Mask and BitRun) then
                 begin
                   if coLabByteRange in FSourceOptions then
-                    L := LRun16^ / 2.55
+                    L := LRun16^ / 655.36
                   else
                     L := LRun16^;
                   Inc(LRun16, Increment);
                   if coLabChromaOffset in FSourceOptions then
                   begin
-                    a := aRun16^ - 128;
+                    a := aRun16^ - 32768;
                     Inc(aRun16, Increment);
-                    b := bRun16^ - 128;
+                    b := bRun16^ - 32768;
                     Inc(bRun16, Increment);
                   end
                   else
@@ -2164,15 +2161,15 @@ begin
                 if Boolean(Mask and BitRun) then
                 begin
                   if coLabByteRange in FSourceOptions then
-                    L := LRun16^ / 2.55
+                    L := LRun16^ / 655.36
                   else
                     L := LRun16^;
                   Inc(LRun16, Increment);
                   if coLabChromaOffset in FSourceOptions then
                   begin
-                    a := aRun16^ - 128;
+                    a := aRun16^ - 32768;
                     Inc(aRun16, Increment);
-                    b := bRun16^ - 128;
+                    b := bRun16^ - 32768;
                     Inc(bRun16, Increment);
                   end
                   else
