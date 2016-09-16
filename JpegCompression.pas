@@ -24,7 +24,6 @@ type
     ComponentID: Byte;
     HSampling, VSampling: Byte;
     QuantID: Byte;
-    SampleCount: Byte;  //number of samples in one interleaved block
     SampleOffset: Integer;  //first component has offset 0, second may have offset 4 (if 4:1:1), third: 5 etc.
     Run: PByte; //pointer to current position at output
   end;
@@ -38,12 +37,17 @@ type
   TRealArray64 = array [0..63] of Real; //to store coefs. for DCT
   PRealArray64 = ^TRealArray64;
 
+  TRealArray512 = array [0..511] of Real; //to store several blocks for DCT
+  PRealArray512 = ^TRealArray512;
+
+  TDecodeBlockProc = procedure(compNum, QuantID: Integer) of Object;  //we'll have Huffman and (later) Arithm here
+
   TJPEGDecoder = class(TDecoder)
   private
     FImageProperties: Pointer; // anonymously declared because I cannot take GraphicEx.pas in the uses clause above
-    FQuantTables: array [0..3] of TRealArray64;  //we multiply them by scaling factors for one of fastest IDCT
-    FHuffmanTables: array [boolean] of array [0..3] of PHuffmanTables;  //FHuffmanTables[IsDC][id]
-
+    FQuantTables: array [0..3] of TRealArray64;  //we multiply them by scaling factors for AAN iDCT
+    FHuffmanTables: array [boolean] of array [0..3] of PHuffmanTables;  //FHuffmanTables[IsDC][id], New/Dispose should be used
+                                                                        //to initialize/finalize dynamic arrays
     FSource: Pointer;
     FDest: Pointer;
     fPackedSize: Integer; //for reader of next values
@@ -51,7 +55,7 @@ type
     fBitCount: Integer; //for NextBit function
     fCurrentByte: Byte;
 
-    fFrameType: Word;
+    fFrameType: Word; //baseline/sequential/progressive/lossless/hierarchical, huffman vs arithm etc
 
     fPrecision: Byte; //8 or 12
     fBytesPerSample: Integer; //1 for 8-bit precision, 2 for 12-bit
@@ -65,17 +69,20 @@ type
     PRED: array [0..3] of Integer;  //previous DC coefficient for each component.
       //After each RST it must reset to 0
       //no more than 4 components per scan is allowed, so we use static array here
+    //not sure we need these
     curCol: array [0..3] of Integer;  //to manage edges of image if part of block is used
     curLine: array [0..3] of Integer;
   //settings of current scan
     Ns: Word; //number of components in current scan
     ScanHeaders: array of TJpegScanHeader;
-    exists: Boolean;
-    SamplingSum: Integer;
     Ss: Byte; //start of spectral/predictor selection
-    Se: Byte; //end of spectral/predictor selection
-    Ah: Byte;
-    Al: Byte;
+    Se: Byte; //end of spectral/predictor selection (for progressive mode)
+    Ah: Byte; //high bit of DCT coefs
+    Al: Byte; //low bit of DCT coefs (for another type of progressive mode)
+
+    fBuffer: TRealArray64;  //for DCT mode of course
+
+    fDecodeBlockProc: TDecodeBlockProc;
 
     function NextByte: Byte;
     function NextWord: Word; //will swap
@@ -88,8 +95,10 @@ type
     procedure DecodeQuantTable;
     procedure DecodeHuffmanTable;
     procedure DecodeSOF;
-    procedure DecodeHuffmanScan;
+    procedure DecodeSequentialDCTScan;
     procedure DecodeDNL;
+    procedure DecodeHuffmanBlock(CompNum, QuantID: Integer);
+    procedure DecodeArithmBlock(CompNum, QuantID: Integer); //will raise exception so far
   public
     constructor Create(Properties: Pointer);
     destructor Destroy; override;
@@ -640,7 +649,9 @@ var HL: Word;
     i,j: Integer;
     B: Byte;
     Ident: Word;
-    LeastCommonDivider: Integer;
+    MaxSamplingFactor: Integer;
+    Exists: Boolean;
+    SamplingSum: Integer;
 begin
   HL := NextWord;
   if HL<11 then
@@ -687,22 +698,17 @@ begin
 //      GraphicExError(Format('quantization table %d not present',[fColorComponents[i].QuantId]));
   end;
 
-  //now we determine layout of interleaved output
-  LeastCommonDivider:=1;
-  for i := 0 to Nf-1 do
-    LeastCommonDivider := max(LeastCommonDivider, fColorComponents[i].HSampling * fColorComponents[i].VSampling);
-  //we know that we have at least one channel with VSampling=HSampling=1 (otherwise we'd better lower resolution)
-  //and also that only 1,2,4 are allowed. So, no problem.
   fInterleavedBlockSize:=0;
+  maxSamplingFactor:=1;
   for i := 0 to Nf-1 do begin
-    fColorComponents[i].SampleCount := LeastCommonDivider div (fColorComponents[i].HSampling * fColorComponents[i].VSampling);
     fColorComponents[i].SampleOffset := fInterleavedBlockSize;
     fColorComponents[i].Run := fDest;
     inc(fColorComponents[i].Run,fInterleavedBlockSize);
-    inc(fInterleavedBlockSize, fColorComponents[i].SampleCount * fBytesPerSample);
+    inc(fInterleavedBlockSize, fColorComponents[i].HSampling * fColorComponents[i].VSampling * fBytesPerSample);
+    maxSamplingFactor := max(maxSamplingFactor, fColorComponents[i].HSampling * fColorComponents[i].VSampling);
   end;
   fRowSize := fX * fInterleavedBlockSize;
-  fBlocksPerRow := (fX + 7) div (8 * LeastCommonDivider);
+  fBlocksPerRow := (fX + 7) div (8 * maxSamplingFactor);
 
 
   //here we begin scans
@@ -725,6 +731,7 @@ begin
           if ScanHeaders[i].ComponentSelector = fColorComponents[j].ComponentId then begin
             exists := true;
             inc(SamplingSum, fColorComponents[j].HSampling*fColorComponents[j].VSampling);
+            ScanHeaders[i].ComponentSelector := j;  //it's much simpler to use!
             break;
           end;
         if not exists then
@@ -783,23 +790,19 @@ begin
         GraphicExError('successive approximation bit position low must be 0 for baseline/sequential');
       //oof
       //ok, now we can read data itself.
-      if (fFrameType = JPEG_SOF0) or (fFrameType = JPEG_SOF1) then
-        DecodeHuffmanScan
+      if (fFrameType and $4) = 0 then //we use Huffman codes
+        fDecodeBlockProc := DecodeHuffmanBlock
       else
-        GraphicExError('only baseline and extended sequential huffman supported so far');
+        fDecodeBlockProc := DecodeArithmBlock;
 
+      if (fFrameType = JPEG_SOF0) or (fFrameType = JPEG_SOF1) or
+        (fFrameType = JPEG_SOF9) then
+        DecodeSequentialDCTScan
+      else
+        GraphicExError('only sequential DCT mode is supported so far');
       Exit;
-
     end;
-
-
-
-
-
   end;
-
-
-
 end;
 
 function ClampByte(value: Real): Byte;
@@ -822,23 +825,87 @@ begin
     Result := Round(value);
 end;
 
-procedure TJPEGDecoder.DecodeHuffmanScan;
+
+//might be handy even for progressive mode and differential mode, say, all modes
+//except lossless, there are no 8x8 blocks in lossless..
+procedure TJPEGDecoder.DecodeHuffmanBlock(CompNum, QuantID: Integer);
+var T: Integer;
+    Diff: Integer;
+    ZZ: Array [0..63] of Integer; //0: DC, others: AC coef in zig-zag order
+    i, k: Integer;
+    RS: Integer;
+    SSSS: Integer;
+    RRRR: Integer;
+    Quant: PRealArray64;
+begin
+  Quant := @FQuantTables[QuantID];
+  //ok, let's try
+  //DC first
+  T := HuffDecode(true, ScanHeaders[compNum].Td);
+  Diff := HuffReceive(T);
+  Diff := HuffExtend(Diff, T);
+  ZZ[0] := Diff + PRED[compNum];  //current DC coefficient
+  PRED[compNum]:=ZZ[0]; //getting ready for next one
+
+  //AC, 63 of them
+  k := 1;
+  for i := 1 to 63 do
+    ZZ[i] := 0;
+  repeat
+    RS := HuffDecode(false,ScanHeaders[compNum].Ta);
+    SSSS := RS and $0F;
+    RRRR := RS shr 4;
+    if SSSS = 0 then
+      if RRRR = 15 then begin
+        inc(k,16);  //skipped 16 zero coef at once
+        continue
+      end
+      else
+        break;  //EOB already
+    inc(k, RRRR);
+    //range check error possible on these lines
+    //because k is more than 63 already.
+    //why not EOB???
+    if k>63 then
+      break;
+
+    ZZ[k] := HuffReceive(SSSS);
+    ZZ[k] := HuffExtend(ZZ[k], SSSS);
+    inc(k);
+  until k = 64;
+  //OK, spectrum is almost ready
+
+  for i := 63 downto 0 do
+    fBuffer[ZigZag1D[i]] := ZZ[i] * Quant^[i];
+
+  IDCT(fBuffer);
+end;
+
+procedure TJPEGDecoder.DecodeArithmBlock(CompNum: Integer; QuantID: Integer);
+begin
+  GraphicExError('Sorry, arithmetic decoder is under construction');
+end;
+
+procedure TJPEGDecoder.DecodeSequentialDCTScan;
 var compNum: Integer;
-  i, j, dbg: Integer;
-  T: Integer;
-  Diff: Integer;
-  k: Integer;
-  RS: Integer;
-  SSSS: Integer;
-  RRRR: Integer;
-  ZZ: Array [0..63] of Integer; //0: DC, others: AC coef in zig-zag order
-  Buffer: TRealArray64;  //won't struggle with fixed point arithmetic here
+  i, dbg: Integer;
+  sampX, sampY: Integer;
+  subsampX,subsampY: Integer; //we convert BIG interleave (8x8 blocks) into LITTLE one (pixels)
+
+  BiggerBuffer: TRealArray512;  //won't struggle with fixed point arithmetic here
+  PBuf: PRealArray512; //may point to BiggerBuffer as well as to fBuffer
   //later we can use SSE/SSE2 etc to make it extremely effective
-  Quant: PRealArray64;
   Run: PByte;
   WordRun: PWord absolute Run;
-  CurChannelId: Integer;
   BlockNum: Integer;
+  x,y: Integer;
+
+  VSamp, HSamp: Integer;
+  offs: Integer;
+  bufIndex: Integer;  //for debug purposes
+  BufferWidth: Integer;
+
+  ColsToGo, RowsToGo: Integer;  //normally 8x8 but will be less on the edges
 begin
   //MCU's here are interleaved, component after component
   //dealing with sequential mode here. We can do IDCT on the fly
@@ -854,110 +921,76 @@ begin
 //      assert(dbg=33);
 
     for compNum := 0 to Ns-1 do begin
-      //let's fetch appropriate quant table
-      Quant := nil; //to make compiler happy. We know already that right component exists
-      //otherwise we'd have exception long time ago.
-      for i := 0 to Length(fColorComponents)-1 do
-        if fColorComponents[i].ComponentID = ScanHeaders[compNum].ComponentSelector then begin
-          CurChannelId := i;
-          Quant := @FQuantTables[fColorComponents[i].QuantID];
-          Run := fColorComponents[i].Run; //continue where we began
-          break;
-        end;
-      for j := fColorComponents[CurChannelId].SampleCount-1 downto 0 do begin
-        //ok, let's try
-        //DC first
-        T := HuffDecode(true,ScanHeaders[compNum].Td);
-        Diff := HuffReceive(T);
-        Diff := HuffExtend(Diff, T);
-        ZZ[0] := Diff + PRED[compNum];  //current DC coefficient
-        PRED[compNum]:=ZZ[0]; //getting ready for next one
+      Run := fColorComponents[ScanHeaders[compNum].ComponentSelector].Run;
+      HSamp := fColorComponents[ScanHeaders[compNum].ComponentSelector].HSampling;
+      VSamp := fColorComponents[ScanHeaders[compNum].ComponentSelector].VSampling;
+      for sampY := 0 to VSamp-1 do
+        for sampX := 0 to HSamp-1 do begin
+          fDecodeBlockProc(compNum,fColorComponents[ScanHeaders[compNum].ComponentSelector].QuantID);
 
-        //AC, 63 of them
-        k := 1;
-        for i := 1 to 63 do
-          ZZ[i] := 0;
-        repeat
-          RS := HuffDecode(false,ScanHeaders[compNum].Ta);
-          SSSS := RS and $0F;
-          RRRR := RS shr 4;
-          if SSSS = 0 then
-            if RRRR = 15 then begin
-              inc(k,16);  //skipped 16 zero coef at once
-              continue
-            end
-            else
-              break;  //EOB already
-          inc(k, RRRR);
-          //range check error possible on these lines
-          //because k is more than 63 already.
-          //why not EOB???
-          if k>63 then
-            break;
-
-          ZZ[k] := HuffReceive(SSSS);
-          ZZ[k] := HuffExtend(ZZ[k], SSSS);
-          inc(k);
-        until k = 64;
-        //OK, spectrum is almost ready
-
-        for i := 63 downto 0 do
-          Buffer[ZigZag1D[i]] := ZZ[i] * Quant^[i];
-
-        IDCT(Buffer);
-
-        i := 0;
-        //and at least, divide by 8, add 128 or 2048 and scale appropriately
-        if fprecision=8 then
-          if fColorComponents[CurChannelId].SampleCount=1 then begin //very important case, could make it separate to speed-up operations
-            if ((BlockNum mod fBlocksPerRow) = fBlocksPerRow-1) and ((fX mod 8) <> 0) then
-              for RS := 0 to 7 do begin
-                for k := 0 to (fX mod 8) - 1 do begin
-                  Run^ := ClampByte(Buffer[i] / 8 + 128);
-                  inc(i);
-                  inc(Run, fInterleavedBlockSize);
-                end;
-                inc(i,8-fX mod 8);
-                inc(Run, fRowSize - (fX mod 8) * fInterleavedBlockSize);
-              end
-            else
-              for RS := 0 to 7 do begin
-                for k := 0 to 7 do begin
-                  Run^ := ClampByte(Buffer[i] / 8 + 128);
-                  inc(i);
-                  inc(Run, fInterleavedBlockSize);
-                end;
-                inc(Run, fRowSize - 8 * fInterleavedBlockSize);
+          if (HSamp <> 1) or (VSamp <> 1) then begin
+            offs := sampX*8 + sampY*64*HSamp;
+            //example: HSamp=VSamp=2. This way, subsampX, subsampY = 0..1,
+            //BiggerBuffer runs from 0 to 3, while we extract (0;0), (1;0), (0;1) and (1;1)
+            //from fBuffer.
+            y:=0;
+            colsToGo:=8;
+            while y < 64 do begin
+              x:=0;
+              while x < 8 do begin
+                for subsampY := 0 to VSamp-1 do
+                  for subsampX  := 0 to HSamp-1 do begin
+                    BufIndex := subsampX + subsampY*8 + x + y;
+                    BiggerBuffer[offs] := fBuffer[BufIndex];
+                    inc(offs);
+                    dec(colsToGo);
+                    if ColsToGo=0 then begin
+                      ColsToGo := 8;
+                      inc(offs, HSamp*8 - 8);
+                    end;
+                  end;
+                inc(x, HSamp);
               end;
-
-            if (BlockNum mod fBlocksPerRow) = fBlocksPerRow - 1 then //move down and left
-              dec(Run, fRowSize - 8 * fInterleavedBlockSize)
-            else
-              dec(Run, fRowSize * 8 - 8 * fInterleavedBlockSize);
-          end
-          else  //this part is wrong
-            repeat
-              for k := 0 to fColorComponents[CurChannelId].SampleCount-1 do begin
-                Run^ := ClampByte(Buffer[i] / 8 + 128);
-                inc(i);
-                inc(Run);
-              end;  //end of interleaved block, now we must jump
-              inc(Run, fInterleavedBlockSize-fColorComponents[CurChannelID].SampleCount);
-            until i=64
-        else
-          repeat
-            for k := 0 to fColorComponents[CurChannelId].SampleCount-1 do begin
-              WordRun^ := ClampWord(Buffer[i] * 2 + 32768);
+              inc(y, VSamp*8);
+            end;
+          end;
+        end; //loop over several luma samples per one chroma sample
+      //ok, now we move this block to output
+      if (HSamp = 1) and (VSamp = 1) then
+        PBuf := @fBuffer
+      else
+        PBuf := @BiggerBuffer;
+      BufferWidth := 8 * HSamp;
+      ColsToGo := 8 * HSamp;
+      if ((BlockNum mod fBlocksPerRow) = fBlocksPerRow-1) and ((fX mod ColsToGo) <> 0) then
+        ColsToGo := fx mod ColsToGo;
+      RowsToGo := 8 * VSamp;
+      if (BlockNum > fBlocksPerRow * (fY div RowsToGo)) then
+        RowsToGo := fY mod RowsToGo;
+      i := 0;
+      if fprecision = 8 then begin //1 byte per sample to dest
+        for y := 0 to RowsToGo - 1 do begin
+          for x := 0 to (ColsToGo div HSamp) - 1 do begin
+            for subsampY := 0 to HSamp-1 do begin
+              Run^ := ClampByte(PBuf^[i] / 8 + 128);
               inc(i);
               inc(Run);
             end;
-            inc(PByte(Run), fInterleavedBlockSize - fColorComponents[CurChannelID].SampleCount*2);
-          until i=64;
-
-        fColorComponents[CurChannelID].Run:=Run;
-        if PAnsiChar(Run) >= PAnsiChar(fDest) + fUnpackedSize + 1 then
-          Exit;  //decoded all the blocks already
-      end;
+            inc(Run, fInterleavedBlockSize-HSamp);
+          end;
+          inc(i,BufferWidth - ColsToGo);
+          inc(Run, fRowSize - ColsToGo * fInterleavedBlockSize);
+        end;
+        if (BlockNum mod fBlocksPerRow) = fBlocksPerRow - 1 then //move down and left
+          dec(Run, fRowSize - 8 * fInterleavedBlockSize)
+        else
+          dec(Run, fRowSize * 8 - 8 * fInterleavedBlockSize);
+        end
+      else
+        GraphicExError('12-bit samples support under construction');
+      fColorComponents[ScanHeaders[compNum].ComponentSelector].Run:=Run;
+      if PAnsiChar(Run) >= PAnsiChar(fDest) + fUnpackedSize + 1 then
+        Exit;  //decoded all the blocks already
     end; //loop over all the color components
     inc(BlockNum);
   end; //loop until we read all the blocks
