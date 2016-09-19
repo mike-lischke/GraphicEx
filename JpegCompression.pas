@@ -69,9 +69,6 @@ type
     PRED: array [0..3] of Integer;  //previous DC coefficient for each component.
       //After each RST it must reset to 0
       //no more than 4 components per scan is allowed, so we use static array here
-    //not sure we need these
-    curCol: array [0..3] of Integer;  //to manage edges of image if part of block is used
-    curLine: array [0..3] of Integer;
   //settings of current scan
     Ns: Word; //number of components in current scan
     ScanHeaders: array of TJpegScanHeader;
@@ -104,7 +101,7 @@ type
     destructor Destroy; override;
 //    procedure DecodeTables(const Source: Pointer; const size: Cardinal);
 
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
@@ -507,12 +504,15 @@ end;
 
 
 constructor TJPEGDecoder.Create(Properties: Pointer);
-
+var ptr, nilptr: Pointer;
 begin
   FImageProperties := Properties;
   with PImageProperties(Properties)^ do
-    if Assigned(JPEGTables) then
-      Decode(@JPEGTables[0], nil, Length(JPEGTables),0);
+    if Assigned(JPEGTables) then begin
+      ptr := @JPEGTables[0];
+      nilptr := nil;
+      Decode(ptr, nilptr, Length(JPEGTables),0);
+    end;
 end;
 
 destructor TJPEGDecoder.Destroy;
@@ -534,7 +534,7 @@ procedure TJPEGDecoder.DecodeQuantTable;
 var B: Byte;
     SectionSize: Word;
     ID: Byte;
-    i,j,k: Integer;
+    i,k: Integer;
 begin
   SectionSize := NextWord;
   B := NextByte;
@@ -649,7 +649,7 @@ var HL: Word;
     i,j: Integer;
     B: Byte;
     Ident: Word;
-    MaxSamplingFactor: Integer;
+    MaxHSamplingFactor: Integer;
     Exists: Boolean;
     SamplingSum: Integer;
 begin
@@ -699,16 +699,16 @@ begin
   end;
 
   fInterleavedBlockSize:=0;
-  maxSamplingFactor:=1;
+  maxHSamplingFactor:=1;
   for i := 0 to Nf-1 do begin
     fColorComponents[i].SampleOffset := fInterleavedBlockSize;
     fColorComponents[i].Run := fDest;
     inc(fColorComponents[i].Run,fInterleavedBlockSize);
     inc(fInterleavedBlockSize, fColorComponents[i].HSampling * fColorComponents[i].VSampling * fBytesPerSample);
-    maxSamplingFactor := max(maxSamplingFactor, fColorComponents[i].HSampling * fColorComponents[i].VSampling);
+    maxHSamplingFactor := max(maxHSamplingFactor, fColorComponents[i].HSampling);
   end;
-  fRowSize := fX * fInterleavedBlockSize;
-  fBlocksPerRow := (fX + 7) div (8 * maxSamplingFactor);
+  fRowSize := (fX div maxHSamplingFactor) * fInterleavedBlockSize;
+  fBlocksPerRow := (fX + 7) div (8 * maxHSamplingFactor);
 
 
   //here we begin scans
@@ -888,7 +888,7 @@ end;
 
 procedure TJPEGDecoder.DecodeSequentialDCTScan;
 var compNum: Integer;
-  i, dbg: Integer;
+  i: Integer;
   sampX, sampY: Integer;
   subsampX,subsampY: Integer; //we convert BIG interleave (8x8 blocks) into LITTLE one (pixels)
 
@@ -914,12 +914,7 @@ begin
   //let's also reset decoder
   for i := 0 to 3 do
     PRED[i] := 0; //only 4 components possible in one scan
-  while true do begin
-
-//  for dbg := 0 to 250 do begin
-//    if dbg=33 then
-//      assert(dbg=33);
-
+  repeat
     for compNum := 0 to Ns-1 do begin
       Run := fColorComponents[ScanHeaders[compNum].ComponentSelector].Run;
       HSamp := fColorComponents[ScanHeaders[compNum].ComponentSelector].HSampling;
@@ -929,12 +924,11 @@ begin
           fDecodeBlockProc(compNum,fColorComponents[ScanHeaders[compNum].ComponentSelector].QuantID);
 
           if (HSamp <> 1) or (VSamp <> 1) then begin
-            offs := sampX*8 + sampY*64*HSamp;
+            offs := sampX*8*VSamp + sampY*64*HSamp;
             //example: HSamp=VSamp=2. This way, subsampX, subsampY = 0..1,
             //BiggerBuffer runs from 0 to 3, while we extract (0;0), (1;0), (0;1) and (1;1)
             //from fBuffer.
             y:=0;
-            colsToGo:=8;
             while y < 64 do begin
               x:=0;
               while x < 8 do begin
@@ -943,15 +937,11 @@ begin
                     BufIndex := subsampX + subsampY*8 + x + y;
                     BiggerBuffer[offs] := fBuffer[BufIndex];
                     inc(offs);
-                    dec(colsToGo);
-                    if ColsToGo=0 then begin
-                      ColsToGo := 8;
-                      inc(offs, HSamp*8 - 8);
-                    end;
                   end;
                 inc(x, HSamp);
               end;
               inc(y, VSamp*8);
+              inc(offs, 8*Vsamp*(Hsamp-1));
             end;
           end;
         end; //loop over several luma samples per one chroma sample
@@ -969,31 +959,29 @@ begin
         RowsToGo := fY mod RowsToGo;
       i := 0;
       if fprecision = 8 then begin //1 byte per sample to dest
-        for y := 0 to RowsToGo - 1 do begin
-          for x := 0 to (ColsToGo div HSamp) - 1 do begin
-            for subsampY := 0 to HSamp-1 do begin
+        for y := 0 to (RowsToGo div VSamp) - 1 do begin   //we must ensure earlier that fX and fY have integer number
+          for x := 0 to (ColsToGo div HSamp) - 1 do begin // of HSamp,VSamp in it
+            for subsampY := 0 to VSamp*HSamp-1 do begin
               Run^ := ClampByte(PBuf^[i] / 8 + 128);
               inc(i);
               inc(Run);
             end;
-            inc(Run, fInterleavedBlockSize-HSamp);
+            inc(Run, fInterleavedBlockSize-HSamp*VSamp);
           end;
           inc(i,BufferWidth - ColsToGo);
-          inc(Run, fRowSize - ColsToGo * fInterleavedBlockSize);
+          inc(Run, fRowSize - (ColsToGo div HSamp) * fInterleavedBlockSize);
         end;
         if (BlockNum mod fBlocksPerRow) = fBlocksPerRow - 1 then //move down and left
-          dec(Run, fRowSize - 8 * fInterleavedBlockSize)
+          dec(Run, fRowSize - (ColsToGo div HSamp) * fInterleavedBlockSize)
         else
-          dec(Run, fRowSize * 8 - 8 * fInterleavedBlockSize);
+          dec(Run, fRowSize * (RowsToGo div VSamp) - (ColsToGo div HSamp) * fInterleavedBlockSize);
         end
       else
         GraphicExError('12-bit samples support under construction');
       fColorComponents[ScanHeaders[compNum].ComponentSelector].Run:=Run;
-      if PAnsiChar(Run) >= PAnsiChar(fDest) + fUnpackedSize + 1 then
-        Exit;  //decoded all the blocks already
     end; //loop over all the color components
     inc(BlockNum);
-  end; //loop until we read all the blocks
+  until PAnsiChar(Run) >= PAnsiChar(fDest) + fUnpackedSize + 1
 end;
 
 procedure TJPEGDecoder.DecodeDNL;
@@ -1003,7 +991,7 @@ end;
 
 
 
-procedure TJPEGDecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TJPEGDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 var Tag: Word;
     CharRun: PAnsiChar absolute Source;
     Run: PByte absolute Source;

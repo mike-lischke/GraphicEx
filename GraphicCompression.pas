@@ -48,7 +48,7 @@ type
   // abstract decoder class to define the base functionality of an encoder/decoder
   TDecoder = class
   public
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); virtual; abstract;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); virtual; abstract;
     procedure DecodeEnd; virtual;
     procedure DecodeInit; virtual;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); virtual; abstract;
@@ -65,7 +65,7 @@ type
   public
     constructor Create(ColorDepth: Cardinal); 
     
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
@@ -73,19 +73,19 @@ type
   // TIFF LZW compression / decompression is a bit different to the common LZW code
   TTIFFLZWDecoder = class(TDecoder)
   public
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
   TPackbitsRLEDecoder = class(TDecoder)
   public
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
   TPCXRLEDecoder = class(TDecoder)
   public
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
@@ -95,19 +95,19 @@ type
   public
     constructor Create(SampleSize: Byte);
 
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
   TCUTRLEDecoder = class(TDecoder)
   public
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
   TPSPRLEDecoder = class(TDecoder)
   public
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
@@ -119,13 +119,13 @@ type
   public
     constructor Create(InitialCodeSize: Byte);
 
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
   TRLADecoder = class(TDecoder)
   public
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
@@ -185,19 +185,19 @@ type
 
   TCCITTFax3Decoder = class(TCCITTDecoder)
   public
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
   TCCITTFax4Decoder = class (TCCITTDecoder)
   public
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
   TCCITTMHDecoder = class(TCCITTDecoder) // modified Huffman RLE
   public
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
@@ -215,7 +215,7 @@ type
   public
     constructor Create(FlushMode: Integer; AutoReset: Boolean);
 
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure DecodeEnd; override;
     procedure DecodeInit; override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
@@ -231,7 +231,7 @@ type
   public
     constructor Create(Width: Cardinal);
 
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
@@ -241,7 +241,7 @@ type
   public
     constructor Create(Raw: Pointer);
 
-    procedure Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
+    procedure Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer); override;
     procedure Encode(Source, Dest: Pointer; Count: Cardinal; var BytesStored: Cardinal); override;
   end;
 
@@ -315,7 +315,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TTargaRLEDecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TTargaRLEDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 type
   PCardinalArray = ^TCardinalArray;
@@ -436,7 +436,7 @@ begin
       end;
   end;
 
-//  Source := SourcePtr;
+  Source := SourcePtr;
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -611,7 +611,7 @@ end;
 
 //----------------- TTIFFLZWDecoder ------------------------------------------------------------------------------------
 
-procedure TTIFFLZWDecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TTIFFLZWDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 var
   I: Integer;
@@ -761,7 +761,7 @@ end;
 
 //----------------- TPackbitsRLEDecoder --------------------------------------------------------------------------------
 
-procedure TPackbitsRLEDecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TPackbitsRLEDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 // decodes a simple run-length encoded strip of size PackedSize
 
@@ -817,7 +817,7 @@ end;
 
 //----------------- TPCXRLEDecoder -------------------------------------------------------------------------------------
 
-procedure TPCXRLEDecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TPCXRLEDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 var
   Count: Integer;
@@ -870,7 +870,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TSGIRLEDecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TSGIRLEDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 var
   Source8,
@@ -953,7 +953,7 @@ end;
 
 //----------------- TCUTRLE --------------------------------------------------------------------------------------------
 
-procedure TCUTRLEDecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TCUTRLEDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 var
   TargetPtr: PByte;
@@ -998,7 +998,7 @@ end;
 
 //----------------- TPSPRLEDecoder -------------------------------------------------------------------------------------
 
-procedure TPSPRLEDecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TPSPRLEDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 var
   SourcePtr,
@@ -1048,7 +1048,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TGIFLZWDecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TGIFLZWDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 var
   I: Integer;
@@ -1197,7 +1197,7 @@ end;
 
 //----------------- TRLADecoder ----------------------------------------------------------------------------------------
 
-procedure TRLADecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TRLADecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 // decodes a simple run-length encoded strip of size PackedSize
 // this is very similar to TPackbitsRLEDecoder
@@ -1774,7 +1774,7 @@ end;
 
 //----------------- TCCITTFax3Decoder ----------------------------------------------------------------------------------
 
-procedure TCCITTFax3Decoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TCCITTFax3Decoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 var
   RunLength: Integer;
@@ -1966,7 +1966,7 @@ begin
 end;
 
 //------------------TCCITTFax4Decoder ------------------------------------------------------------------------------------
-procedure TCCITTFax4Decoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TCCITTFax4Decoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 var RunLength: Integer;
 
   procedure AdjustEOL;
@@ -2084,7 +2084,7 @@ end;
 
 //----------------- TCCITTMHDecoder ------------------------------------------------------------------------------------
 
-procedure TCCITTMHDecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TCCITTMHDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 var
   RunLength: Integer;
@@ -2155,7 +2155,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TLZ77Decoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TLZ77Decoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 begin
   FStream.next_in := Source;
@@ -2243,7 +2243,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TThunderDecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TThunderDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 var
   SourcePtr,
@@ -2364,7 +2364,7 @@ end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure TPCDDecoder.Decode(Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
+procedure TPCDDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 
 // recovers the Huffman encoded luminance and chrominance deltas
 // Note: This decoder leaves a bit the way like the other decoders work.
