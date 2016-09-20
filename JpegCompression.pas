@@ -883,6 +883,15 @@ end;
 
 procedure TJPEGDecoder.DecodeArithmBlock(CompNum: Integer; QuantID: Integer);
 begin
+
+
+
+
+
+
+
+
+
   GraphicExError('Sorry, arithmetic decoder is under construction');
 end;
 
@@ -955,7 +964,7 @@ begin
       if ((BlockNum mod fBlocksPerRow) = fBlocksPerRow-1) and ((fX mod ColsToGo) <> 0) then
         ColsToGo := fx mod ColsToGo;
       RowsToGo := 8 * VSamp;
-      if (BlockNum > fBlocksPerRow * (fY div RowsToGo)) then
+      if (BlockNum >= fBlocksPerRow * (fY div RowsToGo)) then
         RowsToGo := fY mod RowsToGo;
       i := 0;
       if fprecision = 8 then begin //1 byte per sample to dest
@@ -981,15 +990,13 @@ begin
       fColorComponents[ScanHeaders[compNum].ComponentSelector].Run:=Run;
     end; //loop over all the color components
     inc(BlockNum);
-  until PAnsiChar(Run) >= PAnsiChar(fDest) + fUnpackedSize + 1
+  until BlockNum >= fBlocksPerRow * ((fY + 8*VSamp - 1) div (8 * VSamp));
 end;
 
 procedure TJPEGDecoder.DecodeDNL;
 begin
 
 end;
-
-
 
 procedure TJPEGDecoder.Decode(var Source, Dest: Pointer; PackedSize, UnpackedSize: Integer);
 var Tag: Word;
