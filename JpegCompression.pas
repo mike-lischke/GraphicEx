@@ -62,6 +62,7 @@ type
     fColorComponents: array of TJpegComponentDescriptor;
     fInterleavedBlockSize: Integer; //size in bytes of one interleaved block in output
     fBlocksPerRow: Integer; //number of input interleaved blocks (4 blocks Y + 1 Cb + 1 Cr counts as one) per row
+    fBlocksPerCol: Integer;
     fRowSize: Integer;  //size in bytes of one row
 
     fX, fY : Integer; //width and height
@@ -649,7 +650,7 @@ var HL: Word;
     i,j: Integer;
     B: Byte;
     Ident: Word;
-    MaxHSamplingFactor: Integer;
+    MaxHSamplingFactor, MaxVSamplingFactor: Integer;
     Exists: Boolean;
     SamplingSum: Integer;
 begin
@@ -698,17 +699,20 @@ begin
 //      GraphicExError(Format('quantization table %d not present',[fColorComponents[i].QuantId]));
   end;
 
-  fInterleavedBlockSize:=0;
-  maxHSamplingFactor:=1;
+  fInterleavedBlockSize := 0;
+  maxHSamplingFactor := 1;
+  maxVSamplingFactor := 1;
   for i := 0 to Nf-1 do begin
     fColorComponents[i].SampleOffset := fInterleavedBlockSize;
     fColorComponents[i].Run := fDest;
     inc(fColorComponents[i].Run,fInterleavedBlockSize);
     inc(fInterleavedBlockSize, fColorComponents[i].HSampling * fColorComponents[i].VSampling * fBytesPerSample);
     maxHSamplingFactor := max(maxHSamplingFactor, fColorComponents[i].HSampling);
+    maxVSamplingFactor := max(maxVSamplingFactor, fColorComponents[i].VSampling);
   end;
   fRowSize := (fX div maxHSamplingFactor) * fInterleavedBlockSize;
-  fBlocksPerRow := (fX + 7) div (8 * maxHSamplingFactor);
+  fBlocksPerRow := (fX + 8 * maxHSamplingFactor - 1) div (8 * maxHSamplingFactor);
+  fBlocksPerCol := (fY + 8 * maxVSamplingFactor - 1) div (8 * maxVSamplingFactor);
 
 
   //here we begin scans
@@ -990,7 +994,7 @@ begin
       fColorComponents[ScanHeaders[compNum].ComponentSelector].Run:=Run;
     end; //loop over all the color components
     inc(BlockNum);
-  until BlockNum >= fBlocksPerRow * ((fY + 8*VSamp - 1) div (8 * VSamp));
+  until BlockNum >= fBlocksPerRow * fBlocksPerCol;
 end;
 
 procedure TJPEGDecoder.DecodeDNL;

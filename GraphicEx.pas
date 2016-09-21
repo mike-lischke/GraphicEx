@@ -167,6 +167,10 @@ type
     JPEGColorMode: Cardinal;
     JPEGTablesMode: Cardinal;
     PlanarConfig: Cardinal;
+
+    JPEGOffset: Cardinal;
+    JPEGSize: Cardinal;
+    //the fields below seem to be of no use and obsolete
     JPEGProc: Word; //1 for baseline, 14 for lossless
     QTables: TCardinalArray;
     HuffDCTables: TCardinalArray;
@@ -1659,6 +1663,14 @@ procedure SwapShort(P: PWord; Count: Cardinal);
 // swaps high and low byte of 16 bit values
 // EAX contains P, EDX contains Count
 
+{$IFDEF ResortToPurePascal}
+var i: Integer;
+begin
+  for i := Count-1 downto 0 do begin
+    P^ := ((P^ and $FF00) shr 8) or ((P^ and $00FF) shl 8);
+    inc(P);
+  end;
+{$ELSE}
 asm
         TEST    EDX, EDX
         JZ      @@Finish
@@ -1670,6 +1682,7 @@ asm
         DEC     EDX
         JNZ     @@Loop
 @@Finish:
+{$ENDIF}
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1678,7 +1691,15 @@ procedure SwapLong(P: PInteger; Count: Cardinal); overload;
 
 // swaps high and low bytes of 32 bit values
 // EAX contains P, EDX contains Count
-
+{$IFDEF ResortToPurePascal}
+var i: Integer;
+begin
+  for i := Count-1 downto 0 do begin
+    P^ := ((P^ and $FF000000) shr 24) or ((P^ and $00FF0000) shr 8) or
+          ((P^ and $0000FF00) shl 8) or  ((P^ and $000000FF) shl 24);
+    inc(P);
+  end;
+{$ELSE}
 asm
         TEST    EDX, EDX
         JZ      @@Finish
@@ -1690,6 +1711,7 @@ asm
         DEC     EDX
         JNZ     @@Loop
 @@Finish:
+{$ENDIF}
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1697,9 +1719,14 @@ end;
 function SwapLong(Value: Cardinal): Cardinal; overload;
 
 // Swaps high and low bytes of the given 32 bit value.
-
+{$IFDEF ResortToPurePascal}
+begin
+  Result := ((Value and $FF000000) shr 24) or ((Value and $00FF0000) shr 8) or
+            ((Value and $0000FF00) shl 8) or ((Value and $000000FF) shl 24);
+{$ELSE}
 asm
         BSWAP   EAX
+{$ENDIF}
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1708,8 +1735,14 @@ function SwapLong(Value: Integer): Integer; overload;
 
 // Swaps high and low bytes of the given 32 bit value.
 
+{$IFDEF ResortToPurePascal}
+begin
+  Result := ((Value and $FF000000) shr 24) or ((Value and $00FF0000) shr 8) or
+            ((Value and $0000FF00) shl 8) or ((Value and $000000FF) shl 24);
+{$ELSE}
 asm
         BSWAP   EAX
+{$ENDIF}
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1805,9 +1838,18 @@ end;
 //----------------- various conversion routines ------------------------------------------------------------------------
 
 procedure Depredict1(P: Pointer; Count: Cardinal);
-
+{$IFDEF ResortToPurePascal}
+var Run: PByte absolute P; //PByte alias for P
+    Val: Byte;
+begin
+  while Count > 0 do begin
+    Val := Run^;
+    inc(Run);
+    inc(Run^, Val);
+    dec(Count);
+  end;
+{$ELSE}
 // EAX contains P and EDX Count
-
 asm
 @@1:
         MOV     CL, [EAX]
@@ -1815,14 +1857,28 @@ asm
         INC     EAX
         DEC     EDX
         JNZ     @@1
+{$ENDIF}
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-procedure Depredict3(P: Pointer; Count: Cardinal); 
-
+procedure Depredict3(P: Pointer; Count: Cardinal);
+{$IFDEF ResortToPurePascal}
+var Src: PByte absolute P;  //PByte alias for P
+    Dest: PByte;
+    Val: Byte;
+begin
+  Dest := Src;
+  inc(Dest, 3);
+  Count := Count * 3;
+  while count > 0 do begin
+    inc(Dest^, Src^);
+    inc(Dest);
+    inc(Src);
+    dec(Count);
+  end;
+{$ELSE}
 // EAX contains P and EDX Count
-
 asm
         MOV     ECX, EDX
         SHL     ECX, 1
@@ -1833,14 +1889,28 @@ asm
         INC     EAX
         DEC     ECX
         JNZ     @@1
+{$ENDIF}
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
 
 procedure Depredict4(P: Pointer; Count: Cardinal);
-
+{$IFDEF ResortToPurePascal}
+var Src: PByte absolute P;  //PByte alias for P
+    Dest: PByte;
+    Val: Byte;
+begin
+  Dest := Src;
+  inc(Dest, 4);
+  Count := Count * 4;
+  while count > 0 do begin
+    inc(Dest^, Src^);
+    inc(Dest);
+    inc(Src);
+    dec(Count);
+  end;
+{$ELSE}
 // EAX contains P and EDX Count
-
 asm
         SHL     EDX, 2 // 4 * Count
 @@1:
@@ -1849,6 +1919,7 @@ asm
         INC     EAX
         DEC     EDX
         JNZ     @@1
+{$ENDIF}
 end;
 
 //----------------- TFileMapping ---------------------------------------------------------------------------------------
@@ -3621,7 +3692,8 @@ begin
             GetValueList(Stream, TIFFTAG_JPEGQTABLES, QTables);
             GetValueList(Stream, TIFFTAG_JPEGDCTABLES, HuffDcTables);
             GetValueList(Stream, TIFFTAG_JPEGACTABLES, HuffAcTables);
-
+            GetValue(Stream, TIFFTAG_JPEGIFOFFSET, JPEGOffset);
+            GetValue(Stream, TIFFTAG_JPEGIFBYTECOUNT, JPEGSize);
           end;
 
         ctThunderscan:
@@ -4768,6 +4840,17 @@ begin
             begin
               Value := 0;
               for J := 0 to 1 do
+              {$IFDEF ResortToPurePascal}
+                begin
+                  Value := (Value shl 4) or ((Plane4^ and $80) shr 4) or
+                           ((Plane3^ and $80) shr 5) or ((Plane2^ and $80) shr 6)
+                                                     or ((Plane1^ and $80) shr 7);
+                  Plane4^ := Plane4^ shl 1;
+                  Plane3^ := Plane3^ shl 1;
+                  Plane2^ := Plane2^ shl 1;
+                  Plane1^ := Plane1^ shl 1;
+                end;
+              {$ELSE}
               asm
                 MOV AL, [Value]
 
@@ -4789,6 +4872,7 @@ begin
 
                 MOV [Value], AL
               end;
+              {$ENDIF}
               Line^ := Value;
               Inc(Line);
               Dec(DataSize);

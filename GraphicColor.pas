@@ -319,7 +319,15 @@ end;
 function ClampByte(Value: Integer): Byte;
 
 // ensures Value is in the range 0..255, values < 0 are clamped to 0 and values > 255 are clamped to 255
-
+{$IFDEF ResortToPurePascal}
+begin
+  if Value <= 0 then
+    Result := 0
+  else if Value >= 255 then
+    Result := 255
+  else
+    Result := Value;
+{$ELSE}
 asm
          OR EAX, EAX
          JNS @@positive
@@ -331,6 +339,7 @@ asm
          JBE @@OK
          MOV EAX, 255
 @@OK:
+{$ENDIF}
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -343,10 +352,15 @@ function MulDiv16(Number, Numerator, Denominator: Word): Word;
 // Denominator is passed via CX
 // Result is passed via AX
 // Note: no error checking takes place. Denominator must be > 0!
-
+{$IFDEF ResortToPurePascal}
+//got division by zero exception on x64 when tried asm. Something changed...
+begin
+  Result := Number * Numerator div Denominator;
+{$ELSE}
 asm
          MUL DX
          DIV CX
+{$ENDIF}
 end;
 
 //----------------- common color conversion functions ------------------------------------------------------------------
