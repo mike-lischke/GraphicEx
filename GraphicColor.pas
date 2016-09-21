@@ -319,7 +319,15 @@ end;
 function ClampByte(Value: Integer): Byte;
 
 // ensures Value is in the range 0..255, values < 0 are clamped to 0 and values > 255 are clamped to 255
-
+{$IFDEF ResortToPurePascal}
+begin
+  if Value <= 0 then
+    Result := 0
+  else if Value >= 255 then
+    Result := 255
+  else
+    Result := Value;
+{$ELSE}
 asm
          OR EAX, EAX
          JNS @@positive
@@ -331,6 +339,7 @@ asm
          JBE @@OK
          MOV EAX, 255
 @@OK:
+{$ENDIF}
 end;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -343,10 +352,15 @@ function MulDiv16(Number, Numerator, Denominator: Word): Word;
 // Denominator is passed via CX
 // Result is passed via AX
 // Note: no error checking takes place. Denominator must be > 0!
-
+{$IFDEF ResortToPurePascal}
+//got division by zero exception on x64 when tried asm. Something changed...
+begin
+  Result := Number * Numerator div Denominator;
+{$ELSE}
 asm
          MUL DX
          DIV CX
+{$ENDIF}
 end;
 
 //----------------- common color conversion functions ------------------------------------------------------------------
@@ -1773,23 +1787,23 @@ begin
                 if Boolean(Mask and BitRun) then
                 begin
                   if coLabByteRange in FSourceOptions then
-                    L := LRun16^ / 2.55
+                    L := Swap(LRun16^) / 655.36
                   else
-                    L := LRun16^;
+                    L := Swap(LRun16^);
                   Inc(LRun16, Increment);
-                  
+
                   if coLabChromaOffset in FSourceOptions then
                   begin
-                    a := aRun16^ - 128;
+                    a := Swap(aRun16^) - 32768;
                     Inc(aRun16, Increment);
-                    b := bRun16^ - 128;
+                    b := Swap(bRun16^) - 32768;
                     Inc(bRun16, Increment);
                   end
                   else
                   begin
-                    a := ShortInt(aRun16^);
+                    a := ShortInt(Swap(aRun16^));
                     Inc(aRun16, Increment);
-                    b := ShortInt(bRun16^);
+                    b := ShortInt(Swap(bRun16^));
                     Inc(bRun16, Increment);
                   end;
 
@@ -1837,15 +1851,15 @@ begin
                 if Boolean(Mask and BitRun) then
                 begin
                   if coLabByteRange in FSourceOptions then
-                    L := LRun16^ / 2.55
+                    L := LRun16^ / 655.36
                   else
                     L := LRun16^;
                   Inc(LRun16, Increment);
                   if coLabChromaOffset in FSourceOptions then
                   begin
-                    a := aRun16^ - 128;
+                    a := aRun16^ - 32768;
                     Inc(aRun16, Increment);
-                    b := bRun16^ - 128;
+                    b := bRun16^ - 32768;
                     Inc(bRun16, Increment);
                   end
                   else
@@ -2098,15 +2112,15 @@ begin
                 if Boolean(Mask and BitRun) then
                 begin
                   if coLabByteRange in FSourceOptions then
-                    L := LRun16^ / 2.55
+                    L := LRun16^ / 655.36
                   else
                     L := LRun16^;
                   Inc(LRun16, Increment);
                   if coLabChromaOffset in FSourceOptions then
                   begin
-                    a := aRun16^ - 128;
+                    a := aRun16^ - 32768;
                     Inc(aRun16, Increment);
-                    b := bRun16^ - 128;
+                    b := bRun16^ - 32768;
                     Inc(bRun16, Increment);
                   end
                   else
@@ -2161,15 +2175,15 @@ begin
                 if Boolean(Mask and BitRun) then
                 begin
                   if coLabByteRange in FSourceOptions then
-                    L := LRun16^ / 2.55
+                    L := LRun16^ / 655.36
                   else
                     L := LRun16^;
                   Inc(LRun16, Increment);
                   if coLabChromaOffset in FSourceOptions then
                   begin
-                    a := aRun16^ - 128;
+                    a := aRun16^ - 32768;
                     Inc(aRun16, Increment);
-                    b := bRun16^ - 128;
+                    b := bRun16^ - 32768;
                     Inc(bRun16, Increment);
                   end
                   else
@@ -2358,6 +2372,10 @@ begin
               begin
                 if Boolean(Mask and BitRun) then
                 begin
+                  Y16^:=Swap(Y16^);
+                  K16^:=Swap(K16^);
+                  M16^:=Swap(M16^);
+                  C16^:=Swap(C16^);
                   // blue
                   Target8^ := ClampByte(255 - MulDiv16((Y16^ - MulDiv16(Y16^, K16^, 65535) + K16^), 255, 65535));
                   Inc(Target8);
@@ -2390,6 +2408,10 @@ begin
               begin
                 if Boolean(Mask and BitRun) then
                 begin
+                  Y16^:=Swap(Y16^);
+                  K16^:=Swap(K16^);
+                  M16^:=Swap(M16^);
+                  C16^:=Swap(C16^);
                   // blue
                   Target16^ := 65535 - (Y16^ - MulDiv16(Y16^, K16^, 65535) + K16^);
                   Inc(Target16);
