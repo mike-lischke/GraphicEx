@@ -1866,7 +1866,6 @@ procedure Depredict3(P: Pointer; Count: Cardinal);
 {$IFDEF ResortToPurePascal}
 var Src: PByte absolute P;  //PByte alias for P
     Dest: PByte;
-    Val: Byte;
 begin
   Dest := Src;
   inc(Dest, 3);
@@ -1898,7 +1897,6 @@ procedure Depredict4(P: Pointer; Count: Cardinal);
 {$IFDEF ResortToPurePascal}
 var Src: PByte absolute P;  //PByte alias for P
     Dest: PByte;
-    Val: Byte;
 begin
   Dest := Src;
   inc(Dest, 4);
@@ -3702,7 +3700,6 @@ begin
           Decoder := TLZ77Decoder.Create(Z_PARTIAL_FLUSH, True);
       else
         {
-        COMPRESSION_OJPEG,
         COMPRESSION_NEXT
         COMPRESSION_IT8CTPAD
         COMPRESSION_IT8LW

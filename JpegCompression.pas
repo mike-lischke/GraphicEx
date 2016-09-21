@@ -183,6 +183,9 @@ const IDCT_Scales: array [0..7] of Real = (
 const SQR_2     = 1.4142135623731;
       INV_SQR_2 = 0.707106781186547;
 
+//implements AAN algorithm (Arai, Y., T. Agui, and M. Nakajima, (1988).
+//A Fast DCT-SQ Scheme for Images, Trans IEICE, 71, pp. 1095-1097.)
+//this code is mostly from LibJPEG, but rewritten on Pascal
 procedure DCT(var fltData: TRealArray64);
 var tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7: Real;
     tmp10, tmp11, tmp12, tmp13: Real;
@@ -303,13 +306,14 @@ begin
      * column DCT calculations can be simplified this way.
      *)
 
-    if (fltData[8+ctr] = 0) and (fltData[16+ctr] = 0) and
+    if (fltData[8+ctr] = 0)  and (fltData[16+ctr] = 0) and
        (fltData[24+ctr] = 0) and (fltData[32+ctr] = 0) and
        (fltData[40+ctr] = 0) and (fltData[48+ctr] = 0) and
-       (fltData[56+ctr] = 0) then begin
-      dcval := fltData[ctr];
-      WorkArray[ctr] := dcval;
-      WorkArray[8 + ctr] := dcval;
+       (fltData[56+ctr] = 0) then
+    begin
+      dcval               := fltData[ctr];
+      WorkArray[ctr]      := dcval;
+      WorkArray[8 + ctr]  := dcval;
       WorkArray[16 + ctr] := dcval;
       WorkArray[24 + ctr] := dcval;
       WorkArray[32 + ctr] := dcval;
@@ -377,7 +381,8 @@ begin
 
     //Even part
 
-    tmp10 := WorkArray[0 + ctr * 8] + WorkArray[4 + ctr * 8]; //we got faith in compiler: it will address neatly in one call
+    tmp10 := WorkArray[0 + ctr * 8] + WorkArray[4 + ctr * 8];
+    //we got faith in compiler: it will address neatly in one call
     tmp11 := WorkArray[0 + ctr * 8] - WorkArray[4 + ctr * 8];
 
     tmp13 := WorkArray[2 + ctr * 8] + WorkArray[6 + ctr * 8];
@@ -390,15 +395,15 @@ begin
 
     //Odd part
 
-    z13 := WorkArray[5 + ctr * 8] + WorkArray[3 + ctr * 8];
-    z10 := WorkArray[5 + ctr * 8] - WorkArray[3 + ctr * 8];
-    z11 := WorkArray[1 + ctr * 8] + WorkArray[7 + ctr * 8];
-    z12 := WorkArray[1 + ctr * 8] - WorkArray[7 + ctr * 8];
+    z13   := WorkArray[5 + ctr * 8] + WorkArray[3 + ctr * 8];
+    z10   := WorkArray[5 + ctr * 8] - WorkArray[3 + ctr * 8];
+    z11   := WorkArray[1 + ctr * 8] + WorkArray[7 + ctr * 8];
+    z12   := WorkArray[1 + ctr * 8] - WorkArray[7 + ctr * 8];
 
-    tmp7 := z11 + z13;
+    tmp7  := z11 + z13;
     tmp11 := (z11 - z13) * SQR_2;
 
-    z5 := (z10 + z12) * 1.847759065;
+    z5    := (z10 + z12) * 1.847759065;
     tmp10 := 1.082392200 * z12 - z5;
     tmp12 := -2.613125930 * z10 + z5;
 
@@ -445,11 +450,11 @@ begin
     fCurrentByte := NextByte;
     if fCurrentByte = $FF then begin
       fCurrentByte := NextByte;
-      if fCurrentByte <>0 then
+      if fCurrentByte <> 0 then
         if fCurrentByte = JPEG_DNL then
           DecodeDNL
         else
-          GraphicExError('unexpected marker %d at the middle of entropy-coded data',[fCurrentByte])
+          GraphicExError('unexpected marker %d at the middle of entropy-coded data', [fCurrentByte])
       else
         fCurrentByte := $FF;  //after all
     end;
@@ -461,18 +466,18 @@ end;
 
 //little higher level
 function TJPEGDecoder.HuffDecode(isDC: Boolean; ID: Byte): Integer;
-var i,j: Integer;
+var i, j: Integer;
     code: Integer;
 begin
   i := 0;
   code := NextBit;
-  while code>fHuffmanTables[isDC,ID]^.MaxCode[i] do begin
+  while code > fHuffmanTables[isDC, ID]^.MaxCode[i] do begin
     inc(i);
     code := (code shl 1) or NextBit;
   end;
-  j := fHuffmanTables[isDC,ID]^.ValPTR[i];
+  j := fHuffmanTables[isDC, ID]^.ValPTR[i];
   j := j + code - fHuffmanTables[isDC, ID]^.MinCode[i];
-  Result := fHuffmanTables[isDC,ID]^.HuffVal[j];
+  Result := fHuffmanTables[isDC, ID]^.HuffVal[j];
 end;
 
 function TJPEGDecoder.HuffReceive(SSSS: Integer): Integer;  //just receiving SSSS count of new bits
@@ -488,22 +493,22 @@ function TJPEGDecoder.HuffExtend(V: Integer; T: Integer): Integer;
 var i: Integer;
 begin
   if T = 0 then
-    Result:=0
+    Result := 0
   else begin
     i := 1 shl (T-1);
     while V < i do begin
       i := ((-1) shl T) + 1;
-      inc(V,i);
+      inc(V, i);
     end;
-    Result:=V;
+    Result := V;
   end;
 end;
 
 
 
-
-
-
+(*
+      TJPEGDecoder
+                        *)
 constructor TJPEGDecoder.Create(Properties: Pointer);
 var ptr, nilptr: Pointer;
 begin
@@ -540,19 +545,19 @@ begin
   SectionSize := NextWord;
   B := NextByte;
   ID := B and $0F;
-  if ID>3 then
+  if ID > 3 then
     GraphicExError('quant table ID must be 0..3');
   if (B and $F0) = 0 then begin
     if SectionSize <> 67 then
       GraphicExError('quant table of size 67 expected for 1-byte vals');
     for i := 0 to 63 do
-      FQuantTables[ID, i]:=NextByte;
+      FQuantTables[ID, i] := NextByte;
   end
   else if (B and $F0) = $10 then begin
     if SectionSize <> 131 then
       GraphicExError('quant table of size 131 expected for 2-byte vals');
     for i := 0 to 63 do
-      FQuantTables[ID,i]:=NextWord;
+      FQuantTables[ID, i] := NextWord;
   end
   else
     GraphicExError('sample sizes of 1 or 2 bytes expected for quant table');
@@ -568,14 +573,14 @@ procedure TJPEGDecoder.DecodeHuffmanTable;
 var SectionSize: Word;
     B: Byte;
     ID: Byte;
-    i,j,k: Integer;
+    i, j, k: Integer;
     IsDC: Boolean;
     CodesCount: Integer;
 begin
   SectionSize := NextWord; //at least 3 bytes left
   B := NextByte;
   ID := B and $0F;
-  if ID>3 then
+  if ID > 3 then
     GraphicExError('Huffman table ID must be 0..3');
   isDC := (B and $F0) = 0;
   if fHuffmanTables[isDC, ID] = nil then
@@ -585,18 +590,18 @@ begin
   CodesCount := 0;
   with fHuffmanTables[isDC, ID]^ do begin
     for i := 0 to 15 do begin
-      Bits[i]:=NextByte;  //how many symbols with i+1 bit len
+      Bits[i] := NextByte;  //how many symbols with i+1 bit len
       inc(CodesCount, Bits[i]);
     end;
     if SectionSize <> 2+1+16+CodesCount then
       GraphicExError('Incorrect size of Huffman table');
     SetLength(HuffVal,CodesCount);
     for i := 0 to CodesCount-1 do
-      HuffVal[i]:=NextByte;
+      HuffVal[i] := NextByte;
     //let's compute codes from data we have
 
     //first, codelen for each symbol
-    SetLength(HuffSize,CodesCount);
+    SetLength(HuffSize, CodesCount);
     i := 0;
     j := 1;
     k := 0;
@@ -608,13 +613,13 @@ begin
         continue;
       end;
       inc(i);
-      j:=1;
-    until i>15;
+      j := 1;
+    until i > 15;
     //second, code itself
     k := 0;
     i := 0; //i will present new code, "CODE" in algorithm
     j := HuffSize[0]; //"SI" in algorithm
-    SetLength(HuffCode,CodesCount);
+    SetLength(HuffCode, CodesCount);
     repeat
       HuffCode[k] := i;
       inc(i);
@@ -647,7 +652,7 @@ end;
 procedure TJPEGDecoder.DecodeSOF;
 var HL: Word;
     Nf: Byte;
-    i,j: Integer;
+    i, j: Integer;
     B: Byte;
     Ident: Word;
     MaxHSamplingFactor, MaxVSamplingFactor: Integer;
@@ -655,7 +660,7 @@ var HL: Word;
     SamplingSum: Integer;
 begin
   HL := NextWord;
-  if HL<11 then
+  if HL < 11 then
     GraphicExError('start of frame header is too short (less then 11 bytes)');
   fPrecision := NextByte;
   if (fPrecision <> 8) and (fPrecision <> 12) then
@@ -668,18 +673,14 @@ begin
     GraphicExError('12-bit samples not allowed in baseline JPEG');
   fY := NextWord;  //number of lines (0 means implicit)
   fX := NextWord;  //number of sample per line
-  if fX=0 then
+  if fX = 0 then
     GraphicExError('zero samples per line is not allowed');
-//  if Y mod 8 <> 0 then
-//    GraphicExError('images with non-integer number of blocks are not yet supported');
-//  if X mod 8 <> 0 then
-//    GraphicExError('images with non-integer number of blocks are not yet supported');
   Nf := NextByte; //number of image components in frame
-  if (Nf>4) and ((fframeType and $03)=2) then
+  if (Nf > 4) and ((fframeType and $03) = 2) then
     GraphicExError('number of image components more than 4 not allowed in progressive JPEG');
   SetLength(fColorComponents, Nf);
   for i := 0 to Nf-1 do begin
-    fColorComponents[i].ComponentID:=NextByte;
+    fColorComponents[i].ComponentID := NextByte;
     for j := i - 1 downto 0 do
       if fColorComponents[i].ComponentID = fColorComponents[j].ComponentID then
         GraphicExError('two image components with same ID not allowed');
@@ -705,7 +706,7 @@ begin
   for i := 0 to Nf-1 do begin
     fColorComponents[i].SampleOffset := fInterleavedBlockSize;
     fColorComponents[i].Run := fDest;
-    inc(fColorComponents[i].Run,fInterleavedBlockSize);
+    inc(fColorComponents[i].Run, fInterleavedBlockSize);
     inc(fInterleavedBlockSize, fColorComponents[i].HSampling * fColorComponents[i].VSampling * fBytesPerSample);
     maxHSamplingFactor := max(maxHSamplingFactor, fColorComponents[i].HSampling);
     maxVSamplingFactor := max(maxVSamplingFactor, fColorComponents[i].VSampling);
@@ -721,17 +722,17 @@ begin
     if Ident = JPEG_SOS then begin
       HL := NextWord; //length of SOS header
       Ns := NextByte;
-      if (Ns>4) or (Ns=0) then
+      if (Ns > 4) or (Ns = 0) then
         GraphicExError('incorrect number of image components per scan (should be 1..4)');
-      if HL<>6 + 2 * Ns then
+      if HL <> 6 + 2 * Ns then
         GraphicExError('incorrect size of SOS header');
       SetLength(ScanHeaders, Ns);
       SamplingSum := 0;
-      for I := 0 to Ns-1 do begin
+      for I := 0 to Ns - 1 do begin
         //component selector
         ScanHeaders[i].ComponentSelector := NextByte;
         exists := false;
-        for j := 0 to Nf-1 do
+        for j := 0 to Nf - 1 do
           if ScanHeaders[i].ComponentSelector = fColorComponents[j].ComponentId then begin
             exists := true;
             inc(SamplingSum, fColorComponents[j].HSampling*fColorComponents[j].VSampling);
@@ -740,7 +741,7 @@ begin
           end;
         if not exists then
           GraphicExError(Format('component %d not present in frame header', [ScanHeaders[i].ComponentSelector]));
-        if SamplingSum>10 then
+        if SamplingSum > 10 then
           GraphicExError('too much subsampling involved (must be <= 10)');
         for j := i-1 downto 0 do
           if ScanHeaders[i].ComponentSelector = ScanHeaders[j].ComponentSelector then
@@ -766,16 +767,16 @@ begin
         GraphicExError('incorect start of spectral selection, must be 0..63');
       if ((fFrameType and $3) = 3) and ((Ss > 7) or (Ss = 0)) then
         GraphicExError('incorrect number of predictor for lossless, must be 1..7');
-      if ((fFrameType and $2) = 0) and (Ss <>0) then
+      if ((fFrameType and $2) = 0) and (Ss <> 0) then
         GraphicExError('start of spectral selection must be 0 for sequential DCT');
       Se := NextByte;
-      if ((fFrameType and $3) = 3) and (Se <>0) then
+      if ((fFrameType and $3) = 3) and (Se <> 0) then
         GraphicExError('spectral selection end must be 0 for lossless');
-      if ((fFrameType and $2) = 0) and (Se <>63) then
+      if ((fFrameType and $2) = 0) and (Se <> 63) then
         GraphicExError('spectral selection end must be 63 for sequential DCT');
       if ((fFrameType and $3) = 2) and (Se < Ss) then
         GraphicExError('end of spectral selection must be greater than its start');
-      if ((fFrameType and $3) = 2) and (Ss = 0) and (Se<>0) then
+      if ((fFrameType and $3) = 2) and (Ss = 0) and (Se <> 0) then
         GraphicExError('if start of spectral selection is zero, the end must be 0 also');
       //oof
       //successive approximation bit position high/low
@@ -783,7 +784,7 @@ begin
       Ah := (B and $F0) shr 4;
       if Ah > 13 then
         GraphicExError('successive approximation bit position high must be 0..13');
-      if ((fFrameType and $3) <>2) and (Ah<>0) then
+      if ((fFrameType and $3) <> 2) and (Ah <> 0) then
         GraphicExError('successive approximation bit position must be 0 for all modes except progressive');
       Al := B and $0F;
       if Al > 15 then
@@ -849,7 +850,7 @@ begin
   Diff := HuffReceive(T);
   Diff := HuffExtend(Diff, T);
   ZZ[0] := Diff + PRED[compNum];  //current DC coefficient
-  PRED[compNum]:=ZZ[0]; //getting ready for next one
+  PRED[compNum] := ZZ[0]; //getting ready for next one
 
   //AC, 63 of them
   k := 1;
@@ -861,7 +862,7 @@ begin
     RRRR := RS shr 4;
     if SSSS = 0 then
       if RRRR = 15 then begin
-        inc(k,16);  //skipped 16 zero coef at once
+        inc(k, 16);  //skipped 16 zero coef at once
         continue
       end
       else
@@ -887,15 +888,6 @@ end;
 
 procedure TJPEGDecoder.DecodeArithmBlock(CompNum: Integer; QuantID: Integer);
 begin
-
-
-
-
-
-
-
-
-
   GraphicExError('Sorry, arithmetic decoder is under construction');
 end;
 
@@ -903,7 +895,7 @@ procedure TJPEGDecoder.DecodeSequentialDCTScan;
 var compNum: Integer;
   i: Integer;
   sampX, sampY: Integer;
-  subsampX,subsampY: Integer; //we convert BIG interleave (8x8 blocks) into LITTLE one (pixels)
+  subsampX, subsampY: Integer; //we convert BIG interleave (8x8 blocks) into LITTLE one (pixels)
 
   BiggerBuffer: TRealArray512;  //won't struggle with fixed point arithmetic here
   PBuf: PRealArray512; //may point to BiggerBuffer as well as to fBuffer
@@ -911,7 +903,7 @@ var compNum: Integer;
   Run: PByte;
   WordRun: PWord absolute Run;
   BlockNum: Integer;
-  x,y: Integer;
+  x, y: Integer;
 
   VSamp, HSamp: Integer;
   offs: Integer;
@@ -937,24 +929,24 @@ begin
           fDecodeBlockProc(compNum,fColorComponents[ScanHeaders[compNum].ComponentSelector].QuantID);
 
           if (HSamp <> 1) or (VSamp <> 1) then begin
-            offs := sampX*8*VSamp + sampY*64*HSamp;
+            offs := sampX * 8 * VSamp + sampY * 64 * HSamp;
             //example: HSamp=VSamp=2. This way, subsampX, subsampY = 0..1,
             //BiggerBuffer runs from 0 to 3, while we extract (0;0), (1;0), (0;1) and (1;1)
             //from fBuffer.
-            y:=0;
+            y := 0;
             while y < 64 do begin
-              x:=0;
+              x := 0;
               while x < 8 do begin
-                for subsampY := 0 to VSamp-1 do
-                  for subsampX  := 0 to HSamp-1 do begin
-                    BufIndex := subsampX + subsampY*8 + x + y;
+                for subsampY := 0 to VSamp - 1 do
+                  for subsampX := 0 to HSamp - 1 do begin
+                    BufIndex := subsampX + subsampY * 8 + x + y;
                     BiggerBuffer[offs] := fBuffer[BufIndex];
                     inc(offs);
                   end;
                 inc(x, HSamp);
               end;
-              inc(y, VSamp*8);
-              inc(offs, 8*Vsamp*(Hsamp-1));
+              inc(y, VSamp * 8);
+              inc(offs, 8 * Vsamp * (Hsamp - 1));
             end;
           end;
         end; //loop over several luma samples per one chroma sample
@@ -965,7 +957,7 @@ begin
         PBuf := @BiggerBuffer;
       BufferWidth := 8 * HSamp;
       ColsToGo := 8 * HSamp;
-      if ((BlockNum mod fBlocksPerRow) = fBlocksPerRow-1) and ((fX mod ColsToGo) <> 0) then
+      if ((BlockNum mod fBlocksPerRow) = fBlocksPerRow - 1) and ((fX mod ColsToGo) <> 0) then
         ColsToGo := fx mod ColsToGo;
       RowsToGo := 8 * VSamp;
       if (BlockNum >= fBlocksPerRow * (fY div RowsToGo)) then
@@ -974,12 +966,12 @@ begin
       if fprecision = 8 then begin //1 byte per sample to dest
         for y := 0 to (RowsToGo div VSamp) - 1 do begin   //we must ensure earlier that fX and fY have integer number
           for x := 0 to (ColsToGo div HSamp) - 1 do begin // of HSamp,VSamp in it
-            for subsampY := 0 to VSamp*HSamp-1 do begin
+            for subsampY := 0 to VSamp * HSamp - 1 do begin
               Run^ := ClampByte(PBuf^[i] / 8 + 128);
               inc(i);
               inc(Run);
             end;
-            inc(Run, fInterleavedBlockSize-HSamp*VSamp);
+            inc(Run, fInterleavedBlockSize - HSamp * VSamp);
           end;
           inc(i,BufferWidth - ColsToGo);
           inc(Run, fRowSize - (ColsToGo div HSamp) * fInterleavedBlockSize);
@@ -991,7 +983,7 @@ begin
         end
       else
         GraphicExError('12-bit samples support under construction');
-      fColorComponents[ScanHeaders[compNum].ComponentSelector].Run:=Run;
+      fColorComponents[ScanHeaders[compNum].ComponentSelector].Run := Run;
     end; //loop over all the color components
     inc(BlockNum);
   until BlockNum >= fBlocksPerRow * fBlocksPerCol;
@@ -1019,7 +1011,7 @@ begin
   if Tag <> JPEG_SOI then
     GraphicExError('SOI expected at beginning of JPEG image/tables'); //should make rsrcstr
 
-  while fPackedSize>6 do begin  //we expect 2 bytes EOI at the end and also 2 bytes tag and 2 bytes size
+  while fPackedSize > 6 do begin  //we expect 2 bytes EOI at the end and also 2 bytes tag and 2 bytes size
     Tag := NextWord;
     case Tag of
       JPEG_QUANT: DecodeQuantTable;
@@ -1034,7 +1026,7 @@ begin
       else
         begin
           SectionSize := ReadBigEndianWord(PAnsiChar(fSource));
-          inc(PByte(fSource), SectionSize-2);  //jump to next label
+          inc(PByte(fSource), SectionSize - 2);  //jump to next label
           dec(fPackedSize, SectionSize);
         end;
     end;
@@ -1062,5 +1054,4 @@ end;
 
 initialization
   PopulateZigZag1D;
-
 end.

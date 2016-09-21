@@ -1265,7 +1265,7 @@ procedure TCCITTDecoder.ReverseBits(Source: Pointer; PackedSize: Integer);
 {$IFDEF ResortToPurePascal}
 var i: Integer;
 begin
-  for i := PackedSize-1 downto 0 do
+  for i := PackedSize - 1 downto 0 do
       PByteArray(Source)^[i] := ReverseTable[PByteArray(Source)^[i]];
 {$ELSE}
   asm
@@ -1766,9 +1766,9 @@ end;
 
 procedure TCCITTDecoder.UpdateChangingElem;
 begin
-  if Length(fChangingElems[not fRowUsed])<=fCurChangingElem then
-    SetLength(fChangingElems[not fRowUsed],Length(fChangingElems[not fRowUsed])*2+1); //asymptotically fast realloc
-  fChangingElems[not fRowUsed,fCurChangingElem]:=fBitPos;
+  if Length(fChangingElems[not fRowUsed]) <= fCurChangingElem then
+    SetLength(fChangingElems[not fRowUsed], Length(fChangingElems[not fRowUsed]) * 2 + 1); //asymptotically fast realloc
+  fChangingElems[not fRowUsed, fCurChangingElem] := fBitPos;
   inc(fCurChangingElem);
 end;
 
@@ -1857,23 +1857,23 @@ begin
   repeat
     // synchronize to start of next line
     fBitPos := 0;
-    fCurChangingElem:=0;
-    fPrevChangingElem:=0;
+    fCurChangingElem := 0;
+    fPrevChangingElem := 0;
     SynchBOL;
-    if ((FOptions and 1)<>0) and (not NextBit) then
+    if ((FOptions and 1) <> 0) and (not NextBit) then
     begin
       FIsWhite := True;
       //begin 2-dimension decoding here
       repeat
         RunLength :=Find2DCode;
         if RunLength = cePass then begin
-          FillRun(fChangingElems[fRowUsed,fPrevChangingElem+1]-fBitPos);  //we need b2 here
-          fBitPos := fChangingElems[fRowUsed,fPrevChangingElem+1];
+          FillRun(fChangingElems[fRowUsed, fPrevChangingElem + 1] - fBitPos);  //we need b2 here
+          fBitPos := fChangingElems[fRowUsed, fPrevChangingElem + 1];
 
           if Cardinal(fBitPos) >= FWidth then
             Break;
 
-          inc(fPrevChangingElem,2);
+          inc(fPrevChangingElem, 2);
         end
         else if RunLength = ceHorizontal then begin
           //two passes: black and then white
@@ -1884,7 +1884,7 @@ begin
           UpdateChangingElem;
 
           FIsWhite := not FIsWhite;
-          RunLength:=FindRunLength;
+          RunLength := FindRunLength;
           FillRun(RunLength);
           inc(fBitPos, RunLength);
 
@@ -1893,17 +1893,17 @@ begin
           if Cardinal(fBitPos) >= FWidth then
             Break;
 
-          while fChangingElems[fRowUsed,fPrevChangingElem]<=fBitPos do
+          while fChangingElems[fRowUsed, fPrevChangingElem] <= fBitPos do
             inc(fPrevChangingElem,2); //we might want to add 'dummy' at the end of line
           FIsWhite := not FIsWhite;
         end
         else if (RunLength > 1) and (RunLength < 9) then begin
           //vertical coding
-          if RunLength <6 then
-            RunLength := (fChangingElems[fRowUsed, fPrevChangingElem]-fBitPos)+(RunLength-2)  //R0 to R3
+          if RunLength < 6 then
+            RunLength := (fChangingElems[fRowUsed, fPrevChangingElem] - fBitPos) + (RunLength - 2)  //R0 to R3
           else
-            RunLength := (fChangingElems[fRowUsed, fPrevChangingElem]-fBitPos)-(RunLength-5);  //L1 to L3
-          if RunLength<0 then break; //some garbage got here
+            RunLength := (fChangingElems[fRowUsed, fPrevChangingElem] - fBitPos) - (RunLength - 5);  //L1 to L3
+          if RunLength < 0 then break; //some garbage got here
           FillRun(RunLength);
           inc(fBitPos, RunLength);
 
@@ -1915,11 +1915,11 @@ begin
           //find b positions again, that is moving CurChangingElem
 
           dec(fPrevChangingElem);  //as we may turn left, then maybe previous changing elem of same color is better
-          if fPrevChangingElem=-1 then
-            fPrevChangingElem:=1;
+          if fPrevChangingElem = -1 then
+            fPrevChangingElem := 1;
 
-          while fChangingElems[fRowUsed,fPrevChangingElem]<=fBitPos do
-            inc(fPrevChangingElem,2);
+          while fChangingElems[fRowUsed,fPrevChangingElem] <= fBitPos do
+            inc(fPrevChangingElem, 2);
         end
         else
           raise Exception.Create('special codes for reverting fax3 2D to uncompressed mode not implemented');
@@ -1931,7 +1931,7 @@ begin
       FIsWhite := True;
       // decode one line
       repeat
-        RunLength:=FindRunLength;
+        RunLength := FindRunLength;
         //populating array for 2D compression (if needed)
         if ((FOptions and 1) <> 0) then begin
           inc(fBitPos, RunLength);
@@ -1951,10 +1951,10 @@ begin
             Break;
       until (RunLength = G3_EOL) or (FPackedSize = 0);
     end;
-    fBitPos:=fWidth;
+    fBitPos := fWidth;
     UpdateChangingElem;
     AdjustEOL;
-    fRowUsed:=not fRowUsed;
+    fRowUsed := not fRowUsed;
   until (FPackedSize = 0) or (FTarget - PChar(Dest) >= UnpackedSize);
 end;
 
@@ -1995,29 +1995,29 @@ begin
   FTarget := Dest;
   FRestWidth := FWidth;
   FFreeTargetBits := 8;
-  fRowUsed:=false; //could be true as well, it's symmetric
-  fBitPos:=FWidth;
+  fRowUsed := false; //could be true as well, it's symmetric
+  fBitPos := FWidth;
   UpdateChangingElem; //this way we form white reference line
   UpdateChangingElem;
-  fRowUsed:=true;
+  fRowUsed := true;
 
   // main loop
   repeat
     // synchronize to start of next line
     fBitPos := 0;
-    fCurChangingElem:=0;
-    fPrevChangingElem:=0;
+    fCurChangingElem := 0;
+    fPrevChangingElem := 0;
     FIsWhite := True;
     repeat
-      RunLength :=Find2DCode;
+      RunLength := Find2DCode;
       if RunLength = cePass then begin
-        FillRun(fChangingElems[fRowUsed,fPrevChangingElem+1]-fBitPos);  //we need b2 here
-        fBitPos := fChangingElems[fRowUsed,fPrevChangingElem+1];
+        FillRun(fChangingElems[fRowUsed, fPrevChangingElem + 1] - fBitPos);  //we need b2 here
+        fBitPos := fChangingElems[fRowUsed, fPrevChangingElem + 1];
 
         if Cardinal(fBitPos) >= FWidth then
           Break;
 
-        inc(fPrevChangingElem,2);
+        inc(fPrevChangingElem, 2);
       end
       else if RunLength = ceHorizontal then begin
         //two passes: black and then white
@@ -2028,7 +2028,7 @@ begin
         UpdateChangingElem;
 
         FIsWhite := not FIsWhite;
-        RunLength:=FindRunLength;
+        RunLength := FindRunLength;
         FillRun(RunLength);
         inc(fBitPos, RunLength);
 
@@ -2037,17 +2037,17 @@ begin
         if Cardinal(fBitPos) >= FWidth then
           Break;
 
-        while fChangingElems[fRowUsed,fPrevChangingElem]<=fBitPos do
-          inc(fPrevChangingElem,2); //we might want to add 'dummy' at the end of line
+        while fChangingElems[fRowUsed, fPrevChangingElem] <= fBitPos do
+          inc(fPrevChangingElem, 2); //we might want to add 'dummy' at the end of line
         FIsWhite := not FIsWhite;
       end
       else if (RunLength > 1) and (RunLength < 9) then begin
         //vertical coding
-        if RunLength <6 then
-          RunLength := (fChangingElems[fRowUsed, fPrevChangingElem]-fBitPos)+(RunLength-2)  //R0 to R3
+        if RunLength < 6 then
+          RunLength := (fChangingElems[fRowUsed, fPrevChangingElem] - fBitPos)+(RunLength - 2)  //R0 to R3
         else
-          RunLength := (fChangingElems[fRowUsed, fPrevChangingElem]-fBitPos)-(RunLength-5);  //L1 to L3
-        if RunLength<0 then break; //some garbage got here
+          RunLength := (fChangingElems[fRowUsed, fPrevChangingElem] - fBitPos)-(RunLength - 5);  //L1 to L3
+        if RunLength< 0 then break; //some garbage got here
         FillRun(RunLength);
         inc(fBitPos, RunLength);
 
@@ -2059,20 +2059,19 @@ begin
         //find b positions again, that is moving CurChangingElem
 
         dec(fPrevChangingElem);  //as we may turn left, then maybe previous changing elem of same color is better
-        if fPrevChangingElem=-1 then
-          fPrevChangingElem:=1;
+        if fPrevChangingElem = -1 then
+          fPrevChangingElem := 1;
 
-        while fChangingElems[fRowUsed,fPrevChangingElem]<=fBitPos do
-          inc(fPrevChangingElem,2);
+        while fChangingElems[fRowUsed, fPrevChangingElem] <= fBitPos do
+          inc(fPrevChangingElem, 2);
       end
       else
         raise Exception.Create('special codes for reverting fax4 to uncompressed mode not implemented');
     until false;
-    //if BitPos>=FWidth then Exit;
-    fBitPos:=fWidth;
+    fBitPos := fWidth;
     UpdateChangingElem;
     AdjustEOL;
-    fRowUsed:=not fRowUsed;
+    fRowUsed := not fRowUsed;
   until (FPackedSize = 0) or (FTarget - PChar(Dest) >= UnpackedSize);
 end;
 
