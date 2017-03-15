@@ -57,4 +57,4 @@ Image Formats
 Compilation
 ===========
 
-The library is probably not fully compilable as it is here, as you need at least the zLib unit in addition. Precompiled object files for libtiff and libjpg are available in the 3rd party subfolder along with the BCB projects to build them. Everything's a bit old and probably needs some massaging to get this compiled on newer IDEs. I'd appreciate any contribution that makes the library compile nicely in the latest IDEs.
+The library is probably not fully compilable as it is here, as you need at least the zLib unit in addition. The rest of lib is now native Pascal which compiles in x86 as well as in x64. It was tested under Delphi 7 up to Delphi 10 Seattle IDE versions, working fine. 
