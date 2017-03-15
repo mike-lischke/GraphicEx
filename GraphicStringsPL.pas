@@ -1,4 +1,4 @@
-unit GraphicStrings;
+ï»¿unit GraphicStringsPL;
 
 // The original code is GraphicStrings.pas, released November 1, 1999.
 //
@@ -15,98 +15,98 @@ unit GraphicStrings;
 
 interface
 
-{$I GraphicConfiguration.inc}
-
-resourcestring
-  // image file descriptions
-  gesAllImages = 'Wszystkie obrazy';
-  gesRegistration = 'Próba podwójnej rejestracji %s.';
-
-  gesBitmaps = 'Mapy bitowe Windows';
-  gesRLEBitmaps = 'Mapy bitowe run length encoded Windows';
-  gesDIBs = 'Mapy bitowe Device independant Windows';
-  gesEPS = 'Obrazy Encapsulated Postscript';
-  gesIcons = 'Ikony Windows';
-  gesMetaFiles = 'Meta pliki Windows';
-  gesEnhancedMetaFiles = 'Ulepszone meta pliki Windows';
-  gesJPGImages = 'Obrazy JPG';
-  gesJPEGImages = 'Obrazy JPEG';
-  gesJPEImages = 'Obrazy JPE';
-  gesJFIFImages = 'Obrazy JFIF';
-  gesTruevision = 'Obrazy Truevision';
-  gesTIFF = 'Tagged image file format images';
-  gesMacTIFF =  'Obrazy Macintosh TIFF';
-  gesPCTIF = 'Obrazy PC TIF';
-  gesGFIFax = 'Obrazy GFI fax';
-  gesSGI = 'Obrazy SGI';
-  gesSGITrueColor = 'Obrazy SGI true color';
-  gesZSoft = 'Obrazy ZSoft Paintbrush';
-  gesZSoftWord = 'Zrzut ekranu Word 5.x';
-  gesAliasWaveFront = 'Obrazy Alias/Wavefront';
-  gesSGITrueColorAlpha = 'Obrazy SGI true color with alpha';
-  gesSGIMono = 'Czarno-bia³e obrazy SGI';
-  gesPhotoshop = 'Obrazy Photoshop';
-  gesPortable = 'Obrazy Portable map';
-  gesPortablePixel = 'Obrazy Portable pixel map';
-  gesPortableGray = 'Obrazy Portable gray map';
-  gesPortableMono = 'Obrazy Portable bitmap';
-  gesAutoDesk = 'Obrazy Autodesk';
-  gesKodakPhotoCD = 'Obrazy Kodak Photo-CD';
-  gesCompuserve = 'Obrazy CompuServe';
-  gesHalo = 'Obrazy Dr. Halo';
-  gesPaintShopPro = 'Obrazy Paintshop Pro';
-  gesPaintshopProFrames = 'Paintshop Pro frames';
-  gesPaintshopProTubes = 'Paintshop Pro tubes';
-  gesPortableNetworkGraphic = 'Obrazy Portable network graphic';
-
-  // image specific error messages
-  gesInvalidImage = 'Nie mogê otworzyæ obrazu. B³êdny lub niespodziewany %s format.';
-  gesInvalidColorFormat = 'B³êdny format kolorów w pliku %s.';
-  gesStreamReadError = 'B³¹d odczytu strumienia danych z pliku %s.';
-  gesUnsupportedImage = 'Nie mogê otworzyæ obrazu. Nieobs³ugiwany format %s.';
-  gesUnsupportedFeature = 'Nie mogê otworzyæ obrazu. %s nie obs³uguje plików %s.';
-  gesInvalidCRC = 'Nie mogê otworzyæ obrazu. B³¹d CRC w pliku %s.';
-  gesCompression = 'Nie mogê otworzyæ obrazu. B³¹d kompresji w pliku %s.';
-  gesExtraCompressedData = 'Nie mogê otworzyæ obrazu. Nieznany typ kompresji w pliku %s.';
-  gesInvalidPalette = 'Nie mogê otworzyæ obrazu. B³êdna paleta kolorów w pliku %s.';
-  gesUnknownCriticalChunk = 'Nie mogê otworzyæ obrazu PNG. Napodkano krytczny wyj¹tek.';
-
-  // features (usually used together with unsupported feature string)
-  gesCompressionScheme = 'Metoda kompresji to';
-  gesRLAPixelFormat = 'Formaty inne ni¿ RGB i RGBA to';
-  gesPSPFileType = 'Pliki w wersji innej ni¿ 3 lub 4 to';
-
-  // color manager error messages
-  gesIndexedNotSupported = 'Konwersja pomiêdzy indeksowanym i nieindeksowanym formatem punktów nie jest obs³ugiwana.';
-  gesConversionUnsupported = 'B³¹d konwersji koloru. Nie mogê znaleŸæ odpowiedniej metody.';
-  gesInvalidSampleDepth = 'B³êdna g³êbia kolorów. Powinno byæ 1, 2, 4, 8 lub 16 bitów na próbkê.';
-  gesInvalidPixelDepth = 'Iloœæ próbek na punkt nLanguageie odpowiada danemu schematowi kolorów.';
-  gesInvalidSubSampling = 'B³êdna wartoœæ Subsampling. Dozwolona jest 1, 2 i 4.';
-  gesVerticalSubSamplingError = 'Pionowa wartoœæ Subsampling nie mo¿e byæ wiêksza ni¿ pozioma.';
-
-  // progress strings
-  gesPreparing = 'Przygotowywanie...';
-  gesLoadingData = 'Czytanie danych...';
-  gesUpsampling = 'Próbkowanie...';
-  gesTransfering = 'Transferowanie...';
-
-  // compression errors
-  gesLZ77Error = 'B³¹d dekompresji LZ77.';
-  gesJPEGEOI = 'B³¹d dekompresji JPEG. Niespodziewany koniec danych wejœciowych.';
-  gesJPEGStripSize = 'Niew³aœciwy rozmiar JPEG strip/tile.';
-  gesJPEGComponentCount = 'Niew³aœciwy JPEG component count.';
-  gesJPEGDataPrecision = 'Niew³aœciwa precyzja danych JPEG.';
-  gesJPEGSamplingFactors = 'Niew³aœciwe próbkowanie JPEG.';
-  gesJPEGBogusTableField = 'B³¹d zakresu w tablicy JPEG.';
-  gesJPEGFractionalLine = 'Fractional JPEG scanline nie jest obs³ugiwany.';
-
-  // miscellaneous
-  gesWarning = 'Uwaga';
-
 //----------------------------------------------------------------------------------------------------------------------
 
 implementation
 
+uses GraphicStrings, AutoResourceStr, Windows;
+
+initialization
+  with AutoResourceString(MakeLangId(LANG_POLISH, SUBLANG_NEUTRAL)) do begin
+    Add(gesAllImages, 'Wszystkie obrazy');
+    Add(gesRegistration, 'PrÃ³ba podwÃ³jnej rejestracji %s.');
+
+    Add(gesBitmaps, 'Mapy bitowe Windows');
+    Add(gesRLEBitmaps, 'Mapy bitowe run length encoded Windows');
+    Add(gesDIBs, 'Mapy bitowe Device independant Windows');
+    Add(gesEPS, 'Obrazy Encapsulated Postscript');
+    Add(gesIcons, 'Ikony Windows');
+    Add(gesMetaFiles, 'Meta pliki Windows');
+    Add(gesEnhancedMetaFiles, 'Ulepszone meta pliki Windows');
+    Add(gesJPGImages, 'Obrazy JPG');
+    Add(gesJPEGImages, 'Obrazy JPEG');
+    Add(gesJPEImages, 'Obrazy JPE');
+    Add(gesJFIFImages, 'Obrazy JFIF');
+    Add(gesTruevision, 'Obrazy Truevision');
+    Add(gesTIFF, 'Tagged image file format Images');
+    Add(gesMacTIFF,  'Obrazy Macintosh TIFF');
+    Add(gesPCTIF, 'Obrazy PC TIF');
+    Add(gesGFIFax, 'Obrazy GFI fax');
+    Add(gesSGI, 'Obrazy SGI');
+    Add(gesSGITrueColor, 'Obrazy SGI true color');
+    Add(gesZSoft, 'Obrazy ZSoft Paintbrush');
+    Add(gesZSoftWord, 'Zrzut ekranu Word 5.x');
+    Add(gesAliasWaveFront, 'Obrazy Alias/Wavefront');
+    Add(gesSGITrueColorAlpha, 'Obrazy SGI true color with alpha');
+    Add(gesSGIMono, 'Czarno-biaÅ‚e obrazy SGI');
+    Add(gesPhotoshop, 'Obrazy Photoshop');
+    Add(gesPortable, 'Obrazy Portable map');
+    Add(gesPortablePixel, 'Obrazy Portable pixel map');
+    Add(gesPortableGray, 'Obrazy Portable gray map');
+    Add(gesPortableMono, 'Obrazy Portable bitmap');
+    Add(gesAutoDesk, 'Obrazy Autodesk');
+    Add(gesKodakPhotoCD, 'Obrazy Kodak Photo-CD');
+    Add(gesCompuserve, 'Obrazy CompuServe');
+    Add(gesHalo, 'Obrazy Dr. Halo');
+    Add(gesPaintShopPro, 'Obrazy Paintshop Pro');
+    Add(gesPaintshopProFrames, 'Paintshop Pro frames');
+    Add(gesPaintshopProTubes, 'Paintshop Pro tubes');
+    Add(gesPortableNetworkGraphic, 'Obrazy Portable network graphic');
+
+    // image specific error messaAdd(ges
+    Add(gesInvalidImage, 'Nie mogÄ™ otworzyÄ‡ obrazu. BÅ‚Ä™dny lub niespodziewany %s format.');
+    Add(gesInvalidColorFormat, 'BÅ‚Ä™dny format kolorÃ³w w pliku %s.');
+    Add(gesStreamReadError, 'BÅ‚Ä…d odczytu strumienia danych z pliku %s.');
+    Add(gesUnsupportedImage, 'Nie mogÄ™ otworzyÄ‡ obrazu. NieobsÅ‚ugiwany format %s.');
+    Add(gesUnsupportedFeature, 'Nie mogÄ™ otworzyÄ‡ obrazu. %s nie obsÅ‚uguje plikÃ³w %s.');
+    Add(gesInvalidCRC, 'Nie mogÄ™ otworzyÄ‡ obrazu. BÅ‚Ä…d CRC w pliku %s.');
+    Add(gesCompression, 'Nie mogÄ™ otworzyÄ‡ obrazu. BÅ‚Ä…d kompresji w pliku %s.');
+    Add(gesExtraCompressedData, 'Nie mogÄ™ otworzyÄ‡ obrazu. Nieznany typ kompresji w pliku %s.');
+    Add(gesInvalidPalette, 'Nie mogÄ™ otworzyÄ‡ obrazu. BÅ‚Ä™dna paleta kolorÃ³w w pliku %s.');
+    Add(gesUnknownCriticalChunk, 'Nie mogÄ™ otworzyÄ‡ obrazu PNG. Napodkano krytczny wyjÄ…tek.');
+
+    // features (usually used together with unsupported feature string)
+    Add(gesCompressionScheme, 'Metoda kompresji to');
+    Add(gesRLAPixelFormat, 'Formaty inne niÅ¼ RGB i RGBA to');
+    Add(gesPSPFileType, 'Pliki w wersji innej niÅ¼ 3 lub 4 to');
+
+    // color manager error messaAdd(ges
+    Add(gesIndexedNotSupported, 'Konwersja pomiÄ™dzy indeksowanym i nieindeksowanym formatem punktÃ³w nie jest obsÅ‚ugiwana.');
+    Add(gesConversionUnsupported, 'BÅ‚Ä…d konwersji koloru. Nie mogÄ™ znaleÅºÄ‡ odpowiedniej metody.');
+    Add(gesInvalidSampleDepth, 'BÅ‚Ä™dna gÅ‚Ä™bia kolorÃ³w. Powinno byÄ‡ 1, 2, 4, 8 lub 16 bitÃ³w na prÃ³bkÄ™.');
+    Add(gesInvalidPixelDepth, 'IloÅ›Ä‡ prÃ³bek na punkt nLanguageie odpowiada danemu schematowi kolorÃ³w.');
+    Add(gesInvalidSubSampling, 'BÅ‚Ä™dna wartoÅ›Ä‡ Subsampling. Dozwolona jest 1, 2 i 4.');
+    Add(gesVerticalSubSamplingError, 'Pionowa wartoÅ›Ä‡ Subsampling nie moÅ¼e byÄ‡ wiÄ™ksza niÅ¼ pozioma.');
+
+    // progress strings
+    Add(gesPreparing, 'Przygotowywanie...');
+    Add(gesLoadingData, 'Czytanie danych...');
+    Add(gesUpsampling, 'PrÃ³bkowanie...');
+    Add(gesTransfering, 'Transferowanie...');
+
+    // compression errors
+    Add(gesLZ77Error, 'BÅ‚Ä…d dekompresji LZ77.');
+    Add(gesJPEGEOI, 'BÅ‚Ä…d dekompresji JPEG. Niespodziewany koniec danych wejÅ›ciowych.');
+    Add(gesJPEGStripSize, 'NiewÅ‚aÅ›ciwy rozmiar JPEG strip/tile.');
+    Add(gesJPEGComponentCount, 'NiewÅ‚aÅ›ciwy JPEG component count.');
+    Add(gesJPEGDataPrecision, 'NiewÅ‚aÅ›ciwa precyzja danych JPEG.');
+    Add(gesJPEGSamplingFactors, 'NiewÅ‚aÅ›ciwe prÃ³bkowanie JPEG.');
+    Add(gesJPEGBogusTableField, 'BÅ‚Ä…d zakresu w tablicy JPEG.');
+    Add(gesJPEGFractionalLine, 'Fractional JPEG scanline nie jest obsÅ‚ugiwany.');
+
+    // miscellaneous
+    Add(gesWarning, 'Uwaga');
+  end;
 //----------------------------------------------------------------------------------------------------------------------
 
 end.

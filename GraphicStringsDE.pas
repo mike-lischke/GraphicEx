@@ -1,4 +1,4 @@
-unit GraphicStrings;
+Ôªøunit GraphicStringsDE;
 
 // The original code is GraphicStrings.pas, released November 1, 1999.
 //
@@ -15,77 +15,76 @@ unit GraphicStrings;
 //----------------------------------------------------------------------------------------------------------------------
 
 interface
-                   
-{$I GraphicConfiguration.inc}
-
-resourcestring
-  // image file descriptions
-  gesAllImages = 'Alle Bilder';
-  gesRegistration = 'Das Format %s ist schon registriert.';
-
-  gesBitmaps = 'Windows bitmaps';
-  gesRLEBitmaps = 'Run length encoded Windows bitmaps';
-  gesDIBs = 'Ger‰teunabh‰ngige Windows bitmaps';
-  gesIcons = 'Windows icons';
-  gesMetaFiles = 'Windows metafiles';
-  gesEnhancedMetaFiles = 'Windows erweiterte metafiles';
-  gesJPGImages = 'JPG Bilder';
-  gesJPEGImages = 'JPEG Bilder';
-  gesTruevision = 'Truevision Bilder';
-  gesTIFF = 'Tagged image file format';
-  gesMacTIFF =  'Macintosh TIFF Bilder';
-  gesPCTIF = 'PC TIF Bilder';
-  gesSGI = 'SGI Bilder';
-  gesSGITrueColor = 'SGI True Color Bilder';
-  gesZSoft = 'ZSoft Paintbrush Bilder';
-  gesZSoftWord = 'Word 5.x Snapschuss Bilder';
-  gesAliasWaveFront = 'Alias/Wavefront Bilder';
-  gesSGITrueColorAlpha = 'SGI True Color Bilder mit Transparenz';
-  gesSGIMono = 'SGI schwarz/weiss Bilder';
-  gesPhotoshop = 'Photoshop Bilder';
-  gesPortable = 'Portable map Bilder';
-  gesPortablePixel = 'Portable pixel map Bilder';
-  gesPortableGray = 'Portable gray map Bilder';
-  gesPortableMono = 'Portable bitmap Bilder';
-  gesAutoDesk = 'Autodesk Bilder';
-  gesKodakPhotoCD = 'Kodak Photo-CD Bilder';
-  gesCompuserve = 'CompuServe Bilder';
-  gesHalo = 'Dr. Halo Bilder';
-  gesPaintShopPro = 'Paintshop Pro Bilder';
-  gesPaintshopProFrames = 'Paintshop Pro Frames';
-  gesPaintshopProTubes = 'Paintshop Pro Tubes';
-  gesPortableNetworkGraphic = 'Portable network graphic Bilder';
-
-  // image specific error messages
-  gesInvalidImage = 'Bild konnte nicht geladen werden. Ung¸ltiges oder unerwartetes %s Bildformat.';
-  gesInvalidColorFormat = 'Ung¸ltiges Farbformat in %s Bild.';
-  gesStreamReadError = 'Stream Lesefehler in %s Datei.';
-  gesUnsupportedImage = 'Bild konnte nicht geladen werden. Nicht unterst¸tztes %s Bildformat.';
-  gesUnsupportedFeature = 'Bild konnte nicht geladen werden. %s nicht unterst¸tzt f¸r %s Dateien.';
-  gesInvalidCRC = 'Bild konnte nicht geladen werden. Ein CRC Fehler ist in der %s Datei aufgetreten.';
-  gesCompression = 'Bild konnte nicht geladen werden. Kompressionsfehler in %s Datei gefunden.';
-  gesExtraCompressedData = 'Bild konnte nicht geladen werden. Zuviele komprimierte Daten in %s Datei gefunden.';
-  gesInvalidPalette = 'Bild konnte nicht geladen werden. Palette in %s Datei ist ung¸ltig.';
-
-  // features (usually used together with unsupported feature string)
-  gesCompressionScheme = 'Das Kompressionsschema wird';
-  gesPCDImageSize = 'Bildgrˆﬂen auﬂer Base16, Base4 oder Base werden';
-  gesRLAPixelFormat = 'Bildformate auﬂer RGB und RGBA werden';
-  gesPSPFileType = 'Dateiversionen auﬂer 3 oder 4 werden';
-
-  // errors which apply only to specific image types
-  gesUnknownCriticalChunk = 'PNG Bild konnte nicht geladen werden. Unerwarteten, aber notwendigen Chunk gefunden.';
-
-  // color manager error messages
-  gesIndexedNotSupported = 'Konversion zwischen indizierten and nicht-indizierten Farbformaten wird nicht unterst¸tzt.';
-  gesConversionUnsupported = 'Farbkonversion schlug fehl. Konnte keine Methode zur Konversion finden.';
-  gesInvalidSampleDepth = 'Farbtiefe ist ung¸ltig. Bits pro Sample muﬂ entweder 1, 2, 4, 8 or 16 sein.';
-  gesInvalidPixelDepth = 'Sample Anzahl pro Pixel korrespondiert nicht mit dem eingestellten Farbschema.';
-
 //----------------------------------------------------------------------------------------------------------------------
 
 implementation
 
+uses GraphicStrings, AutoResourceStr, windows;
+
+initialization
+  with AutoResourceString(MakeLangId(LANG_GERMAN, SUBLANG_GERMAN)) do begin
+    Add(gesAllImages, 'Alle Bilder');
+    Add(gesRegistration, 'Das Format %s ist schon registriert.');
+
+    Add(gesBitmaps, 'Windows bitmaps');
+    Add(gesRLEBitmaps, 'Run length encoded Windows bitmaps');
+    Add(gesDIBs, 'Ger√§teunabh√§ngige Windows bitmaps');
+    Add(gesIcons, 'Windows icons');
+    Add(gesMetaFiles, 'Windows metafiles');
+    Add(gesEnhancedMetaFiles, 'Windows erweiterte metafiles');
+    Add(gesJPGImages, 'JPG Bilder');
+    Add(gesJPEGImages, 'JPEG Bilder');
+    Add(gesTruevision, 'Truevision Bilder');
+    Add(gesTIFF, 'Tagged image file format');
+    Add(gesMacTIFF,  'Macintosh TIFF Bilder');
+    Add(gesPCTIF, 'PC TIF Bilder');
+    Add(gesSGI, 'SGI Bilder');
+    Add(gesSGITrueColor, 'SGI True Color Bilder');
+    Add(gesZSoft, 'ZSoft Paintbrush Bilder');
+    Add(gesZSoftWord, 'Word 5.x Snapschuss Bilder');
+    Add(gesAliasWaveFront, 'Alias/Wavefront Bilder');
+    Add(gesSGITrueColorAlpha, 'SGI True Color Bilder mit Transparenz');
+    Add(gesSGIMono, 'SGI schwarz/weiss Bilder');
+    Add(gesPhotoshop, 'Photoshop Bilder');
+    Add(gesPortable, 'Portable map Bilder');
+    Add(gesPortablePixel, 'Portable pixel map Bilder');
+    Add(gesPortableGray, 'Portable gray map Bilder');
+    Add(gesPortableMono, 'Portable bitmap Bilder');
+    Add(gesAutoDesk, 'Autodesk Bilder');
+    Add(gesKodakPhotoCD, 'Kodak Photo-CD Bilder');
+    Add(gesCompuserve, 'CompuServe Bilder');
+    Add(gesHalo, 'Dr. Halo Bilder');
+    Add(gesPaintShopPro, 'Paintshop Pro Bilder');
+    Add(gesPaintshopProFrames, 'Paintshop Pro Frames');
+    Add(gesPaintshopProTubes, 'Paintshop Pro Tubes');
+    Add(gesPortableNetworkGraphic, 'Portable network graphic Bilder');
+
+    // image specific error messaAdd(ges
+    Add(gesInvalidImage, 'Bild konnte nicht geladen werden. Ung√ºltiAdd(ges oder unerwartetes %s Bildformat.');
+    Add(gesInvalidColorFormat, 'Ung√ºltiAdd(ges Farbformat in %s Bild.');
+    Add(gesStreamReadError, 'Stream Lesefehler in %s Datei.');
+    Add(gesUnsupportedImage, 'Bild konnte nicht geladen werden. Nicht unterst√ºtztes %s Bildformat.');
+    Add(gesUnsupportedFeature, 'Bild konnte nicht geladen werden. %s nicht unterst√ºtzt f√ºr %s Dateien.');
+    Add(gesInvalidCRC, 'Bild konnte nicht geladen werden. Ein CRC Fehler ist in der %s Datei aufgetreten.');
+    Add(gesCompression, 'Bild konnte nicht geladen werden. Kompressionsfehler in %s Datei gefunden.');
+    Add(gesExtraCompressedData, 'Bild konnte nicht geladen werden. Zuviele komprimierte Daten in %s Datei gefunden.');
+    Add(gesInvalidPalette, 'Bild konnte nicht geladen werden. Palette in %s Datei ist ung√ºltig.');
+
+    // features (usually used together with unsupported feature string)
+    Add(gesCompressionScheme, 'Das Kompressionsschema wird');
+//    Add(gesPCDImagesize, 'Bildgr√∂√üen au√üer Base16, Base4 oder Base werden');
+    Add(gesRLAPixelFormat, 'Bildformate au√üer RGB und RGBA werden');
+    Add(gesPSPFileType, 'Dateiversionen au√üer 3 oder 4 werden');
+
+    // errors which apply only to specific image types
+    Add(gesUnknownCriticalChunk, 'PNG Bild konnte nicht geladen werden. Unerwarteten, aber notwendigen Chunk gefunden.');
+
+    // color manager error messaAdd(ges
+    Add(gesIndexedNotSupported, 'Konversion zwischen indizierten and nicht-indizierten Farbformaten wird nicht unterst√ºtzt.');
+    Add(gesConversionUnsupported, 'Farbkonversion schlug fehl. Konnte keine Methode zur Konversion finden.');
+    Add(gesInvalidSampleDepth, 'Farbtiefe ist ung√ºltig. Bits pro Sample mu√ü entweder 1, 2, 4, 8 or 16 sein.');
+    Add(gesInvalidPixelDepth, 'Sample Anzahl pro Pixel korrespondiert nicht mit dem einAdd(gestellten Farbschema.');
+  end;
 //----------------------------------------------------------------------------------------------------------------------
 
 end.

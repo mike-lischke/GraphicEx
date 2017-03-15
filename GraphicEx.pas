@@ -10906,7 +10906,9 @@ initialization
     TPicture.UnregisterGraphicClass(TMetafile);
 
     RegisterFileFormat('bmp', gesBitmaps, '', [ftRaster,ftEnableSaving], False, TBitmap);
+    TPicture.RegisterClipboardFormat(CF_BITMAP, TBitmap);
     RegisterFileFormat('ico', gesIcons, '', [ftRaster], False, TIcon);
+    TPicture.RegisterClipboardFormat(CF_METAFILEPICT, TMetafile);
 
     RegisterFileFormat('wmf', gesMetaFiles, '', [ftVector,ftEnableSaving], False, TMetafile);
     RegisterFileFormat('emf', gesMetaFiles, gesEnhancedMetaFiles, [ftVector,ftEnableSaving], False, TMetafile);
