@@ -19,11 +19,12 @@ unit GraphicStringsEN;
 //----------------------------------------------------------------------------------------------------------------------
 
 interface
-
+uses AutoResourceStr, GraphicStrings; //so first GraphicStrings will be freed
+//(while custom variant is still working), only then freeing custom variant class
 
 implementation
 
-uses GraphicStrings, AutoResourceStr, windows;
+uses windows;
 
 initialization
   with AutoResourceString(MakeLangId(LANG_ENGLISH, SUBLANG_ENGLISH_US)) do begin

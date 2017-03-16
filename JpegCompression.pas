@@ -1,5 +1,18 @@
 unit JpegCompression;
 
+(*
+    implementation of JPEG decoder from scratch
+    by now only baseline JPEG is supported, but may be extended later.
+    So far it is used to decode TIFF files with JPEG compression,
+    but after arithmetic decoder is implemented it would be handy on its own,
+    as Delphi JPEG library still doesn't support arithmetic
+    (like the most of other programs, too...)
+
+    By nabbla (nabbla@yandex.ru)
+
+*)
+
+
 interface
 
 uses GraphicCompression;
@@ -37,17 +50,20 @@ type
   TRealArray64 = array [0..63] of Real; //to store coefs. for DCT
   PRealArray64 = ^TRealArray64;
 
-  TRealArray512 = array [0..511] of Real; //to store several blocks for DCT
+  TRealArray512 = array [0..511] of Real; //to store several blocks for DCT when subsampling is used
   PRealArray512 = ^TRealArray512;
 
   TDecodeBlockProc = procedure(compNum, QuantID: Integer) of Object;  //we'll have Huffman and (later) Arithm here
 
   TJPEGDecoder = class(TDecoder)
   private
-    FImageProperties: Pointer; // anonymously declared because I cannot take GraphicEx.pas in the uses clause above
-    FQuantTables: array [0..3] of TRealArray64;  //we multiply them by scaling factors for AAN iDCT
-    FHuffmanTables: array [boolean] of array [0..3] of PHuffmanTables;  //FHuffmanTables[IsDC][id], New/Dispose should be used
-                                                                        //to initialize/finalize dynamic arrays
+    // anonymously declared because I cannot take GraphicEx.pas in the uses clause above
+    FImageProperties: Pointer;
+    //we multiply them by scaling factors for AAN iDCT
+    FQuantTables: array [0..3] of TRealArray64;
+    //that's FHuffmanTables[IsDC][id], New/Dispose should be used
+    //to initialize/finalize dynamic arrays
+    FHuffmanTables: array [boolean] of array [0..3] of PHuffmanTables;
     FSource: Pointer;
     FDest: Pointer;
     fPackedSize: Integer; //for reader of next values
@@ -70,7 +86,7 @@ type
     PRED: array [0..3] of Integer;  //previous DC coefficient for each component.
       //After each RST it must reset to 0
       //no more than 4 components per scan is allowed, so we use static array here
-  //settings of current scan
+    //settings of current scan
     Ns: Word; //number of components in current scan
     ScanHeaders: array of TJpegScanHeader;
     Ss: Byte; //start of spectral/predictor selection
@@ -111,7 +127,7 @@ procedure IDCT(var fltData: TRealArray64);
 
 implementation
 
-uses GraphicEx, SysUtils, math;
+uses GraphicEx, SysUtils, math, GraphicStrings;
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------- TTIFFJPEGDecoder ---------------------------------------------------------------------------------------
@@ -138,8 +154,8 @@ const JPEG_SOI   = $FFD8; //start of image
       JPEG_SOF14 = $FFCE; //differential progressive DCT
       JPEG_SOF15 = $FFCF; //differential lossless (sequential)
 
-      JPEG_SOS   = $FFDA;
-      JPEG_EOI   = $FFD9;
+      JPEG_SOS   = $FFDA; //start of scan
+      JPEG_EOI   = $FFD9; //end of image
 
       JPEG_DNL   = $DC; //define number of lines
 
@@ -429,7 +445,7 @@ end;
 function TJPEGDecoder.NextByte: Byte;
 begin
   if fPackedSize = 0 then
-    GraphicExError('unexpected end of data');
+    GraphicExError(gesJPEGEOI);
   Result := PByte(fSource)^;
   inc(PByte(fSource));
   dec(fPackedSize);
@@ -438,7 +454,7 @@ end;
 function TJPEGDecoder.NextWord: Word;
 begin
   if fPackedSize<2 then
-    GraphicExError('unexpected end of data');
+    GraphicExError(gesJPEGEOI);
   Result := ReadBigEndianWord(PAnsiChar(fSource));  //it will advance 2 bytes
   dec(fPackedSize,2);
 end;
@@ -581,12 +597,12 @@ begin
   B := NextByte;
   ID := B and $0F;
   if ID > 3 then
-    GraphicExError('Huffman table ID must be 0..3');
+    GraphicExError(gesJPEGBogusTableField);  //'Huffman table ID must be 0..3'
   isDC := (B and $F0) = 0;
   if fHuffmanTables[isDC, ID] = nil then
     New(fHuffmanTables[isDC, ID]);
   if SectionSize < 19 then
-    GraphicExError('Incorrect size of Huffman table (less than 19 bytes)');
+    GraphicExError(gesJPEGBogusTableField); //'Incorrect size of Huffman table (less than 19 bytes)'
   CodesCount := 0;
   with fHuffmanTables[isDC, ID]^ do begin
     for i := 0 to 15 do begin
@@ -594,9 +610,9 @@ begin
       inc(CodesCount, Bits[i]);
     end;
     if SectionSize <> 2+1+16+CodesCount then
-      GraphicExError('Incorrect size of Huffman table');
-    SetLength(HuffVal,CodesCount);
-    for i := 0 to CodesCount-1 do
+      GraphicExError(gesJPEGBogusTableField); //'Incorrect size of Huffman table'
+    SetLength(HuffVal, CodesCount);
+    for i := 0 to CodesCount - 1 do
       HuffVal[i] := NextByte;
     //let's compute codes from data we have
 
@@ -607,7 +623,7 @@ begin
     k := 0;
     repeat
       if j <= Bits[i] then begin
-        HuffSize[k] := i+1;
+        HuffSize[k] := i + 1;
         inc(k);
         inc(j);
         continue;
@@ -661,41 +677,41 @@ var HL: Word;
 begin
   HL := NextWord;
   if HL < 11 then
-    GraphicExError('start of frame header is too short (less then 11 bytes)');
+    GraphicExError(gesJPEGBogusTableField); //'start of frame header is too short (less then 11 bytes)'
   fPrecision := NextByte;
   if (fPrecision <> 8) and (fPrecision <> 12) then
-    GraphicExError('only sample sizes of 8 or 12 are allowed in JPEG');
+    GraphicExError(gesJPEGDataPrecision); //'only sample sizes of 8 or 12 are allowed in JPEG'
   if fPrecision = 8 then
     fBytesPerSample := 1
   else
     fBytesPerSample := 2;
   if (fframeType = JPEG_SOF0) and (fPrecision = 12) then
-    GraphicExError('12-bit samples not allowed in baseline JPEG');
+    GraphicExError(gesJPEGDataPrecision); //'12-bit samples not allowed in baseline JPEG'
   fY := NextWord;  //number of lines (0 means implicit)
   fX := NextWord;  //number of sample per line
   if fX = 0 then
-    GraphicExError('zero samples per line is not allowed');
+    GraphicExError(gesJPEGComponentCount); //'zero samples per line is not allowed'
   Nf := NextByte; //number of image components in frame
   if (Nf > 4) and ((fframeType and $03) = 2) then
-    GraphicExError('number of image components more than 4 not allowed in progressive JPEG');
+    GraphicExError(gesJPEGComponentCount); //'number of image components more than 4 not allowed in progressive JPEG'
   SetLength(fColorComponents, Nf);
   for i := 0 to Nf-1 do begin
     fColorComponents[i].ComponentID := NextByte;
     for j := i - 1 downto 0 do
       if fColorComponents[i].ComponentID = fColorComponents[j].ComponentID then
-        GraphicExError('two image components with same ID not allowed');
+        GraphicExError(gesJPEGBogusTableField); //'two image components with same ID not allowed'
     B := NextByte;
     fColorComponents[i].HSampling := (B and $F0) shr 4;
     if fColorComponents[i].HSampling > 4 then
-      GraphicExError('horizontal sampling more than 4 not allowed');
+      GraphicExError(gesJPEGSamplingFactors); //'horizontal sampling more than 4 not allowed'
     fColorComponents[i].VSampling := B and $0F;
     if fColorComponents[i].VSampling > 4 then
-      GraphicExError('vertical sampling more than 4 not allowed');
+      GraphicExError(gesJPEGSamplingFactors); //'vertical sampling more than 4 not allowed'
     fColorComponents[i].QuantID := NextByte;
     if fColorComponents[i].QuantId > 3 then
-      GraphicExError('quantization table ID must be 0..3');
+      GraphicExError(gesJPEGBogusTableField); //'quantization table ID must be 0..3'
     if (fColorComponents[i].QuantId <> 0) and ((fframeType and $03) = 3) then
-      GraphicExError('quantization table ID<>0 not allowed for lossless');
+      GraphicExError(gesJPEGBogusTableField); //'quantization table ID<>0 not allowed for lossless'
 //    if FQuantTables[fColorComponents[i].QuantId]=nil then
 //      GraphicExError(Format('quantization table %d not present',[fColorComponents[i].QuantId]));
   end;
@@ -723,9 +739,9 @@ begin
       HL := NextWord; //length of SOS header
       Ns := NextByte;
       if (Ns > 4) or (Ns = 0) then
-        GraphicExError('incorrect number of image components per scan (should be 1..4)');
+        GraphicExError(gesJPEGComponentCount); //'incorrect number of image components per scan (should be 1..4)'
       if HL <> 6 + 2 * Ns then
-        GraphicExError('incorrect size of SOS header');
+        GraphicExError(gesJPEGBogusTableField); //'incorrect size of SOS header'
       SetLength(ScanHeaders, Ns);
       SamplingSum := 0;
       for I := 0 to Ns - 1 do begin
@@ -740,52 +756,52 @@ begin
             break;
           end;
         if not exists then
-          GraphicExError(Format('component %d not present in frame header', [ScanHeaders[i].ComponentSelector]));
+          GraphicExError(gesJPEGComponentCount); //Format('component %d not present in frame header', [ScanHeaders[i].ComponentSelector])
         if SamplingSum > 10 then
-          GraphicExError('too much subsampling involved (must be <= 10)');
+          GraphicExError(gesJPEGSamplingFactors); //'too much subsampling involved (must be <= 10)'
         for j := i-1 downto 0 do
           if ScanHeaders[i].ComponentSelector = ScanHeaders[j].ComponentSelector then
-            GraphicExError(Format('component %d is duplicated in scan header',[ScanHeaders[i].ComponentSelector]));
+            GraphicExError(gesJPEGBogusTableField); //Format('component %d is duplicated in scan header',[ScanHeaders[i].ComponentSelector])
         //oof, it's all right here...
         //DC huffman selector
         B := NextByte;
         ScanHeaders[i].Td := (B and $F0) shr 4;
         if (ScanHeaders[i].Td > 4) or ((ScanHeaders[i].Td > 2) and (fFrameType = JPEG_SOF0)) then
-          GraphicExError('incorrect DC huffman table ID in scan header');
+          GraphicExError(gesJPEGBogusTableField); //'incorrect DC huffman table ID in scan header'
           //check if corresponding Huff table exists. We still don't know how to represent them
         ScanHeaders[i].Ta := B and $0F;
         if (ScanHeaders[i].Ta > 4) or ((ScanHeaders[i].Ta > 2) and (fFrameType = JPEG_SOF0)) then
-          GraphicExError('incorrect AC huffman table ID in scan header');
+          GraphicExError(gesJPEGBogusTableField); //'incorrect AC huffman table ID in scan header'
         if ((fFrameType and $03) = 3) and (ScanHeaders[i].Ta <>0) then
-          GraphicExError('inappropriate value Ta<>0 for lossless');
+          GraphicExError(gesJPEGBogusTableField); //'inappropriate value Ta<>0 for lossless'
         //check if corresp. table exists
         //oof
       end;  //reading all components of scan header
       //Start/End of spectral selection. For progressive DCT
       Ss := NextByte;
       if Ss > 63 then
-        GraphicExError('incorect start of spectral selection, must be 0..63');
+        GraphicExError(gesJPEGBogusTableField); //'incorect start of spectral selection, must be 0..63'
       if ((fFrameType and $3) = 3) and ((Ss > 7) or (Ss = 0)) then
-        GraphicExError('incorrect number of predictor for lossless, must be 1..7');
+        GraphicExError(gesJPEGBogusTableField); //'incorrect number of predictor for lossless, must be 1..7'
       if ((fFrameType and $2) = 0) and (Ss <> 0) then
-        GraphicExError('start of spectral selection must be 0 for sequential DCT');
+        GraphicExError(gesJPEGBogusTableField); //'start of spectral selection must be 0 for sequential DCT'
       Se := NextByte;
       if ((fFrameType and $3) = 3) and (Se <> 0) then
-        GraphicExError('spectral selection end must be 0 for lossless');
+        GraphicExError(gesJPEGBogusTableField); //'spectral selection end must be 0 for lossless'
       if ((fFrameType and $2) = 0) and (Se <> 63) then
-        GraphicExError('spectral selection end must be 63 for sequential DCT');
+        GraphicExError(gesJPEGBogusTableField); //'spectral selection end must be 63 for sequential DCT'
       if ((fFrameType and $3) = 2) and (Se < Ss) then
-        GraphicExError('end of spectral selection must be greater than its start');
+        GraphicExError(gesJPEGBogusTableField); //'end of spectral selection must be greater than its start'
       if ((fFrameType and $3) = 2) and (Ss = 0) and (Se <> 0) then
-        GraphicExError('if start of spectral selection is zero, the end must be 0 also');
+        GraphicExError(gesJPEGBogusTableField); //'if start of spectral selection is zero, the end must be 0 also'
       //oof
       //successive approximation bit position high/low
       B := NextByte;
       Ah := (B and $F0) shr 4;
       if Ah > 13 then
-        GraphicExError('successive approximation bit position high must be 0..13');
+        GraphicExError(gesJPEGBogusTableField); //'successive approximation bit position high must be 0..13'
       if ((fFrameType and $3) <> 2) and (Ah <> 0) then
-        GraphicExError('successive approximation bit position must be 0 for all modes except progressive');
+        GraphicExError(gesJPEGBogusTableField); //'successive approximation bit position must be 0 for all modes except progressive'
       Al := B and $0F;
       if Al > 15 then
         GraphicExError('successive approximation bit position low must be 0..15');

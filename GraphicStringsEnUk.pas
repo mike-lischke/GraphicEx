@@ -8,10 +8,12 @@ unit GraphicStringsEnUk;
 
 
 interface
+uses AutoResourceStr, GraphicStrings;
+
 
 implementation
 
-uses GraphicStrings, AutoResourceStr, Windows, GraphicStringsEN;
+uses Windows, GraphicStringsEN;
 
 initialization
   with AutoResourceString(MakeLangId(LANG_ENGLISH, SUBLANG_ENGLISH_UK)) do begin

@@ -1,4 +1,4 @@
-unit GraphicStringsRU;
+п»їunit GraphicStringsRU;
 
 // The original code is GraphicStrings.pas, released November 1, 1999.
 //
@@ -24,90 +24,90 @@ uses GraphicStrings, AutoResourceStr, windows;
 initialization
 
   with AutoResourceString(MakeLangId(LANG_RUSSIAN, SUBLANG_NEUTRAL)) do begin
-    // Описания файлов изображений
-    Add(gesAllImages, 'Все изображения');
-    Add(gesRegistration, 'Попытка зарегистрировать %s дважды.');
+    // РћРїРёСЃР°РЅРёСЏ С„Р°Р№Р»РѕРІ РёР·РѕР±СЂР°Р¶РµРЅРёР№
+    Add(gesAllImages, 'Р’СЃРµ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ');
+    Add(gesRegistration, 'РџРѕРїС‹С‚РєР° Р·Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°С‚СЊ %s РґРІР°Р¶РґС‹.');
 
-    Add(gesBitmaps,'Точечные рисунки Windows');
-    Add(gesRLEBitmaps, 'Точечные рисунки RLE');
-    Add(gesDIBs, 'Аппаратно-независимые точечные рисунки Windows');
-    Add(gesEPS, 'Внедрённые изображения Postscript');
-    Add(gesIcons, 'Иконки Windows');
-    Add(gesMetaFiles, 'Метафайлы Windows');
-    Add(gesEnhancedMetaFiles, 'Расширенные метафайлы Windows');
-    Add(gesJPGImages, 'Изображения JPG');
-    Add(gesJPEGImages, 'Изображения JPEG');
-    Add(gesJPEImages, 'Изображения JPE');
-    Add(gesJFIFImages, 'Изображения JFIF');
-    Add(gesTruevision, 'Изображения Truevision');
-    Add(gesTIFF, 'Изображения TIFF');
-    Add(gesMacTIFF,  'Изображения TIFF для Macintosh');
-    Add(gesPCTIF, 'Изображения TIF (PC)');
-    Add(gesGFIFax, 'Факс-изображения GFI');
-    Add(gesSGI, 'Изображения SGI');
-    Add(gesSGITrueColor, 'Полноцветные изображения SGI');
-    Add(gesZSoft, 'Изображения ZSoft Paintbrush');
-    Add(gesZSoftWord, 'Снимки экрана Word 5.x');
-    Add(gesAliasWaveFront, 'Изображения Alias/Wavefront');
-    Add(gesSGITrueColorAlpha, 'Полноцветные изображения SGI с альфа-каналом');
-    Add(gesSGIMono, 'Чёрно-белые изображения SGI');
-    Add(gesPhotoshop, 'Изображения Photoshop');
-    Add(gesPortable, 'Изображения Portable map');
-    Add(gesPortablePixel, 'Изображения Portable pixel map');
-    Add(gesPortableGray, 'Изображения Portable gray map');
-    Add(gesPortableMono, 'Изображения Portable bitmap');
-    Add(gesAutoDesk, 'Изображения Autodesk');
-    Add(gesKodakPhotoCD, 'Изображения Kodak Photo-CD');
-    Add(gesCompuserve, 'Изображения CompuServe');
-    Add(gesHalo, 'Изображения Dr. Halo');
-    Add(gesPaintShopPro, 'Изображения Paintshop Pro');
+    Add(gesBitmaps,'РўРѕС‡РµС‡РЅС‹Рµ СЂРёСЃСѓРЅРєРё Windows');
+    Add(gesRLEBitmaps, 'РўРѕС‡РµС‡РЅС‹Рµ СЂРёСЃСѓРЅРєРё RLE');
+    Add(gesDIBs, 'РђРїРїР°СЂР°С‚РЅРѕ-РЅРµР·Р°РІРёСЃРёРјС‹Рµ С‚РѕС‡РµС‡РЅС‹Рµ СЂРёСЃСѓРЅРєРё Windows');
+    Add(gesEPS, 'Р’РЅРµРґСЂС‘РЅРЅС‹Рµ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ Postscript');
+    Add(gesIcons, 'РРєРѕРЅРєРё Windows');
+    Add(gesMetaFiles, 'РњРµС‚Р°С„Р°Р№Р»С‹ Windows');
+    Add(gesEnhancedMetaFiles, 'Р Р°СЃС€РёСЂРµРЅРЅС‹Рµ РјРµС‚Р°С„Р°Р№Р»С‹ Windows');
+    Add(gesJPGImages, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ JPG');
+    Add(gesJPEGImages, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ JPEG');
+    Add(gesJPEImages, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ JPE');
+    Add(gesJFIFImages, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ JFIF');
+    Add(gesTruevision, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ Truevision');
+    Add(gesTIFF, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ TIFF');
+    Add(gesMacTIFF,  'РР·РѕР±СЂР°Р¶РµРЅРёСЏ TIFF РґР»СЏ Macintosh');
+    Add(gesPCTIF, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ TIF (PC)');
+    Add(gesGFIFax, 'Р¤Р°РєСЃ-РёР·РѕР±СЂР°Р¶РµРЅРёСЏ GFI');
+    Add(gesSGI, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ SGI');
+    Add(gesSGITrueColor, 'РџРѕР»РЅРѕС†РІРµС‚РЅС‹Рµ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ SGI');
+    Add(gesZSoft, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ ZSoft Paintbrush');
+    Add(gesZSoftWord, 'РЎРЅРёРјРєРё СЌРєСЂР°РЅР° Word 5.x');
+    Add(gesAliasWaveFront, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ Alias/Wavefront');
+    Add(gesSGITrueColorAlpha, 'РџРѕР»РЅРѕС†РІРµС‚РЅС‹Рµ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ SGI СЃ Р°Р»СЊС„Р°-РєР°РЅР°Р»РѕРј');
+    Add(gesSGIMono, 'Р§С‘СЂРЅРѕ-Р±РµР»С‹Рµ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ SGI');
+    Add(gesPhotoshop, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ Photoshop');
+    Add(gesPortable, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ Portable map');
+    Add(gesPortablePixel, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ Portable pixel map');
+    Add(gesPortableGray, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ Portable gray map');
+    Add(gesPortableMono, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ Portable bitmap');
+    Add(gesAutoDesk, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ Autodesk');
+    Add(gesKodakPhotoCD, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ Kodak Photo-CD');
+    Add(gesCompuserve, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ CompuServe');
+    Add(gesHalo, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ Dr. Halo');
+    Add(gesPaintShopPro, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ Paintshop Pro');
     Add(gesPaintshopProFrames, 'Paintshop Pro frames');
     Add(gesPaintshopProTubes, 'Paintshop Pro tubes');
-    Add(gesPortableNetworkGraphic, 'Изображения Portable network graphic (PNG)');
+    Add(gesPortableNetworkGraphic, 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ Portable network graphic (PNG)');
 
-    // Специфичные ошибки при работе с изображениями
-    Add(gesInvalidImage, 'Невозможно загрузить изображение. Неверный или неподдерживаемый формат файла %s.');
-    Add(gesInvalidColorFormat, 'Неверный формат цвета в файле %s.');
-    Add(gesStreamReadError, 'Ошибка чтения потока при чтении файла %s.');
-    Add(gesUnsupportedImage, 'Невозможно загрузить изображение. Неподдерживаемый формат изображения %s.');
-    Add(gesUnsupportedFeature, 'Невозможно загрузить изображение. %s не поддерживается для файлов %s.');
-    Add(gesInvalidCRC, 'Невозможно загрузить изображение. Неверная контрольная сумма файла %s.');
-    Add(gesCompression, 'Невозможно загрузить изображение. Ошибка сжатия в файле %s.');
-    Add(gesExtraCompressedData, 'Невозможно загрузить изображение. Файл %s содержит лишние данные.');
-    Add(gesInvalidPalette, 'Невозможно загрузить изображение. Неверная палитра в файле %s.');
-    Add(gesUnknownCriticalChunk, 'Невозможно загрузить PNG изображение. Формат необходимой секции данных не поддерживается.');
+    // РЎРїРµС†РёС„РёС‡РЅС‹Рµ РѕС€РёР±РєРё РїСЂРё СЂР°Р±РѕС‚Рµ СЃ РёР·РѕР±СЂР°Р¶РµРЅРёСЏРјРё
+    Add(gesInvalidImage, 'РќРµРІРѕР·РјРѕР¶РЅРѕ Р·Р°РіСЂСѓР·РёС‚СЊ РёР·РѕР±СЂР°Р¶РµРЅРёРµ. РќРµРІРµСЂРЅС‹Р№ РёР»Рё РЅРµРїРѕРґРґРµСЂР¶РёРІР°РµРјС‹Р№ С„РѕСЂРјР°С‚ С„Р°Р№Р»Р° %s.');
+    Add(gesInvalidColorFormat, 'РќРµРІРµСЂРЅС‹Р№ С„РѕСЂРјР°С‚ С†РІРµС‚Р° РІ С„Р°Р№Р»Рµ %s.');
+    Add(gesStreamReadError, 'РћС€РёР±РєР° С‡С‚РµРЅРёСЏ РїРѕС‚РѕРєР° РїСЂРё С‡С‚РµРЅРёРё С„Р°Р№Р»Р° %s.');
+    Add(gesUnsupportedImage, 'РќРµРІРѕР·РјРѕР¶РЅРѕ Р·Р°РіСЂСѓР·РёС‚СЊ РёР·РѕР±СЂР°Р¶РµРЅРёРµ. РќРµРїРѕРґРґРµСЂР¶РёРІР°РµРјС‹Р№ С„РѕСЂРјР°С‚ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ %s.');
+    Add(gesUnsupportedFeature, 'РќРµРІРѕР·РјРѕР¶РЅРѕ Р·Р°РіСЂСѓР·РёС‚СЊ РёР·РѕР±СЂР°Р¶РµРЅРёРµ. %s РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ РґР»СЏ С„Р°Р№Р»РѕРІ %s.');
+    Add(gesInvalidCRC, 'РќРµРІРѕР·РјРѕР¶РЅРѕ Р·Р°РіСЂСѓР·РёС‚СЊ РёР·РѕР±СЂР°Р¶РµРЅРёРµ. РќРµРІРµСЂРЅР°СЏ РєРѕРЅС‚СЂРѕР»СЊРЅР°СЏ СЃСѓРјРјР° С„Р°Р№Р»Р° %s.');
+    Add(gesCompression, 'РќРµРІРѕР·РјРѕР¶РЅРѕ Р·Р°РіСЂСѓР·РёС‚СЊ РёР·РѕР±СЂР°Р¶РµРЅРёРµ. РћС€РёР±РєР° СЃР¶Р°С‚РёСЏ РІ С„Р°Р№Р»Рµ %s.');
+    Add(gesExtraCompressedData, 'РќРµРІРѕР·РјРѕР¶РЅРѕ Р·Р°РіСЂСѓР·РёС‚СЊ РёР·РѕР±СЂР°Р¶РµРЅРёРµ. Р¤Р°Р№Р» %s СЃРѕРґРµСЂР¶РёС‚ Р»РёС€РЅРёРµ РґР°РЅРЅС‹Рµ.');
+    Add(gesInvalidPalette, 'РќРµРІРѕР·РјРѕР¶РЅРѕ Р·Р°РіСЂСѓР·РёС‚СЊ РёР·РѕР±СЂР°Р¶РµРЅРёРµ. РќРµРІРµСЂРЅР°СЏ РїР°Р»РёС‚СЂР° РІ С„Р°Р№Р»Рµ %s.');
+    Add(gesUnknownCriticalChunk, 'РќРµРІРѕР·РјРѕР¶РЅРѕ Р·Р°РіСЂСѓР·РёС‚СЊ PNG РёР·РѕР±СЂР°Р¶РµРЅРёРµ. Р¤РѕСЂРјР°С‚ РЅРµРѕР±С…РѕРґРёРјРѕР№ СЃРµРєС†РёРё РґР°РЅРЅС‹С… РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ.');
 
-    // Параметры (обычно используются вместе с сообщениями об отсутствии поддержки)
-    Add(gesCompressionScheme, 'Схема сжатия:');
-    Add(gesRLAPixelFormat, 'Форматы изображений, отличные от RGB and RGBA:');
-    Add(gesPSPFileType, 'Версии формата файла, отличные от 3й или 4й:');
+    // РџР°СЂР°РјРµС‚СЂС‹ (РѕР±С‹С‡РЅРѕ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ РІРјРµСЃС‚Рµ СЃ СЃРѕРѕР±С‰РµРЅРёСЏРјРё РѕР± РѕС‚СЃСѓС‚СЃС‚РІРёРё РїРѕРґРґРµСЂР¶РєРё)
+    Add(gesCompressionScheme, 'РЎС…РµРјР° СЃР¶Р°С‚РёСЏ:');
+    Add(gesRLAPixelFormat, 'Р¤РѕСЂРјР°С‚С‹ РёР·РѕР±СЂР°Р¶РµРЅРёР№, РѕС‚Р»РёС‡РЅС‹Рµ РѕС‚ RGB and RGBA:');
+    Add(gesPSPFileType, 'Р’РµСЂСЃРёРё С„РѕСЂРјР°С‚Р° С„Р°Р№Р»Р°, РѕС‚Р»РёС‡РЅС‹Рµ РѕС‚ 3Р№ РёР»Рё 4Р№:');
 
-    // Ошибки при работе с цветом
-    Add(gesIndexedNotSupported, 'Преобразование между индексированными и неиндексированными форматами пикселов не поддерживается.');
-    Add(gesConversionUnsupported, 'Невозможно преобразовать цвет. Нет подходящего метода.');
-    Add(gesInvalidSampleDepth, 'Неверная глубина цвета. Должно быть 1, 2, 4, 8 или 16 бит на сэмпл.');
-    Add(gesInvalidPixelDepth, 'Количество сэмплов на пиксел не соответствует данной цветовой схеме.');
-    Add(gesInvalidSubSampling, 'Неверное значение сэмплирования. Допустимы 1, 2 и 4.');
-    Add(gesVerticalSubSamplingError, 'Значение вертикального сэмплирования должно быть меньше или равно значению горизонтального сэмплирования.');
+    // РћС€РёР±РєРё РїСЂРё СЂР°Р±РѕС‚Рµ СЃ С†РІРµС‚РѕРј
+    Add(gesIndexedNotSupported, 'РџСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёРµ РјРµР¶РґСѓ РёРЅРґРµРєСЃРёСЂРѕРІР°РЅРЅС‹РјРё Рё РЅРµРёРЅРґРµРєСЃРёСЂРѕРІР°РЅРЅС‹РјРё С„РѕСЂРјР°С‚Р°РјРё РїРёРєСЃРµР»РѕРІ РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ.');
+    Add(gesConversionUnsupported, 'РќРµРІРѕР·РјРѕР¶РЅРѕ РїСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ С†РІРµС‚. РќРµС‚ РїРѕРґС…РѕРґСЏС‰РµРіРѕ РјРµС‚РѕРґР°.');
+    Add(gesInvalidSampleDepth, 'РќРµРІРµСЂРЅР°СЏ РіР»СѓР±РёРЅР° С†РІРµС‚Р°. Р”РѕР»Р¶РЅРѕ Р±С‹С‚СЊ 1, 2, 4, 8 РёР»Рё 16 Р±РёС‚ РЅР° СЃСЌРјРїР».');
+    Add(gesInvalidPixelDepth, 'РљРѕР»РёС‡РµСЃС‚РІРѕ СЃСЌРјРїР»РѕРІ РЅР° РїРёРєСЃРµР» РЅРµ СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ РґР°РЅРЅРѕР№ С†РІРµС‚РѕРІРѕР№ СЃС…РµРјРµ.');
+    Add(gesInvalidSubSampling, 'РќРµРІРµСЂРЅРѕРµ Р·РЅР°С‡РµРЅРёРµ СЃСЌРјРїР»РёСЂРѕРІР°РЅРёСЏ. Р”РѕРїСѓСЃС‚РёРјС‹ 1, 2 Рё 4.');
+    Add(gesVerticalSubSamplingError, 'Р—РЅР°С‡РµРЅРёРµ РІРµСЂС‚РёРєР°Р»СЊРЅРѕРіРѕ СЃСЌРјРїР»РёСЂРѕРІР°РЅРёСЏ РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РјРµРЅСЊС€Рµ РёР»Рё СЂР°РІРЅРѕ Р·РЅР°С‡РµРЅРёСЋ РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅРѕРіРѕ СЃСЌРјРїР»РёСЂРѕРІР°РЅРёСЏ.');
 
-    // Состояния
-    Add(gesPreparing, 'Подготовка...');
-    Add(gesLoadingData, 'Загрузка данных...');
-    Add(gesUpsampling, 'Пресэмплирование...');
-    Add(gesTransfering, 'Передача...');
+    // РЎРѕСЃС‚РѕСЏРЅРёСЏ
+    Add(gesPreparing, 'РџРѕРґРіРѕС‚РѕРІРєР°...');
+    Add(gesLoadingData, 'Р—Р°РіСЂСѓР·РєР° РґР°РЅРЅС‹С…...');
+    Add(gesUpsampling, 'РџСЂРµСЃСЌРјРїР»РёСЂРѕРІР°РЅРёРµ...');
+    Add(gesTransfering, 'РџРµСЂРµРґР°С‡Р°...');
 
-    // Ошибки сжатия
-    Add(gesLZ77Error, 'Ошибка LZ77-декомпрессии.');
-    Add(gesJPEGEOI, 'Ошибка декомпрессии JPEG. Неожиданное окончание данных.');
-    Add(gesJPEGStripSize, 'Несоответствующий strip/tile размер JPEG.');
-    Add(gesJPEGComponentCount, 'Несоответствующее количество компонент JPEG.');
-    Add(gesJPEGDataPrecision, 'Несоответствующая точность данных JPEG.');
-    Add(gesJPEGSamplingFactors, 'Несоответствующий фактор сэмплирования JPEG.');
-    Add(gesJPEGBogusTableField, 'Ошибочное поле JPEG.');
-    Add(gesJPEGFractionalLine, 'Частичные скан-линии JPEG не поддерживаются.');
+    // РћС€РёР±РєРё СЃР¶Р°С‚РёСЏ
+    Add(gesLZ77Error, 'РћС€РёР±РєР° LZ77-РґРµРєРѕРјРїСЂРµСЃСЃРёРё.');
+    Add(gesJPEGEOI, 'РћС€РёР±РєР° РґРµРєРѕРјРїСЂРµСЃСЃРёРё JPEG. РќРµРѕР¶РёРґР°РЅРЅРѕРµ РѕРєРѕРЅС‡Р°РЅРёРµ РґР°РЅРЅС‹С….');
+    Add(gesJPEGStripSize, 'РќРµСЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёР№ strip/tile СЂР°Р·РјРµСЂ JPEG.');
+    Add(gesJPEGComponentCount, 'РќРµСЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РµРµ РєРѕР»РёС‡РµСЃС‚РІРѕ РєРѕРјРїРѕРЅРµРЅС‚ JPEG.');
+    Add(gesJPEGDataPrecision, 'РќРµСЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰Р°СЏ С‚РѕС‡РЅРѕСЃС‚СЊ РґР°РЅРЅС‹С… JPEG.');
+    Add(gesJPEGSamplingFactors, 'РќРµСЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёР№ С„Р°РєС‚РѕСЂ СЃСЌРјРїР»РёСЂРѕРІР°РЅРёСЏ JPEG.');
+    Add(gesJPEGBogusTableField, 'РћС€РёР±РѕС‡РЅРѕРµ РїРѕР»Рµ JPEG.');
+    Add(gesJPEGFractionalLine, 'Р§Р°СЃС‚РёС‡РЅС‹Рµ СЃРєР°РЅ-Р»РёРЅРёРё JPEG РЅРµ РїРѕРґРґРµСЂР¶РёРІР°СЋС‚СЃСЏ.');
 
-    // Разное
-    Add(gesWarning, 'Внимание!');
+    // Р Р°Р·РЅРѕРµ
+    Add(gesWarning, 'Р’РЅРёРјР°РЅРёРµ!');
 
   end;
 

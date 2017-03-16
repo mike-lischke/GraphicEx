@@ -69,17 +69,20 @@ type
   //but requires more complex mechanics (late binding)
   //all we can do is to cast AutoResourceStr to string
   TAutoResourceStrVarType = class(TAbstractWrapperVariantType)
+    protected
+      //if there is string at the right, let it remain string, we'll convert into string ourselves
+      function RightPromotion(const V: TVarData; const Operator: TVarOp; out RequiredVarType: TVarType): Boolean; override;
     public
-//      procedure Cast(var Dest: TVarData; const Source: TVarData); override;
+      //we can convert only to string
       procedure CastTo(var Dest: TVarData; const Source: TVarData; const AVarType: TVarType); override;
   end;
 
-  //8-byte variant contents. As usual, it's just VType and link to object.
+  //16-byte (24-byte in x64) variant contents. As usual, it's just VType and link to object.
   TAutoResourceStrVarData = record
     VType: TVarType;
     Reserved1, Reserved2, Reserved3: Word;
     Data: TAutoResourceStrData;
-    Reserved4: LongInt;
+    Reserved4: Pointer;
   end;
 
   IAutoResourceString = interface //sort of syntactic sugar: it's short-lived object which is created
@@ -112,6 +115,20 @@ function AutoResourceString(LangID: Integer): IAutoResourceString; overload;
 
 function GetLanguageNameInCurLocale(Lang_ID: Integer): string;
 
+  {$IFDEF CONDITIONALEXPRESSIONS}
+    {$IF RTLVersion >= 30.0}
+      {$DEFINE HAS_LANG_MACROS}
+    {$IFEND}
+ {$ENDIF}
+
+ {$IFNDEF HAS_LANG_MACROS}
+  function MAKELANGID(p, s: WORD): WORD;
+  function PRIMARYLANGID(lgid: WORD): WORD;
+  function SUBLANGID(lgid: WORD): WORD;
+ {$ENDIF}
+
+
+
 implementation
 
 uses SysUtils, Windows;
@@ -135,20 +152,49 @@ var AutoResourceStrVarType: TAutoResourceStrVarType;
 function GetLanguageNameInCurLocale(Lang_ID: Integer): string;
 var size: Integer;
 begin
-  Size:=GetLocaleInfo(Lang_ID,LOCALE_SLANGUAGE,nil,0);
-  SetLength(Result,size);
-  GetLocaleInfo(Lang_ID,LOCALE_SLANGUAGE,@Result[1],size);
+  Size := GetLocaleInfo(Lang_ID, LOCALE_SLANGUAGE, nil, 0);
+  SetLength(Result, size);
+  GetLocaleInfo(Lang_ID, LOCALE_SLANGUAGE, @Result[1], size);
   Result := String(PChar(Result)); //make sure that 0 termination is exactly at string end
 end;
 
 function GetShortLanguage(Lang_ID: Integer): string;
 var size: Integer;
 begin
-  Size:=GetLocaleInfo(Lang_ID,LOCALE_SLANGUAGE,nil,0);
-  SetLength(Result,size);
-  GetLocaleInfo(Lang_ID,LOCALE_SABBREVLANGNAME,@Result[1],size);
+  Size := GetLocaleInfo(Lang_ID, LOCALE_SLANGUAGE, nil, 0);
+  SetLength(Result, size);
+  GetLocaleInfo(Lang_ID, LOCALE_SABBREVLANGNAME, @Result[1], size);
   Result := String(PChar(Result));
 end;
+
+function GetDefaultLanguageID: Integer;
+var loc_str: PChar;
+    size: Integer;
+begin
+  Size := GetLocaleInfo(LANG_USER_DEFAULT, LOCALE_ILANGUAGE, nil, 0);
+  loc_Str := AllocMem(Size);
+  GetLocaleInfo(LANG_USER_DEFAULT, LOCALE_ILANGUAGE, loc_str, size);
+  Result := StrToInt('$' + loc_str);
+  FreeMem(loc_str);
+end;
+
+ {$IFNDEF HAS_LANG_MACROS}
+  function MAKELANGID(p, s: WORD): WORD;
+  begin
+    Result := WORD(s shl 10) or p;
+  end;
+
+  function PRIMARYLANGID(lgid: WORD): WORD;
+  begin
+    Result := WORD(lgid and $3FF);
+  end;
+
+  function SUBLANGID(lgid: WORD): WORD;
+  begin
+    Result := lgid shr 10;
+  end;
+ {$ENDIF}
+
 
 (*
       TAutoResourceStrData
@@ -156,14 +202,13 @@ end;
 constructor TAutoResourceStrData.Create;
 begin
   inherited;
-  fStrings:=TStringList.Create;
+  fStrings := TStringList.Create;
 
   //link into 2-way list
-
-  fPrevious:=TopAutoResourceStr;
-  TopAutoResourceStr:=self;
+  fPrevious := TopAutoResourceStr;
+  TopAutoResourceStr := self;
   if Assigned(fPrevious) then
-    fPrevious.fNext:=self;
+    fPrevious.fNext := self;
   LanguagesChanged := true;
 end;
 
@@ -181,11 +226,11 @@ begin
   //remove ourself from 2-way list
 
   if Assigned(fPrevious) then
-    fPrevious.fNext:=fNext;
+    fPrevious.fNext := fNext;
   if Assigned(fNext) then
-    fNext.fPrevious:=fPrevious
+    fNext.fPrevious := fPrevious
   else
-    TopAutoResourceStr:=nil;
+    TopAutoResourceStr := nil;
 
   //cleaning up
   fStrings.Free;
@@ -216,7 +261,7 @@ function TAutoResourceStrData.GetAsString: string;
 begin
   //when language is changed or string on another language added to AutoResourceStr,
   //we reorder stringlist, so the most appropriate is on top
-  Result:=fStrings[0];
+  Result := fStrings[0];
 end;
 
 procedure TAutoResourceStrData.SelectMostAppropriateLang;
@@ -243,7 +288,7 @@ end;
 (*
     TAutoResourceStrVarType
                                   *)
-procedure TAutoResourceSTrVarType.CastTo(var Dest: TVarData; const Source: TVarData; const AVarType: Word);
+procedure TAutoResourceStrVarType.CastTo(var Dest: TVarData; const Source: TVarData; const AVarType: Word);
 begin
   //we only can convert to strings
   //we expect that most appropriate string will be at zero elem.
@@ -251,7 +296,7 @@ begin
     case AVarType of
       varOleStr:
         VarDataFromOleStr(Dest,TAutoResourceStrVarData(Source).Data.fStrings[0]);
-      varString:
+      varString{$IFDEF UNICODE}, varUString{$ENDIF}:
         VarDataFromStr(Dest,TAutoResourceStrVarData(Source).Data.fStrings[0]);
       else
         RaiseInvalidOp;
@@ -260,21 +305,11 @@ begin
     else inherited; //we were given empty variant probably
 end;
 
-
-(*
-    Global procedures
-                        *)
-function GetDefaultLanguageID: Integer;
-var loc_str: PChar;
-    size: Integer;
+function TAutoResourceStrVarType.RightPromotion(const V: TVarData; const Operator: Integer; out RequiredVarType: Word): Boolean;
 begin
-  Size:=GetLocaleInfo(LANG_USER_DEFAULT,LOCALE_ILANGUAGE,nil,0);
-  loc_Str:=AllocMem(Size);
-  GetLocaleInfo(LANG_USER_DEFAULT,LOCALE_ILANGUAGE,loc_str,size);
-  Result:=StrToInt('$'+loc_str);
-  FreeMem(loc_str);
+  Result := false; //if mountain doesn't go to Mohammed then Mohammed goes to mountain
+  //we refuse to work with string, but then they'll ask string is it ok to work with us :)
 end;
-
 
 (*
     TAutoResourceString
@@ -323,6 +358,10 @@ begin
   end;
 end;
 
+//allows to make a 'list of available languages'.
+//but it is very strict by this implementation: if one lib has
+//English, German, French, Russian locales,  while another one only English,
+//then only English is available.
 procedure PopulateLanguages;
 var cur: TAutoResourceStrData;
     i, j: Integer;
@@ -374,6 +413,7 @@ begin
   Result := LanguageArr[index];
 end;
 
+//to help programmer understand, which strings weren't properly localized
 class procedure TAutoResourceString.MakeReport(FileName: string);
 var list: TList;
     cur: TAutoResourceStrData;
@@ -381,8 +421,6 @@ var list: TList;
     FileStream: TFileStream;
     s: string;
 begin
-  //to help programmer understand, which strings weren't properly localized
-
   FileStream := TFileStream.Create(FileName, fmCreate);
   try
     //step 1: search all the languages which were used in strings at least once
