@@ -13,7 +13,7 @@ Image Formats
     TIFF images (*.tif; *.tiff), extended base line implementation
         1..16 bits per sample
         indexed, grayscale, RGB(A), CMYK, L*a*b*
-        uncompressed, packed bits, LZW, CCITT T.4, Thunderscan, Deflate, new style JPEG
+        uncompressed, packed bits, LZW, CCITT T.4, CCIT T.4 2D, CCIT T.6, Thunderscan, Deflate, new style JPEG
     GFI fax images (*.fax), uses TTIFFGraphic to read
     SGI images (*.bw, *.rgb, *.rgba, *.sgi)
         1..16 bits per sample
@@ -54,7 +54,24 @@ Image Formats
         1, 2, 4, 8, 16 bits per sample
         indexed, grayscale alpha, RGB(A), LZ77 compressd
 
+IDE and compiler versions
+=========================
+
+Library was tested under various IDE from Delphi 7 up to Delphi 10 Seattle, both win32 and win64. Right now, it works only with VCL, but support of FMX is also planned in some near future. 
+
+
 Compilation
 ===========
 
-The library is probably not fully compilable as it is here, as you need at least the zLib unit in addition. The rest of lib is now native Pascal which compiles in x86 as well as in x64. It was tested under Delphi 7 up to Delphi 10 Seattle IDE versions, working fine. 
+Almost all the code here is native Delphi code, so compiling is straight forward. The only exception is DelphiZlib which is included in this repository as 3rd party. Good thing, it is already compiled for both win32 and win64, so C compiler is not necessary after all, Delphi is enough.
+
+Just add all the units in root folder of GraphicEx to your project and also from subfolders and that's it. Now all the graphic formats are available: line like
+
+Image1.Picture.LoadFromFile(OpenPictureDialog1.Filename);
+
+is everything which is needed to load any of files listed above.
+
+Multi-language support
+======================
+
+Recent version greatly simplifies writing international application: there is just no worries about translating GraphicEx strings and error messages: they are already translated and will be fetched in correct language at runtime. So far, there are translations to German, French, Italian, Spanish, Catalan, Polish and Russian and even two English versions: US and UK which differ by spelling of 'color'.
