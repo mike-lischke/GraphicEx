@@ -968,7 +968,6 @@ threadvar // globally used cache for current image (speeds up resampling about 1
 //----------------------------------------------------------------------------------------------------------------------
 
 procedure GraphicExError(ErrorString: string); overload;
-
 begin
   raise EInvalidGraphic.Create(ErrorString);
 end;
@@ -976,7 +975,6 @@ end;
 //----------------------------------------------------------------------------------------------------------------------
 
 procedure GraphicExError(ErrorString: string; Args: array of const); overload;
-
 begin
   raise EInvalidGraphic.CreateFmt(ErrorString, Args);
 end;
@@ -8241,7 +8239,7 @@ begin
 
       // Read resource section.
       Count := ReadBigEndianCardinal(Run);
-      if Count > 0 then        
+      if Count > 0 then
         ReadResources(Run);
       Inc(Run, Count);
 
@@ -10564,7 +10562,7 @@ end;
 
 function TFileFormatList.GraphicFromContent(const FileName: string): TGraphicExGraphicClass;
 
-// Tries to determine the type of the image in the file. 
+// Tries to determine the type of the image in the file.
 
 begin
   with TFileMapping.Create(FileName, fmmReadOnly) do
@@ -10579,7 +10577,7 @@ end;
 
 function TFileFormatList.GraphicFromContent(const Memory: Pointer; Size: Int64): TGraphicExGraphicClass;
 
-// Tries to determine the type of the image in the file. 
+// Tries to determine the type of the image in the file.
 
 var
   I: Integer;
@@ -10605,7 +10603,7 @@ end;
 
 function TFileFormatList.GraphicFromContent(Stream: TStream): TGraphicExGraphicClass;
 
-// Tries to determine the type of the image in the file. 
+// Tries to determine the type of the image in the file.
 
 var
   LastPos: Int64;
@@ -10825,13 +10823,13 @@ var extension: string;
     entry: PExtensionEntry;
 begin
   extension := ExtractFileExt(FileName);
-  extension := Copy(extension, 2, Length(extension)-1);
+  extension := Copy(extension, 2, Length(extension) - 1);
   index := FileFormatList.FindExtension(extension);
   if index = -1 then Raise Exception.CreateFMT(gesInvalidSaveFormat, [extension]);
   entry := FileFormatList.FExtensionList[index];
   if not (ftEnableSaving in entry.FormatTypes) then Raise Exception.CreateFMT(gesInvalidSaveOnlyLoadFormat,[extension]);
   //in this point, we support saving to chosen extension
-  graphicClass:=entry.classReference.GraphicClass;
+  graphicClass := entry.classReference.GraphicClass;
   if source.ClassType = graphicClass then //simplest case
     source.SaveToFile(FileName)
   else begin
@@ -10906,7 +10904,10 @@ initialization
     TPicture.UnregisterGraphicClass(TMetafile);
 
     RegisterFileFormat('bmp', gesBitmaps, '', [ftRaster,ftEnableSaving], False, TBitmap);
+    TPicture.RegisterClipboardFormat(CF_BITMAP, TBitmap);
     RegisterFileFormat('ico', gesIcons, '', [ftRaster], False, TIcon);
+    TPicture.RegisterClipboardFormat(CF_METAFILEPICT, TMetafile);
+    TPicture.RegisterClipboardFormat(CF_ENHMETAFILE, TMetafile);
 
     RegisterFileFormat('wmf', gesMetaFiles, '', [ftVector,ftEnableSaving], False, TMetafile);
     RegisterFileFormat('emf', gesMetaFiles, gesEnhancedMetaFiles, [ftVector,ftEnableSaving], False, TMetafile);

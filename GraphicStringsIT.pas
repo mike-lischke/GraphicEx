@@ -1,4 +1,4 @@
-unit GraphicStrings;
+ï»¿unit GraphicStringsIT;
 
 // The original code is GraphicStrings.pas, released November 1, 1999.
 //
@@ -15,97 +15,98 @@ unit GraphicStrings;
 //----------------------------------------------------------------------------------------------------------------------
 
 interface
-
-{$I GraphicConfiguration.inc}
-
-resourcestring
-  // image file descriptions
-  gesAllImages = 'Tutte le immagini';
-  gesRegistration = 'Tentata doppia registrazione di %s';
-
-  gesBitmaps = 'Bitmap di Windows';
-  gesRLEBitmaps = 'Bitmap di Windows Run Length Encoded';
-  gesDIBs = 'Bitmap di Windows Indipendenti dal Dispositivo';
-  gesEPS = 'Immagini Encapsulated Postscript';
-  gesIcons = 'Icone di Windows';
-  gesMetaFiles = 'Metafiles di Windows';
-  gesEnhancedMetaFiles = 'Enhanced Meta Files di Windows';
-  gesJPGImages = 'Immagini JPG';
-  gesJPEGImages = 'Immagini JPEG';
-  gesJPEImages = 'Immagini JPE';
-  gesJFIFImages = 'Immagini JFIF';
-  gesTruevision = 'Immagini Truevision';
-  gesTIFF = 'Immagini TIFF';
-  gesMacTIFF =  'Immagini Macintosh TIFF';
-  gesPCTIF = 'Immagini PC TIF';
-  gesGFIFax = 'Immagini GFI fax';
-  gesSGI = 'Immagini SGI';
-  gesSGITrueColor = 'Immagini SGI true color';
-  gesZSoft = 'Immagini ZSoft Paintbrush';
-  gesZSoftWord = 'Immagini schermate Word 5.x';
-  gesAliasWaveFront = 'Immagini Alias/Wavefront';
-  gesSGITrueColorAlpha = 'Immagini SGI true color con alpha';
-  gesSGIMono = 'Immagini SGI bianco/nero';
-  gesPhotoshop = 'Immagini Photoshop';
-  gesPortable = 'Immagini Portable map';
-  gesPortablePixel = 'Immagini Portable pixel map';
-  gesPortableGray = 'Immagini Portable gray map';
-  gesPortableMono = 'Immagini Portable bitmap';
-  gesAutoDesk = 'Immagini Autodesk';
-  gesKodakPhotoCD = 'Immagini Kodak Photo-CD';
-  gesCompuserve = 'Immagini CompuServe';
-  gesHalo = 'Immagini Dr. Halo';
-  gesPaintShopPro = 'Immagini Paintshop Pro';
-  gesPortableNetworkGraphic = 'Immagini Portable network graphic';
-
-  // image specific error messages
-  gesInvalidImage = 'Impossibile caricare l''immagine. Il formato %s è non valido o non corretto.';
-  gesInvalidColorFormat = 'Il formato dei colori del file %s non è valido.';
-  gesStreamReadError = 'Errore nella lettura del file %s.';
-  gesUnsupportedImage = 'Impossibile caricare l''immagine. Il formato %s non è supportato.';
-  gesUnsupportedFeature = 'Impossibile caricare l''immagine. %s non supportato per file %s.';
-  gesInvalidCRC = 'Impossibile caricare l''immagine. Errore CRC nel file %s.';
-  gesCompression = 'Impossibile caricare l''immagine. Errore di compressione nel file %s.';
-  gesExtraCompressedData = 'Impossibile caricare l''immagine. Trovati dati extra compressi nel file %s.';
-  gesInvalidPalette = 'Impossibile caricare l''immagine. Palette nel file %s non valida.';
-  gesUnknownCriticalChunk = 'Impossibile caricare l''immagine PNG. Rilevato blocco critico ma non previsto.';
-
-  // features (usually used together with unsupported feature string)
-  gesCompressionScheme = 'Lo schema di compressione è';
-  gesRLAPixelFormat = 'Formati diversi da RGB e RGBA sono';
-  gesPSPFileType = 'Versioni dei file diverse da 3 o 4 sono';
-
-  // color manager error messages
-  gesIndexedNotSupported = 'La conversione tra formati di pixel indicizzati e non-indicizzati non è supportata.';
-  gesConversionUnsupported = 'Conversione di colore fallita. Impossibile trovare un metodo adatto.';
-  gesInvalidSampleDepth = 'Profondità di colore non valida. I bit per campione devono essere 1, 2, 4, 8 o 16.';
-  gesInvalidPixelDepth = 'Il conteggio dei campioni per pixel non corrisponde allo schema dei colori.';
-  gesInvalidSubSampling = 'Valore di sottocampionamento non valido. Valori consentiti 1, 2 e 4.';
-  gesVerticalSubSamplingError = 'Il valore di sottocampionamento verticale deve essere <= di quello valore orizzontale.';
-
-  // progress strings
-  gesPreparing = 'Preparazione...';
-  gesLoadingData = 'Caricamento dati...';
-  gesUpsampling = 'Campionamento...';
-  gesTransfering = 'Trasferimento...';
-
-  // compression errors
-  gesLZ77Error = 'Errore decompressione LZ77.';
-  gesJPEGEOI = 'Errore decompressione JPEG. Fine del flusso di ingresso non attesa.';
-  gesJPEGStripSize = 'Dimensione blocco JPEG impropria.';
-  gesJPEGComponentCount = 'Conteggio componente JPEG improprio.';
-  gesJPEGDataPrecision = 'Precisione dati JPEG impropria.';
-  gesJPEGSamplingFactors = 'Fattori di campionamento JPEG impropri.';
-  gesJPEGBogusTableField = 'Campo tabelle JPEG fittizio.';
-  gesJPEGFractionalLine = 'Linea di scansione frazionale JPEG non supportata.';
-
-  // miscellaneous
-  gesWarning = 'Avvertimento';
-
 //----------------------------------------------------------------------------------------------------------------------
 
 implementation
 
+uses GraphicStrings, AutoResourceStr, windows;
+
+initialization
+  with AutoResourceString(MakeLangId(LANG_ITALIAN, SUBLANG_ITALIAN)) do begin
+    Add(gesAllImages, 'Tutte le immagini');
+    Add(gesRegistration, 'Tentata doppia registrazione di %s');
+
+    Add(gesBitmaps, 'Bitmap di Windows');
+    Add(gesRLEBitmaps, 'Bitmap di Windows Run Length Encoded');
+    Add(gesDIBs, 'Bitmap di Windows Indipendenti dal Dispositivo');
+    Add(gesEPS, 'Immagini Encapsulated Postscript');
+    Add(gesIcons, 'Icone di Windows');
+    Add(gesMetaFiles, 'Metafiles di Windows');
+    Add(gesEnhancedMetaFiles, 'Enhanced Meta Files di Windows');
+    Add(gesJPGImages, 'Immagini JPG');
+    Add(gesJPEGImages, 'Immagini JPEG');
+    Add(gesJPEImages, 'Immagini JPE');
+    Add(gesJFIFImages, 'Immagini JFIF');
+    Add(gesTruevision, 'Immagini Truevision');
+    Add(gesTIFF, 'Immagini TIFF');
+    Add(gesMacTIFF,  'Immagini Macintosh TIFF');
+    Add(gesPCTIF, 'Immagini PC TIF');
+    Add(gesGFIFax, 'Immagini GFI fax');
+    Add(gesSGI, 'Immagini SGI');
+    Add(gesSGITrueColor, 'Immagini SGI true color');
+    Add(gesZSoft, 'Immagini ZSoft Paintbrush');
+    Add(gesZSoftWord, 'Immagini schermate Word 5.x');
+    Add(gesAliasWaveFront, 'Immagini Alias/Wavefront');
+    Add(gesSGITrueColorAlpha, 'Immagini SGI true color con alpha');
+    Add(gesSGIMono, 'Immagini SGI bianco/nero');
+    Add(gesPhotoshop, 'Immagini Photoshop');
+    Add(gesPortable, 'Immagini Portable map');
+    Add(gesPortablePixel, 'Immagini Portable pixel map');
+    Add(gesPortableGray, 'Immagini Portable gray map');
+    Add(gesPortableMono, 'Immagini Portable bitmap');
+    Add(gesAutoDesk, 'Immagini Autodesk');
+    Add(gesKodakPhotoCD, 'Immagini Kodak Photo-CD');
+    Add(gesCompuserve, 'Immagini CompuServe');
+    Add(gesHalo, 'Immagini Dr. Halo');
+    Add(gesPaintShopPro, 'Immagini Paintshop Pro');
+    Add(gesPortableNetworkGraphic, 'Immagini Portable network graphic');
+
+    // image specific error messaAdd(ges
+    Add(gesInvalidImage, 'Impossibile caricare l''immagine. Il formato %s Ã¨ non valido o non corretto.');
+    Add(gesInvalidColorFormat, 'Il formato dei colori del file %s non Ã¨ valido.');
+    Add(gesStreamReadError, 'Errore nella lettura del file %s.');
+    Add(gesUnsupportedImage, 'Impossibile caricare l''immagine. Il formato %s non Ã¨ supportato.');
+    Add(gesUnsupportedFeature, 'Impossibile caricare l''immagine. %s non supportato per file %s.');
+    Add(gesInvalidCRC, 'Impossibile caricare l''immagine. Errore CRC nel file %s.');
+    Add(gesCompression, 'Impossibile caricare l''immagine. Errore di compressione nel file %s.');
+    Add(gesExtraCompressedData, 'Impossibile caricare l''immagine. Trovati dati extra compressi nel file %s.');
+    Add(gesInvalidPalette, 'Impossibile caricare l''immagine. Palette nel file %s non valida.');
+    Add(gesUnknownCriticalChunk, 'Impossibile caricare l''immagine PNG. Rilevato blocco critico ma non previsto.');
+
+    // features (usually used together with unsupported feature string)
+    Add(gesCompressionScheme, 'Lo schema di compressione Ã¨');
+    Add(gesRLAPixelFormat, 'Formati diversi da RGB e RGBA sono');
+    Add(gesPSPFileType, 'Versioni dei file diverse da 3 o 4 sono');
+
+    // color manager error messaAdd(ges
+    Add(gesIndexedNotSupported, 'La conversione tra formati di pixel indicizzati e non-indicizzati non Ã¨ supportata.');
+    Add(gesConversionUnsupported, 'Conversione di colore fallita. Impossibile trovare un metodo adatto.');
+    Add(gesInvalidSampleDepth, 'ProfonditÃ  di colore non valida. I bit per campione devono essere 1, 2, 4, 8 o 16.');
+    Add(gesInvalidPixelDepth, 'Il conteggio dei campioni per pixel non corrisponde allo schema dei colori.');
+    Add(gesInvalidSubSampling, 'Valore di sottocampionamento non valido. Valori consentiti 1, 2 e 4.');
+    Add(gesVerticalSubSamplingError, 'Il valore di sottocampionamento verticale deve essere <= di quello valore orizzontale.');
+
+    // progress strings
+    Add(gesPreparing, 'Preparazione...');
+    Add(gesLoadingData, 'Caricamento dati...');
+    Add(gesUpsampling, 'Campionamento...');
+    Add(gesTransfering, 'Trasferimento...');
+
+    // compression errors
+    Add(gesLZ77Error, 'Errore decompressione LZ77.');
+    Add(gesJPEGEOI, 'Errore decompressione JPEG. Fine del flusso di ingresso non attesa.');
+    Add(gesJPEGStripSize, 'Dimensione blocco JPEG impropria.');
+    Add(gesJPEGComponentCount, 'Conteggio componente JPEG improprio.');
+    Add(gesJPEGDataPrecision, 'Precisione dati JPEG impropria.');
+    Add(gesJPEGSamplingFactors, 'Fattori di campionamento JPEG impropri.');
+    Add(gesJPEGBogusTableField, 'Campo tabelle JPEG fittizio.');
+    Add(gesJPEGFractionalLine, 'Linea di scansione frazionale JPEG non supportata.');
+
+    // miscellaneous
+    Add(gesWarning, 'Avvertimento');
+
+
+  end;
 //----------------------------------------------------------------------------------------------------------------------
 
 end.

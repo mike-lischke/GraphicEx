@@ -1,0 +1,8 @@
+Units GraphicStringsCT, GraphicStringsDE, GraphicStringsES etc. (all languages except English)
+are now in UTF-8 format. It's beneficial for newer Delphi versions, as no matter which codepage is used in your computer,
+correct languages will be shown in code editor and these strings won't be corrupted. 
+
+But older versions refuse to open these UTF-8-encoded files at all, because there are 3-byte sequence EF BB BF which indicates that UTF-8 is used.
+
+To resolve this, open file you need in text editor and then save with usual charset. After that you can include this unit to project, and if it's exactly the language which is default in your system, it's all right. 
+But trying to mix lots of different languages in single non-unicode project may be problematic. After all, this migration from ANSI to Unicode (making lots of old code unworkable) was for reason...
