@@ -2,8 +2,15 @@ program Convert;
 
 uses
   Forms,
+  GraphicEx in '..\..\GraphicEx.pas',
+  GraphicColor in '..\..\GraphicColor.pas',
+  GraphicStrings in '..\..\GraphicStrings.pas',
+  GraphicCompression in '..\..\GraphicCompression.pas',
+  JpegCompression in '..\..\JpegCompression.pas',
   Main in 'Main.pas' {MainForm},
-  Properties in 'Properties.pas' {PropertyDialog};
+  MZLib in '..\..\MZLib.pas',
+  Properties in 'Properties.pas' {PropertyDialog},
+  TIFF in '..\..\TIFF.pas';
 
 {$R *.RES}
 

@@ -2,7 +2,14 @@ program Browser;
 
 uses
   Forms,
-  Main in 'Main.pas' {MainForm};
+  GraphicColor in '..\..\GraphicColor.pas',
+  GraphicCompression in '..\..\GraphicCompression.pas',
+  GraphicEx in '..\..\GraphicEx.pas',
+  GraphicStrings in '..\..\GraphicStrings.pas',
+  JpegCompression in '..\..\JpegCompression.pas',
+  Main in 'Main.pas' {MainForm},
+  MZLib in '..\..\MZLib.pas',
+  TIFF in '..\..\TIFF.pas';
 
 {$R *.RES}
 
