@@ -108,6 +108,18 @@
 
 // Compiler defines not specific to a particlular platform.
 
+  {$ifdef VER330}
+    {$define COMPILER_26}
+  {$endif VER330}
+
+  {$ifdef VER320}
+    {$define COMPILER_25}
+  {$endif VER320}
+
+  {$ifdef VER310}
+    {$define COMPILER_24}
+  {$endif VER310}
+
   {$ifdef VER300}
     {$define COMPILER_23}
   {$endif VER300}
@@ -612,7 +624,19 @@
   {$define COMPILER_17_UP}
 {$ENDIF}
 
+{$IFDEF COMPILER_24}
+  {$define COMPILER_17_UP}
+{$ENDIF}
 
+{$IFDEF COMPILER_25}
+  {$define COMPILER_17_UP}
+  {$define COMPILER_25_UP}
+{$ENDIF}
+
+{$IFDEF COMPILER_26}
+  {$define COMPILER_17_UP}
+  {$define COMPILER_25_UP}
+{$ENDIF}
 
 {$IFDEF NEWER_COMPILER}
  {$define COMPILER_1_UP}
