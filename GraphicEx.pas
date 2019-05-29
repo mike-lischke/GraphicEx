@@ -232,6 +232,9 @@ type
     class function CanLoad(const FileName: string): Boolean; overload;
     class function CanLoad(const Memory: Pointer; Size: Int64): Boolean; overload; virtual;
     class function CanLoad(Stream: TStream): Boolean; overload;
+    {$IFDEF COMPILER_25_UP}
+    class function CanLoadFromStream(Stream: TStream): Boolean; override;
+    {$ENDIF}
     procedure LoadFromFile(const FileName: string); override;
     procedure LoadFromFileByIndex(const FileName: string; ImageIndex: Cardinal = 0);  virtual; //by default it
     //creates file mapping and then calls LoadFromMemory. But if we use TStream instead, we can want to override it...
@@ -2261,6 +2264,22 @@ begin
       end;
     end;
 end;
+
+//----------------------------------------------------------------------------------------------------------------------
+
+{$IFDEF COMPILER_25_UP}
+class function TGraphicExGraphic.CanLoadFromStream(Stream: TStream): Boolean;
+var
+  P: Int64;
+begin
+  P := Stream.Position;
+  try
+    Result := CanLoad(Stream);
+  finally
+    Stream.Position := P;
+  end;
+end;
+{$ENDIF}
 
 //----------------------------------------------------------------------------------------------------------------------
 
