@@ -3,9 +3,7 @@ GraphicEx
 
 GraphicEx is an addendum to Delphi's Graphics.pas to enable your application to load many common image formats. This library is primarily designed to load images as background (buttons, forms, toolbars) and textures (DirectX, OpenGL) or for image browsing and editing purposes as long as you don't need to save images. Currently only TTargaGraphic also supports saving an image. GraphicEx is open source under the Mozilla Public License (MPL).
 
-Homepage: http://www.soft-gems.net/index.php/libs/graphicex-library
-
-The code here includes some bug fixes and enhancements I have never made available on my homepage. Since I cannot work on this lib any longer I open it up for forks and contributions by others if they interested. If there's significant feedback with fixes and new code I'm willing to publish new releases on my homepage as well.
+The code here includes some bug fixes and enhancements I have never made available on my homepage. Since I cannot work on this lib any longer I open it up for forks and contributions by others if they are interested.
 
 Image Formats
 ============
